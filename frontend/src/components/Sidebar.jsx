@@ -11,6 +11,8 @@ import {
   ClipboardDocumentListIcon,
   UserIcon,
   QuestionMarkCircleIcon,
+  ShieldCheckIcon,
+  BriefcaseIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -24,7 +26,11 @@ const navigation = [
   {
     name: "Management",
     items: [
-      { name: "User Management", href: "/", icon: UserGroupIcon },
+      {
+        name: "User Management",
+        href: "/user-management",
+        icon: UserGroupIcon,
+      },
       { name: "Documents", href: "/documents", icon: DocumentTextIcon },
       { name: "Database", href: "/database", icon: CircleStackIcon },
     ],
@@ -32,9 +38,28 @@ const navigation = [
   {
     name: "Administration",
     items: [
-      { name: "Tasks", href: "/tasks", icon: ClipboardDocumentListIcon },
+      {
+        name: "Create Job",
+        href: "/create-job",
+        icon: ClipboardDocumentListIcon,
+      },
+      {
+        name: "All Jobs",
+        href: "/admin/jobs",
+        icon: BriefcaseIcon,
+      },
       { name: "Profile", href: "/profile", icon: UserIcon },
       { name: "Settings", href: "/settings", icon: Cog6ToothIcon },
+    ],
+  },
+  {
+    name: "Compliance Management",
+    items: [
+      {
+        name: "Compliance",
+        href: "/compliance",
+        icon: ShieldCheckIcon,
+      },
     ],
   },
 ];

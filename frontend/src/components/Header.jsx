@@ -1,38 +1,21 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  BellIcon,
   MagnifyingGlassIcon,
   ChevronDownIcon,
+  Cog6ToothIcon,
+  UserCircleIcon,
+  QuestionMarkCircleIcon,
+  ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
+import NotificationBadge from "../pages/Notifications/NotificationBadge";
 import axiosInstance from "../utils/axios";
 
 function Header() {
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [notifications] = useState([
-    {
-      id: 1,
-      text: 'New role "Manager" was created',
-      time: "5m ago",
-      type: "role",
-    },
-    {
-      id: 2,
-      text: "Sarah Johnson was added as Admin",
-      time: "1h ago",
-      type: "user",
-    },
-    {
-      id: 3,
-      text: "System permissions updated",
-      time: "2h ago",
-      type: "system",
-    },
-  ]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -50,11 +33,6 @@ function Header() {
     fetchUser();
   }, []);
 
-  const handleNotificationClick = () => {
-    setShowNotifications(false);
-    navigate("/notifications");
-  };
-
   const handleLogout = async () => {
     try {
       await axiosInstance.get("/auth/logout");
@@ -66,10 +44,34 @@ function Header() {
     }
   };
 
+  const toggleProfileMenu = () => {
+    setShowProfileMenu(!showProfileMenu);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showProfileMenu && !event.target.closest(".profile-menu-container")) {
+        setShowProfileMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showProfileMenu]);
+
   if (loading) {
     return (
       <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-center">
-        Loading...
+        <div className="animate-pulse flex space-x-4">
+          <div className="rounded-full bg-gray-200 h-8 w-8"></div>
+          <div className="flex-1 space-y-2 py-1 max-w-lg">
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -108,58 +110,19 @@ function Header() {
         {/* Right Section */}
         {user ? (
           <div className="flex items-center space-x-6">
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 rounded-xl hover:bg-gray-100 relative transition-colors duration-200"
-              >
-                <BellIcon className="h-6 w-6 text-gray-600" />
-                <span className="absolute top-1.5 right-1.5 block h-2.5 w-2.5 rounded-full bg-blue-600 ring-2 ring-white" />
-              </button>
-              {showNotifications && (
-                <div className="absolute right-0 mt-3 w-96 bg-white rounded-xl shadow-xl py-2 ring-1 ring-black ring-opacity-5">
-                  <div className="px-4 py-2 border-b border-gray-100">
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Recent Notifications
-                    </h3>
-                  </div>
-                  <div className="max-h-96 overflow-y-auto">
-                    {notifications.map((notification) => (
-                      <div
-                        key={notification.id}
-                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors duration-200"
-                        onClick={handleNotificationClick}
-                      >
-                        <p className="text-sm text-gray-600">
-                          {notification.text}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {notification.time}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="px-4 py-2 border-t border-gray-100">
-                    <button
-                      onClick={handleNotificationClick}
-                      className="text-sm text-blue-600 hover:text-blue-500 font-medium transition-colors duration-200"
-                    >
-                      View all notifications
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Notification Badge Component */}
+            <NotificationBadge />
 
             {/* Profile Dropdown */}
-            <div className="relative">
+            <div className="relative profile-menu-container">
               <button
-                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                onClick={toggleProfileMenu}
                 className="flex items-center space-x-3 hover:bg-gray-50 rounded-xl p-2 transition-colors duration-200"
               >
                 <img
-                  src={`https://ui-avatars.com/api/?name=${user.name}&background=0D8ABC&color=fff`}
+                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
+                    user.name
+                  )}&background=0D8ABC&color=fff`}
                   alt="User"
                   className="h-8 w-8 rounded-xl ring-2 ring-white"
                 />
@@ -167,7 +130,9 @@ function Header() {
                   <p className="text-sm font-semibold text-gray-900">
                     {user.name}
                   </p>
-                  <p className="text-xs text-gray-500">{user.email}</p>
+                  <p className="text-xs text-gray-500 truncate max-w-[120px]">
+                    {user.email}
+                  </p>
                 </div>
                 <ChevronDownIcon
                   className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${
@@ -175,8 +140,9 @@ function Header() {
                   }`}
                 />
               </button>
+
               {showProfileMenu && (
-                <div className="absolute right-0 mt-3 w-64 bg-white rounded-xl shadow-xl py-2 ring-1 ring-black ring-opacity-5">
+                <div className="absolute right-0 mt-3 w-64 bg-white rounded-xl shadow-xl py-2 ring-1 ring-black ring-opacity-5 border border-gray-100 transform origin-top-right transition-all duration-200">
                   <div className="px-4 py-3 border-b border-gray-100">
                     <p className="text-sm font-semibold text-gray-900">
                       Signed in as
@@ -184,23 +150,37 @@ function Header() {
                     <p className="text-sm text-gray-500 truncate">
                       {user.email}
                     </p>
+                    <div className="mt-2 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded inline-block">
+                      {user.role?.name || "User"}
+                    </div>
                   </div>
                   <div className="py-1">
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200">
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center">
+                      <UserCircleIcon className="h-4 w-4 mr-2 text-gray-500" />
                       Your Profile
                     </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200">
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center">
+                      <Cog6ToothIcon className="h-4 w-4 mr-2 text-gray-500" />
                       Settings
                     </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200">
+                    <Link
+                      to="/notifications"
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center"
+                    >
+                      <NotificationBadge hideCount={true} />
+                      <span className="ml-2">Notifications</span>
+                    </Link>
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center">
+                      <QuestionMarkCircleIcon className="h-4 w-4 mr-2 text-gray-500" />
                       Help Center
                     </button>
                   </div>
                   <div className="py-1 border-t border-gray-100">
                     <button
                       onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50 transition-colors duration-200"
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50 transition-colors duration-200 flex items-center"
                     >
+                      <ArrowRightOnRectangleIcon className="h-4 w-4 mr-2 text-red-500" />
                       Sign out
                     </button>
                   </div>
