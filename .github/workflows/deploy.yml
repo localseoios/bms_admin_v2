@@ -27,7 +27,7 @@ jobs:
           
           # Backend First
           cd backend
-          npm ci --production
+          npm ci
           pm2 restart bms_admin_v2_test
           
           # Frontend After Backend Completes
@@ -35,5 +35,6 @@ jobs:
           npm ci
           npm run build
           
-          # Ensure .env remains untouched
-          git update-index --assume-unchanged backend/.env
+           # Skip .env check if file doesn't exist
+          [ -f backend/.env ] && git update-index --assume-unchanged backend/.env || true
+          [ -f frontend/.env ] && git update-index --assume-unchanged frontend/.env || true
