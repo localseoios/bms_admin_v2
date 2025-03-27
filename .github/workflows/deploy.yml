@@ -1,0 +1,39 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Force Update & Deploy
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ secrets.VPS_IP }}
+        username: ${{ secrets.VPS_USER }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        script: |
+          # Force reset repository state
+          cd /var/www/bms_admin_v2
+          git fetch --all
+          git reset --hard origin/main
+          git clean -fd
+          
+          # Backend First
+          cd backend
+          npm ci --production
+          pm2 restart bms_admin_v2_test
+          
+          # Frontend After Backend Completes
+          cd ../frontend
+          npm ci
+          npm run build
+          
+          # Ensure .env remains untouched
+          git update-index --assume-unchanged backend/.env
