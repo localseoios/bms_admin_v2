@@ -485,6 +485,14 @@ const ceoApprove = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
   const { notes } = req.body;
 
+    console.log("CEO Approval Request received:", {
+      jobId,
+      hasFile: !!req.file,
+      fileName: req.file ? req.file.originalname : "No file",
+      fileSize: req.file ? req.file.size : 0,
+      contentType: req.file ? req.file.mimetype : "N/A",
+    });
+
   // Check if user has CEO permission
   if (!req.user.role.permissions.braManagement.ceo) {
     return res
@@ -550,10 +558,15 @@ const ceoApprove = asyncHandler(async (req, res) => {
     if (braApproval.dlmroApproval.document) {
       braApproval.dlmroApproval.document = undefined;
     }
+    console.log(
+      `Attempting to upload CEO document to Cloudinary from: ${req.file.path}`
+    );
 
     // Upload new CEO document to Cloudinary
     const cloudinaryResult = await uploadToCloudinary(req.file.path, {
       folder: "bra-documents/ceo",
+      timeout: 120000, // Increase timeout to 2 minutes
+      chunk_size: 6000000, // Add chunk size for large uploads
     });
 
     if (!cloudinaryResult.success) {

@@ -15,7 +15,7 @@ const {
   rejectBra,
   getAllBraJobs,
 } = require("../controllers/braController");
-const { upload } = require("../services/fileUploadService");
+const { upload, largeFileUpload } = require("../services/fileUploadService");
 
 // Initialize BRA process (can be called by Operation Management users or automatically after KYC completes)
 router.post(
@@ -50,11 +50,12 @@ router.put(
 );
 
 // CEO Approval with document upload requirement
+// In braRoutes.js, update the CEO approval route:
 router.put(
   "/jobs/:jobId/ceo-approve",
   protect,
   checkPermission("braManagement.ceo"),
-  upload.single("document"),
+  largeFileUpload.single("document"), // Use largeFileUpload instead of upload
   ceoApprove
 );
 

@@ -130,9 +130,18 @@ const upload = multer({
   },
 });
 
+const largeFileUpload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB size limit for CEO documents
+  },
+});
+
 module.exports = {
   upload,
   uploadToCloudinary,
   deleteFromCloudinary,
   ensureTempDir,
+  largeFileUpload,
 };
