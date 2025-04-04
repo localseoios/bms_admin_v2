@@ -40,7 +40,7 @@ app.use(cookieParser());
 // Enhanced CORS settings for file uploads
 app.use(
   cors({
-    origin: [process.env.VITE_FRONTEND_URL],
+    origin: [process.env.VITE_FRONTEND_URL, "https://testapp.newoon.com"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
