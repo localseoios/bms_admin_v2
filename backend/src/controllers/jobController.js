@@ -17,9 +17,9 @@ const safeCloudinaryUpload = async (filePath, options = {}) => {
     return { success: true, url: result.secure_url };
   } catch (error) {
     console.error(`Cloudinary upload error for ${filePath}:`, error.message);
-    const placeholder = `http://localhost:5000/temp-uploads/${path.basename(
-      filePath
-    )}`;
+    const placeholder = `${
+      process.env.VITE_BACKEND_URL
+    }/temp-uploads/${path.basename(filePath)}`;
     return { success: false, url: placeholder, error: error.message };
   }
 };
