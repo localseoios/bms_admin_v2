@@ -1,39 +1,72 @@
-// services/notificationService.js
+// services/notificationService.js (Updated for BRA notifications)
 const Notification = require("../models/notificationModel");
 const User = require("../models/userModel");
 const mongoose = require("mongoose");
 
-// Maps notification types to appropriate icons and colors
+// Updated to include BRA notification style
 const getNotificationStyle = (type, subType = null) => {
   switch (type) {
     case "job":
       if (subType === "assignment") {
         return {
-          iconType: "assignment",
+          iconType: "CheckCircleIcon",
           iconColor: "text-green-600",
           bgColor: "bg-green-50",
         };
       }
+      if (subType === "kyc") {
+        return {
+          iconType: "ShieldCheckIcon",
+          iconColor: "text-purple-600",
+          bgColor: "bg-purple-50",
+        };
+      }
+      // New BRA notification style
+      if (subType === "bra") {
+        return {
+          iconType: "ClipboardCheckIcon",
+          iconColor: "text-teal-600",
+          bgColor: "bg-teal-50",
+        };
+      }
       return {
-        iconType: "briefcase",
+        iconType: "BriefcaseIcon",
         iconColor: "text-blue-600",
         bgColor: "bg-blue-50",
       };
     case "status":
       return {
-        iconType: "status",
+        iconType: "ArrowPathIcon",
         iconColor: "text-purple-600",
         bgColor: "bg-purple-50",
       };
+    case "role":
+      return {
+        iconType: "UserPlusIcon",
+        iconColor: "text-green-600",
+        bgColor: "bg-green-50",
+      };
+    case "user":
+      return {
+        iconType: "UserPlusIcon",
+        iconColor: "text-blue-600",
+        bgColor: "bg-blue-50",
+      };
     case "security":
       return {
-        iconType: "shield",
+        iconType: "ShieldCheckIcon",
         iconColor: "text-red-600",
         bgColor: "bg-red-50",
       };
+    case "system":
+      return {
+        iconType: "ExclamationCircleIcon",
+        iconColor: "text-orange-600",
+        bgColor: "bg-orange-50",
+      };
     default:
       return {
-        iconType: "info",
+        iconType: "InformationCircleIcon",
         iconColor: "text-blue-600",
         bgColor: "bg-blue-50",
       };
@@ -63,19 +96,15 @@ const formatTimeAgo = (date) => {
 };
 
 // Create a new notification
-// Enhanced createNotification to include styling
 const createNotification = async (notificationData, queryOrUserId) => {
   try {
     // Format the time for display
     const now = new Date();
-    const time = now.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+    const time = formatTimeAgo(now);
 
     // Get styling based on notification type
     const styling = getNotificationStyle(
-      notificationData.type, 
+      notificationData.type,
       notificationData.subType
     );
 
@@ -84,13 +113,13 @@ const createNotification = async (notificationData, queryOrUserId) => {
       ...notificationData,
       time,
       ...styling,
-      recipients: []
+      recipients: [],
     });
 
     // Find users to notify
     let users = [];
 
-    if (typeof queryOrUserId === 'string') {
+    if (typeof queryOrUserId === "string") {
       // Single user ID provided
       users = await User.find({ _id: queryOrUserId });
     } else {
@@ -99,9 +128,9 @@ const createNotification = async (notificationData, queryOrUserId) => {
     }
 
     // Add users to recipients array
-    notification.recipients = users.map(user => ({
+    notification.recipients = users.map((user) => ({
       user: user._id,
-      read: false
+      read: false,
     }));
 
     // Only save if we have recipients
@@ -115,7 +144,6 @@ const createNotification = async (notificationData, queryOrUserId) => {
     throw error;
   }
 };
-
 
 // Get notifications for a user
 const getUserNotifications = async (userId) => {
@@ -153,11 +181,13 @@ const getUserNotifications = async (userId) => {
           title: 1,
           description: 1,
           type: 1,
+          subType: 1, // Include subType for filtering
           iconType: 1,
           iconColor: 1,
           bgColor: 1,
           time: 1,
           createdAt: 1,
+          relatedTo: 1,
           status: { $cond: ["$userSpecificStatus.read", "read", "unread"] },
         },
       },
@@ -171,17 +201,18 @@ const getUserNotifications = async (userId) => {
   }
 };
 
-// Mark notifications as read
+// Fixed markAsRead function to properly update array elements
 const markAsRead = async (userId, notificationIds = []) => {
   try {
     // Convert string ID to ObjectId
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
     if (notificationIds.length === 0) {
-      // Mark all notifications as read
+      // Mark all notifications as read - fixed update operation
       await Notification.updateMany(
         { "recipients.user": userObjectId },
-        { $set: { "recipients.$.read": true } }
+        { $set: { "recipients.$[elem].read": true } },
+        { arrayFilters: [{ "elem.user": userObjectId }] }
       );
     } else {
       // Mark specific notifications as read
@@ -189,12 +220,12 @@ const markAsRead = async (userId, notificationIds = []) => {
         const notificationObjectId = new mongoose.Types.ObjectId(
           notificationId
         );
+
+        // Fixed update operation with arrayFilters
         await Notification.updateOne(
-          {
-            _id: notificationObjectId,
-            "recipients.user": userObjectId,
-          },
-          { $set: { "recipients.$.read": true } }
+          { _id: notificationObjectId },
+          { $set: { "recipients.$[elem].read": true } },
+          { arrayFilters: [{ "elem.user": userObjectId }] }
         );
       }
     }
@@ -210,4 +241,5 @@ module.exports = {
   getUserNotifications,
   markAsRead,
   getNotificationStyle,
+  formatTimeAgo,
 };

@@ -336,14 +336,21 @@ const changePassword = asyncHandler(async (req, res) => {
 // Get all operation managers
 const getOperationManagers = asyncHandler(async (req, res) => {
   try {
-    // Find users with operation manager role or permission
-    // Adjust the query based on your actual user model structure
-    const operationManagers = await User.find({
-      $or: [
-        { "role.name": "operation_manager" },
-        { "role.permissions.operationManagement": true }
-      ]
-    }).select('_id name email role status');
+    // Get all users and populate their role information
+    const users = await User.find()
+      .populate({
+        path: 'role',
+        select: 'name permissions'
+      })
+      .select('_id name email role');
+
+    // Filter users who have operation manager role or permission
+    const operationManagers = users.filter(user => 
+      user.role && (
+        user.role.name === "operation_manager" || 
+        (user.role.permissions && user.role.permissions.operationManagement === true)
+      )
+    );
 
     res.status(200).json(operationManagers);
   } catch (error) {

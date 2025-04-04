@@ -6,7 +6,6 @@ import axiosInstance from "../../../utils/axios";
 
 import {
   MagnifyingGlassIcon,
-  FunnelIcon,
   ArrowDownTrayIcon,
   ChevronDownIcon,
   DocumentTextIcon,
@@ -15,7 +14,6 @@ import {
   ExclamationTriangleIcon,
   ClockIcon,
   EyeIcon,
-  ChartBarIcon,
   UserGroupIcon,
   TrashIcon,
   DocumentIcon,
@@ -44,35 +42,6 @@ const sortOptions = [
   { id: "client", name: "Client Name" },
   { id: "service", name: "Service Type" },
 ];
-
-// Mock assigned persons (optional)
-const assignedPersons = [
-  {
-    id: "1",
-    name: "Sarah Johnson",
-    role: "Senior Consultant",
-    status: "Available",
-  },
-  {
-    id: "2",
-    name: "Michael Chen",
-    role: "Legal Advisor",
-    status: "In Meeting",
-  },
-  {
-    id: "3",
-    name: "Emily Brown",
-    role: "Document Specialist",
-    status: "Available",
-  },
-  { id: "4", name: "David Wilson", role: "Compliance Officer", status: "Busy" },
-];
-
-// Helper function to get assigned person name by ID
-const getAssignedPersonName = (id) => {
-  const person = assignedPersons.find((p) => p.id === id);
-  return person ? person.name : "Unknown";
-};
 
 // File size formatter
 const formatFileSize = (bytes) => {
@@ -153,6 +122,7 @@ function ComplianceManagement() {
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [userCache, setUserCache] = useState({}); // Cache for user data
 
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [selectedSort, setSelectedSort] = useState("newest");
@@ -171,6 +141,78 @@ function ComplianceManagement() {
   const [dragActive, setDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showResubmissionHistory, setShowResubmissionHistory] = useState(false);
+
+  // Function to extract userId from different formats
+  const extractUserId = (assignedPerson) => {
+    if (!assignedPerson) return null;
+
+    // If it's a string ID
+    if (typeof assignedPerson === "string") return assignedPerson;
+
+    // If it's an ObjectId with $oid property
+    if (assignedPerson.$oid) return assignedPerson.$oid;
+
+    // If it's an object with _id property
+    if (assignedPerson._id) {
+      // Handle if _id is an object with $oid
+      if (typeof assignedPerson._id === "object" && assignedPerson._id.$oid)
+        return assignedPerson._id.$oid;
+
+      // Handle if _id is a string
+      if (typeof assignedPerson._id === "string") return assignedPerson._id;
+    }
+
+    return null;
+  };
+
+  // Function to fetch user data
+  const fetchUserData = async (userId) => {
+    if (!userId) return null;
+
+    // Check cache first
+    if (userCache[userId]) return userCache[userId];
+
+    try {
+      const response = await axiosInstance.get(`/users/${userId}`);
+      if (response.data) {
+        // Update cache
+        setUserCache((prev) => ({
+          ...prev,
+          [userId]: response.data,
+        }));
+        return response.data;
+      }
+    } catch (err) {
+      console.error(`Error fetching user ${userId}:`, err);
+      // Add a placeholder in cache to avoid repeated failed requests
+      setUserCache((prev) => ({
+        ...prev,
+        [userId]: { name: `User ${userId.substring(0, 8)}...` },
+      }));
+    }
+
+    return null;
+  };
+
+  // Helper function to get the assignedPerson name
+  const getAssignedPersonName = (assignedPerson) => {
+    if (!assignedPerson) return "Unassigned";
+
+    // If it's already a populated object with a name
+    if (assignedPerson.name) return assignedPerson.name;
+
+    // Extract the user ID from different possible formats
+    const userId = extractUserId(assignedPerson);
+    if (!userId) return "Unassigned";
+
+    // Check if we have this user in cache
+    if (userCache[userId]) {
+      return userCache[userId].name || `User ${userId.substring(0, 8)}...`;
+    }
+
+    // Return a temporary display while we're loading the user data
+    return "Loading...";
+  };
 
   // Handle file selection and update file details
   const handleFileChange = (file) => {
@@ -219,13 +261,70 @@ function ComplianceManagement() {
     setFileDetails(null);
   };
 
-  // Fetch jobs from the API when the component mounts
+  // Fetch jobs and populate user data
   useEffect(() => {
     const fetchJobs = async () => {
       try {
         setIsLoading(true);
+
+        // Get all operation managers (users who can be assigned jobs)
+        let operationManagers = [];
+        try {
+          const managersResponse = await axiosInstance.get(
+            "/users/operation-managers"
+          );
+          operationManagers = managersResponse.data || [];
+
+          // Add managers to cache
+          const managersCache = {};
+          operationManagers.forEach((manager) => {
+            if (manager._id) {
+              managersCache[manager._id] = manager;
+            }
+          });
+          setUserCache((prev) => ({ ...prev, ...managersCache }));
+        } catch (err) {
+          console.error("Error fetching operation managers:", err);
+        }
+
+        // Fetch all jobs
         const response = await axiosInstance.get("/jobs");
-        setJobs(response.data);
+        const fetchedJobs = response.data || [];
+
+        // Set jobs immediately so UI can render
+        setJobs(fetchedJobs);
+
+        // Process assignedPerson for each job
+        const userIds = new Set();
+        fetchedJobs.forEach((job) => {
+          if (job.assignedPerson) {
+            const userId = extractUserId(job.assignedPerson);
+            if (userId) userIds.add(userId);
+          }
+        });
+
+        // Fetch user data for any IDs not in cache
+        const userPromises = Array.from(userIds)
+          .filter((userId) => !userCache[userId])
+          .map(async (userId) => {
+            const userData = await fetchUserData(userId);
+            return { userId, userData };
+          });
+
+        // Wait for all user data to be fetched
+        const userResults = await Promise.all(userPromises);
+
+        // Update cache with newly fetched users
+        const newUserCache = { ...userCache };
+        userResults.forEach(({ userId, userData }) => {
+          if (userData) newUserCache[userId] = userData;
+        });
+
+        // Only update cache if there are new entries
+        if (Object.keys(newUserCache).length > Object.keys(userCache).length) {
+          setUserCache(newUserCache);
+        }
+
         setError(null);
       } catch (err) {
         console.error("Error fetching jobs:", err);
@@ -234,6 +333,7 @@ function ComplianceManagement() {
         setIsLoading(false);
       }
     };
+
     fetchJobs();
   }, []);
 
@@ -669,9 +769,11 @@ function ComplianceManagement() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {getAssignedPersonName(job.assignedPerson) ||
-                              "Unassigned"}
+                          <div className="flex items-center">
+                            <UserIcon className="h-4 w-4 text-gray-400 mr-2" />
+                            <div className="text-sm text-gray-900">
+                              {getAssignedPersonName(job.assignedPerson)}
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -707,18 +809,19 @@ function ComplianceManagement() {
                               <EyeIcon className="h-5 w-5" />
                             </motion.button>
 
-                            {/* “View Profile” button only if job is approved */}
-                            {job.status === "approved" && (
-                              <Link to={`/clients/${job.gmail}`}>
-                                <motion.button
-                                  whileHover={{ scale: 1.1 }}
-                                  whileTap={{ scale: 0.9 }}
-                                  className="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors duration-200"
-                                >
-                                  <UserIcon className="h-5 w-5" />
-                                </motion.button>
-                              </Link>
-                            )}
+                            {/* "View Profile" button only if job is approved */}
+                            {job.status === "approved" ||
+                              ("om_completed" && (
+                                <Link to={`/clients/${job.gmail}`}>
+                                  <motion.button
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    className="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors duration-200"
+                                  >
+                                    <UserIcon className="h-5 w-5" />
+                                  </motion.button>
+                                </Link>
+                              ))}
 
                             {/* Approve/Reject if pending or corrected */}
                             {(!job.status ||
@@ -852,7 +955,7 @@ function ComplianceManagement() {
                               Assigned to:{" "}
                               {getAssignedPersonName(
                                 selectedJob.assignedPerson
-                              ) || "Unassigned"}
+                              )}
                             </p>
                           </div>
                         </div>

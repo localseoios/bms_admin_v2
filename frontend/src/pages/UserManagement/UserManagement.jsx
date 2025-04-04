@@ -41,6 +41,19 @@ function UserManagement() {
       complianceManagement: false,
       requestService: false,
       userManagement: false,
+      operationManagement: false,
+      // KYC Management permissions
+      kycManagement: {
+        lmro: false,
+        dlmro: false,
+        ceo: false,
+      },
+      // Add BRA Management permissions
+      braManagement: {
+        lmro: false,
+        dlmro: false,
+        ceo: false,
+      },
     },
   });
 
@@ -113,6 +126,17 @@ function UserManagement() {
           complianceManagement: false,
           requestService: false,
           userManagement: false,
+          operationManagement: false,
+          kycManagement: {
+            lmro: false,
+            dlmro: false,
+            ceo: false,
+          },
+          braManagement: {
+            lmro: false,
+            dlmro: false,
+            ceo: false,
+          },
         },
       });
     } catch (err) {
@@ -126,6 +150,24 @@ function UserManagement() {
     try {
       const response = await axiosInstance.get(`/roles/${roleId}`);
       const roleToEdit = response.data;
+
+      // Ensure kycManagement exists in the data structure
+      if (!roleToEdit.permissions.kycManagement) {
+        roleToEdit.permissions.kycManagement = {
+          lmro: false,
+          dlmro: false,
+          ceo: false,
+        };
+      }
+
+      // Ensure braManagement exists in the data structure
+      if (!roleToEdit.permissions.braManagement) {
+        roleToEdit.permissions.braManagement = {
+          lmro: false,
+          dlmro: false,
+          ceo: false,
+        };
+      }
 
       setNewRole(roleToEdit);
       setSelectedRoleId(roleId);
@@ -218,6 +260,38 @@ function UserManagement() {
     return role.name.toLowerCase() === "admin";
   };
 
+  const getEmptyRoleState = () => ({
+    name: "",
+    permissions: {
+      clientManagement: {
+        companyDetails: { editor: false, viewer: false },
+        directorDetails: { editor: false, viewer: false },
+        secretaryDetails: { editor: false, viewer: false },
+        shareholderDetails: { editor: false, viewer: false },
+        sefDetails: { editor: false, viewer: false },
+        signedKyc: { editor: false, viewer: false },
+        paymentDetails: { editor: false, viewer: false },
+        auditedFinancial: { editor: false, viewer: false },
+      },
+      documentManagement: false,
+      renewalManagement: false,
+      complianceManagement: false,
+      requestService: false,
+      userManagement: false,
+      operationManagement: false,
+      kycManagement: {
+        lmro: false,
+        dlmro: false,
+        ceo: false,
+      },
+      braManagement: {
+        lmro: false,
+        dlmro: false,
+        ceo: false,
+      },
+    },
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -282,26 +356,7 @@ function UserManagement() {
                 onClick={() => {
                   setActiveTab("addUser");
                   setSelectedRoleId(null);
-                  setNewRole({
-                    name: "",
-                    permissions: {
-                      clientManagement: {
-                        companyDetails: { editor: false, viewer: false },
-                        directorDetails: { editor: false, viewer: false },
-                        secretaryDetails: { editor: false, viewer: false },
-                        shareholderDetails: { editor: false, viewer: false },
-                        sefDetails: { editor: false, viewer: false },
-                        signedKyc: { editor: false, viewer: false },
-                        paymentDetails: { editor: false, viewer: false },
-                        auditedFinancial: { editor: false, viewer: false },
-                      },
-                      documentManagement: false,
-                      renewalManagement: false,
-                      complianceManagement: false,
-                      requestService: false,
-                      userManagement: false,
-                    },
-                  });
+                  setNewRole(getEmptyRoleState());
                 }}
                 className={clsx(
                   activeTab === "addUser"
@@ -413,6 +468,99 @@ function UserManagement() {
                             ))}
                           </div>
                         </div>
+
+                        {/* KYC Management Section */}
+                        <div className="bg-gray-50 rounded-xl p-6">
+                          <h4 className="text-base font-medium text-gray-900 mb-4">
+                            KYC Management
+                          </h4>
+                          <div className="grid gap-4">
+                            {Object.entries(
+                              newRole.permissions.kycManagement || {
+                                lmro: false,
+                                dlmro: false,
+                                ceo: false,
+                              }
+                            ).map(([key, value]) => (
+                              <div
+                                key={key}
+                                className="flex items-center bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-5 w-5"
+                                  checked={value}
+                                  onChange={(e) =>
+                                    setNewRole({
+                                      ...newRole,
+                                      permissions: {
+                                        ...newRole.permissions,
+                                        kycManagement: {
+                                          ...newRole.permissions.kycManagement,
+                                          [key]: e.target.checked,
+                                        },
+                                      },
+                                    })
+                                  }
+                                />
+                                <span className="ml-3 text-sm font-medium text-gray-900 capitalize">
+                                  {key === "lmro"
+                                    ? "LMRO (Level 1 KYC Approval)"
+                                    : key === "dlmro"
+                                    ? "DLMRO (Level 2 KYC Approval)"
+                                    : "CEO (Final KYC Approval)"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* BRA Management Section */}
+                        <div className="bg-gray-50 rounded-xl p-6">
+                          <h4 className="text-base font-medium text-gray-900 mb-4">
+                            BRA Management
+                          </h4>
+                          <div className="grid gap-4">
+                            {Object.entries(
+                              newRole.permissions.braManagement || {
+                                lmro: false,
+                                dlmro: false,
+                                ceo: false,
+                              }
+                            ).map(([key, value]) => (
+                              <div
+                                key={key}
+                                className="flex items-center bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-5 w-5"
+                                  checked={value}
+                                  onChange={(e) =>
+                                    setNewRole({
+                                      ...newRole,
+                                      permissions: {
+                                        ...newRole.permissions,
+                                        braManagement: {
+                                          ...newRole.permissions.braManagement,
+                                          [key]: e.target.checked,
+                                        },
+                                      },
+                                    })
+                                  }
+                                />
+                                <span className="ml-3 text-sm font-medium text-gray-900 capitalize">
+                                  {key === "lmro"
+                                    ? "LMRO (Level 1 BRA Approval)"
+                                    : key === "dlmro"
+                                    ? "DLMRO (Level 2 BRA Approval)"
+                                    : "CEO (Final BRA Approval)"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="bg-gray-50 rounded-xl p-6">
                           <h4 className="text-base font-medium text-gray-900 mb-4">
                             Additional Permissions
@@ -424,6 +572,7 @@ function UserManagement() {
                               "complianceManagement",
                               "requestService",
                               "userManagement",
+                              "operationManagement",
                             ].map((permission) => (
                               <div
                                 key={permission}
@@ -458,44 +607,7 @@ function UserManagement() {
                           type="button"
                           onClick={() => {
                             setSelectedRoleId(null);
-                            setNewRole({
-                              name: "",
-                              permissions: {
-                                clientManagement: {
-                                  companyDetails: {
-                                    editor: false,
-                                    viewer: false,
-                                  },
-                                  directorDetails: {
-                                    editor: false,
-                                    viewer: false,
-                                  },
-                                  secretaryDetails: {
-                                    editor: false,
-                                    viewer: false,
-                                  },
-                                  shareholderDetails: {
-                                    editor: false,
-                                    viewer: false,
-                                  },
-                                  sefDetails: { editor: false, viewer: false },
-                                  signedKyc: { editor: false, viewer: false },
-                                  paymentDetails: {
-                                    editor: false,
-                                    viewer: false,
-                                  },
-                                  auditedFinancial: {
-                                    editor: false,
-                                    viewer: false,
-                                  },
-                                },
-                                documentManagement: false,
-                                renewalManagement: false,
-                                complianceManagement: false,
-                                requestService: false,
-                                userManagement: false,
-                              },
-                            });
+                            setNewRole(getEmptyRoleState());
                           }}
                           className="mr-4 px-8 py-3 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors duration-200"
                         >
@@ -675,13 +787,28 @@ function UserManagement() {
                       <KeyIcon className="h-4 w-4 mr-2" />
                       <span className="font-medium mr-2">Permissions:</span>
                       {
-                        Object.values(role.permissions).filter((permission) =>
-                          typeof permission === "boolean"
-                            ? permission
-                            : Object.values(permission).some(
-                                (section) => section.editor || section.viewer
-                              )
-                        ).length
+                        Object.values(role.permissions).filter((permission) => {
+                          if (typeof permission === "boolean") {
+                            return permission;
+                          } else if (
+                            permission === null ||
+                            permission === undefined
+                          ) {
+                            return false;
+                          } else if (typeof permission === "object") {
+                            if (
+                              Object.keys(permission).includes("editor") &&
+                              Object.keys(permission).includes("viewer")
+                            ) {
+                              return permission.editor || permission.viewer;
+                            } else {
+                              return Object.values(permission).some(
+                                (val) => val === true
+                              );
+                            }
+                          }
+                          return false;
+                        }).length
                       }
                     </div>
                   </div>
@@ -728,6 +855,44 @@ function UserManagement() {
                           </th>
                         )
                       )}
+                      {/* KYC Management columns */}
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
+                      >
+                        KYC LMRO
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
+                      >
+                        KYC DLMRO
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
+                      >
+                        KYC CEO
+                      </th>
+                      {/* BRA Management columns */}
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider bg-gray-100"
+                      >
+                        BRA LMRO
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider bg-gray-100"
+                      >
+                        BRA DLMRO
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider bg-gray-100"
+                      >
+                        BRA CEO
+                      </th>
                       <th
                         scope="col"
                         className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
@@ -757,6 +922,12 @@ function UserManagement() {
                         className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
                       >
                         User Management
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
+                      >
+                        Operation Management
                       </th>
                     </tr>
                   </thead>
@@ -825,6 +996,74 @@ function UserManagement() {
                               </td>
                             );
                           })}
+                          {/* KYC Management permissions */}
+                          <td className="whitespace-nowrap px-3 py-4">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={
+                                userRole?.permissions?.kycManagement?.lmro ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={
+                                userRole?.permissions?.kycManagement?.dlmro ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={
+                                userRole?.permissions?.kycManagement?.ceo ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
+                          {/* BRA Management permissions */}
+                          <td className="whitespace-nowrap px-3 py-4 bg-gray-50">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={
+                                userRole?.permissions?.braManagement?.lmro ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 bg-gray-50">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={
+                                userRole?.permissions?.braManagement?.dlmro ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 bg-gray-50">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={
+                                userRole?.permissions?.braManagement?.ceo ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
                           <td className="whitespace-nowrap px-3 py-4">
                             <input
                               type="checkbox"
@@ -874,6 +1113,17 @@ function UserManagement() {
                               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               checked={
                                 userRole?.permissions?.userManagement || false
+                              }
+                              disabled
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={
+                                userRole?.permissions?.operationManagement ||
+                                false
                               }
                               disabled
                             />

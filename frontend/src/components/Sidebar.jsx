@@ -13,6 +13,8 @@ import {
   QuestionMarkCircleIcon,
   ShieldCheckIcon,
   BriefcaseIcon,
+  IdentificationIcon,
+  ClipboardIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -59,6 +61,36 @@ const navigation = [
         name: "Compliance",
         href: "/compliance",
         icon: ShieldCheckIcon,
+      },
+    ],
+  },
+  {
+    name: "Operation Management",
+    items: [
+      {
+        name: "My Jobs",
+        href: "/operation-management",
+        icon: BriefcaseIcon,
+      },
+    ],
+  },
+  {
+    name: "KYC Management",
+    items: [
+      {
+        name: "KYC Management",
+        href: "/kyc-management",
+        icon: IdentificationIcon,
+      },
+    ],
+  },
+  {
+    name: "BRA Management",
+    items: [
+      {
+        name: "BRA Management",
+        href: "/bra-management",
+        icon: ClipboardIcon,
       },
     ],
   },
@@ -120,8 +152,8 @@ function Sidebar() {
                           }`}
                         />
                         <span className="truncate">{item.name}</span>
-                        {item.name === "User Management" && (
-                          <span className="ml-auto bg-indigo-100 text-indigo-700 py-0.5 px-2 rounded-lg text-xs font-medium">
+                        {item.name === "BRA Management" && (
+                          <span className="ml-auto bg-teal-100 text-teal-700 py-0.5 px-2 rounded-lg text-xs font-medium">
                             New
                           </span>
                         )}

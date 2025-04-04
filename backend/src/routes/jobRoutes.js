@@ -79,10 +79,20 @@ router.get("/", protect, checkPermission("complianceManagement"), getAllJobs);
 router.get("/get-all-admin", protect, adminOnly, getAllJobsAdmin);
 
 // New route for assigned jobs
-router.get("/assigned", protect, getAssignedJobs);
+router.get(
+  "/assigned",
+  protect,
+  checkPermission("operationManagement"),
+  getAssignedJobs
+);
 
 // New route for specific job details (accessible by admin, compliance, and assigned person)
-router.get("/:id", protect, getJobDetails);
+router.get(
+  "/:id",
+  protect,
+  checkPermission("operationManagement"),
+  getJobDetails
+);
 
 // Job status management routes
 router.put(
@@ -120,5 +130,10 @@ router.put(
 
 // Job timeline route
 router.get("/:id/timeline", protect, getJobTimeline);
+
+
+
+
+
 
 module.exports = router;

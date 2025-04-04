@@ -23,7 +23,26 @@ const jobSchema = new mongoose.Schema(
     startingPoint: { type: String, required: true }, // Kept for compatibility
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected", "corrected", "cancelled"],
+      enum: [
+        "pending",
+        "approved",
+        "rejected",
+        "corrected",
+        "cancelled",
+        "om_completed",
+        // KYC statuses
+        "kyc_pending",
+        "kyc_lmro_approved",
+        "kyc_dlmro_approved",
+        "kyc_rejected",
+        "completed",
+        // BRA statuses
+        "bra_pending",
+        "bra_lmro_approved",
+        "bra_dlmro_approved",
+        "bra_rejected",
+        "fully_completed_bra",
+      ],
       default: "pending",
     },
     rejectionReason: {

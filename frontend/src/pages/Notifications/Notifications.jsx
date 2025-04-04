@@ -22,7 +22,7 @@ function Notifications() {
   const [error, setError] = useState(null);
   const [showActions, setShowActions] = useState(null);
 
-  // Icon mapping
+  // Icon mapping - maintaining exact component names
   const iconMap = {
     BellIcon: BellIcon,
     BriefcaseIcon: BriefcaseIcon,
@@ -41,6 +41,7 @@ function Notifications() {
 
       // Process notifications to add icon components
       const processedNotifications = response.data.map((notification) => {
+        // Default to BellIcon if the specified icon doesn't exist
         const IconComponent = iconMap[notification.iconType] || BellIcon;
 
         return {
@@ -128,12 +129,28 @@ function Notifications() {
     return notification.type === selectedFilter;
   });
 
+  // The time string is already formatted by the backend, just return it
   const getRelativeTime = (timeString) => {
     return timeString;
   };
 
   const handleActionsToggle = (id) => {
     setShowActions(showActions === id ? null : id);
+  };
+
+  // Toggle between read and unread states
+  const toggleReadStatus = async (notification) => {
+    try {
+      // If it's already read, we don't have a direct API to mark as unread
+      // This could be added to the backend, but for now we'll only support marking as read
+      if (notification.status === "unread") {
+        await markAsRead(notification._id);
+      }
+      // For completeness, we could add a markAsUnread API endpoint
+      setShowActions(null);
+    } catch (error) {
+      console.error("Error toggling notification status:", error);
+    }
   };
 
   return (
@@ -249,7 +266,7 @@ function Notifications() {
                     />
                   </div>
                   <div
-                    className="flex-1 min-w-0"
+                    className="flex-1 min-w-0 cursor-pointer"
                     onClick={() =>
                       notification.status === "unread" &&
                       markAsRead(notification._id)
@@ -304,10 +321,7 @@ function Notifications() {
                 {showActions === notification._id && (
                   <div className="absolute right-4 top-12 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 w-32">
                     <button
-                      onClick={() => {
-                        markAsRead(notification._id);
-                        setShowActions(null);
-                      }}
+                      onClick={() => toggleReadStatus(notification)}
                       className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                     >
                       <CheckIcon className="h-4 w-4 mr-2 text-green-500" />
@@ -315,7 +329,15 @@ function Notifications() {
                         ? "Mark read"
                         : "Mark unread"}
                     </button>
-                    <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                    <button
+                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // This would require a new API endpoint
+                        console.log("Remove notification:", notification._id);
+                        setShowActions(null);
+                      }}
+                    >
                       <TrashIcon className="h-4 w-4 mr-2 text-red-500" />
                       Remove
                     </button>
@@ -340,7 +362,13 @@ function Notifications() {
               >
                 Mark all as read
               </button>
-              <button className="text-sm text-gray-600 hover:text-gray-800 bg-white border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+              <button
+                className="text-sm text-gray-600 hover:text-gray-800 bg-white border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+                onClick={() => {
+                  // This would require a new API endpoint
+                  console.log("Clear all notifications");
+                }}
+              >
                 Clear all
               </button>
             </div>

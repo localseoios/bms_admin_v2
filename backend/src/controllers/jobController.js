@@ -193,17 +193,86 @@ const getJobDetails = asyncHandler(async (req, res) => {
 
 
 // Get All Jobs (existing function)
+// controllers/jobController.js - Update the getAllJobs function
+
+// Get All Jobs with improved status filtering
 const getAllJobs = asyncHandler(async (req, res) => {
   try {
-    const jobs = await Job.find();
+    // Handle status filter - it could be a single value or an array
+    let statusFilter = {};
+    if (req.query.status) {
+      // If status is an array (like status[]=pending&status[]=approved)
+      if (Array.isArray(req.query.status)) {
+        statusFilter = { status: { $in: req.query.status } };
+      } else {
+        // If status is a single value
+        statusFilter = { status: req.query.status };
+      }
+    }
+
+    // Add other filters if needed
+    const filters = {
+      ...statusFilter,
+      // Add any other filters here
+    };
+
+    console.log("Job filters:", JSON.stringify(filters));
+
+    // Find jobs with filters
+    const jobs = await Job.find(filters)
+      .populate('clientId', 'name gmail startingPoint')
+      .populate('assignedPerson', 'name email')
+      .sort({ createdAt: -1 });
+
     res.status(200).json(jobs);
   } catch (error) {
+    console.error("Error getting jobs:", error);
     res.status(500).json({
       message: "Internal server error",
       error: error.message,
     });
   }
 });
+
+// In your kycController.js - modify getKycStatus to avoid 404 for expected scenarios
+const getKycStatus = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  
+  // Check if the job exists first
+  const job = await Job.findById(jobId);
+  
+  if (!job) {
+    return res.status(404).json({ message: "Job not found" });
+  }
+  
+  // Now check for KYC approval
+  const kycApproval = await KycApproval.findOne({ jobId });
+  
+  if (!kycApproval) {
+    // Return 200 with a structured response instead of 404
+    return res.status(200).json({ 
+      exists: false,
+      message: "KYC approval not initiated yet",
+      jobId,
+      jobStatus: job.status,
+      canInitialize: job.status === "om_completed",
+      jobInfo: {
+        clientName: job.clientName,
+        serviceType: job.serviceType,
+        createdAt: job.createdAt
+      }
+    });
+  }
+  
+  res.status(200).json({
+    exists: true,
+    ...kycApproval.toObject()
+  });
+});
+
+
+// Similarly, update other functions that handle KYC-related statuses
+
 
 // Get All Jobs Admin (existing function)
 const getAllJobsAdmin = asyncHandler(async (req, res) => {
