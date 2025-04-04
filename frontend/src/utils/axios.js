@@ -1,8 +1,10 @@
 // utils/axios.js
 import axios from "axios";
 
+const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+
 const axiosInstance = axios.create({
-  baseURL: "http://localhost:5000/api", // Adjust this to match your backend API URL
+  baseURL: `${backendUrl}/api`, // Use environment variable with fallback
   withCredentials: true, // For cookie-based authentication
   timeout: 60000, // Increase timeout to 60 seconds for file uploads
 });
