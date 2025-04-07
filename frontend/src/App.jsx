@@ -12,6 +12,8 @@ import KYCManagement from "./pages/Job/KYCManagement/KYCManagement";
 import BRAManagement from "./pages/Job/BRAManagement/BRAManagement";
 import { AuthProvider } from "./context/AuthContext";
 import ClientProfile from "./pages/ClientProfile";
+import AccountManagement from "./pages/AccountManagement/AccountManagement";
+import ClientPaymentDetails from "./pages/AccountManagement/ClientPaymentDetails";
 
 function App() {
   return (
@@ -41,8 +43,11 @@ function App() {
               path="settings"
               element={<div>Settings (Coming Soon)</div>}
             />
+
+            {/* Client Profiles */}
             <Route path="/clients/:gmail" element={<ClientProfile />} />
 
+            {/* Operation Management */}
             <Route
               path="operation-management"
               element={<OperationManagement />}
@@ -54,6 +59,13 @@ function App() {
 
             {/* BRA Management route */}
             <Route path="bra-management" element={<BRAManagement />} />
+
+            {/* Account Management routes */}
+            <Route path="account-management" element={<AccountManagement />} />
+            <Route
+              path="account-management/client/:gmail"
+              element={<ClientPaymentDetails />}
+            />
           </Route>
         </Routes>
       </Router>

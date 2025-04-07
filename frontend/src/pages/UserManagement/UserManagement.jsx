@@ -42,6 +42,7 @@ function UserManagement() {
       requestService: false,
       userManagement: false,
       operationManagement: false,
+      accountManagement: false, // Added Account Management permission
       // KYC Management permissions
       kycManagement: {
         lmro: false,
@@ -127,6 +128,7 @@ function UserManagement() {
           requestService: false,
           userManagement: false,
           operationManagement: false,
+          accountManagement: false, // Reset Account Management permission
           kycManagement: {
             lmro: false,
             dlmro: false,
@@ -167,6 +169,11 @@ function UserManagement() {
           dlmro: false,
           ceo: false,
         };
+      }
+
+      // Ensure accountManagement exists
+      if (roleToEdit.permissions.accountManagement === undefined) {
+        roleToEdit.permissions.accountManagement = false;
       }
 
       setNewRole(roleToEdit);
@@ -232,6 +239,7 @@ function UserManagement() {
       "Compliance Management": "bg-purple-100 text-purple-800",
       Accounting: "bg-green-100 text-green-800",
       "Operation Management": "bg-indigo-100 text-indigo-800",
+      "Account Management": "bg-amber-100 text-amber-800",
       Admin: "bg-red-100 text-red-800",
     };
     return colors[roleName] || "bg-gray-100 text-gray-800";
@@ -279,6 +287,7 @@ function UserManagement() {
       requestService: false,
       userManagement: false,
       operationManagement: false,
+      accountManagement: false, // Include Account Management in empty state
       kycManagement: {
         lmro: false,
         dlmro: false,
@@ -573,6 +582,7 @@ function UserManagement() {
                               "requestService",
                               "userManagement",
                               "operationManagement",
+                              "accountManagement", // Added Account Management permission
                             ].map((permission) => (
                               <div
                                 key={permission}
@@ -929,6 +939,13 @@ function UserManagement() {
                       >
                         Operation Management
                       </th>
+                      {/* Account Management column */}
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider bg-amber-50"
+                      >
+                        Account Management
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
@@ -1123,6 +1140,18 @@ function UserManagement() {
                               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               checked={
                                 userRole?.permissions?.operationManagement ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
+                          {/* Account Management permission */}
+                          <td className="whitespace-nowrap px-3 py-4 bg-amber-50">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                              checked={
+                                userRole?.permissions?.accountManagement ||
                                 false
                               }
                               disabled

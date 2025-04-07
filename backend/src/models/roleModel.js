@@ -25,6 +25,8 @@ const roleSchema = new mongoose.Schema({
     requestService: { type: Boolean, default: false },
     userManagement: { type: Boolean, default: false },
     operationManagement: { type: Boolean, default: false },
+    accountManagement: { type: Boolean, default: false },
+
     // Existing KYC Management permissions
     kycManagement: {
       lmro: { type: Boolean, default: false },

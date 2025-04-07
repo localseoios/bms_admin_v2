@@ -39,6 +39,9 @@ import {
   // BRA Management icon
   ClipboardIcon,
 } from "@heroicons/react/24/outline";
+import MonthlyPaymentForm from "./MonthlyPaymentForm/MonthlyPaymentForm";
+import EnhancedMonthlyPaymentHistory from "./MonthlyPaymentForm/EnhancedMonthlyPaymentHistory";
+import AccountManagementSection from "./AccountManagement/AccountManagementSection";
 
 function ClientProfile() {
   const { gmail } = useParams();
@@ -70,6 +73,17 @@ function ClientProfile() {
   // Inside the ClientProfile function, add these new state variables:
   const [braStatuses, setBraStatuses] = useState({});
   const [loadingBraStatuses, setLoadingBraStatuses] = useState({});
+
+  const [isAddNewMonthOpen, setIsAddNewMonthOpen] = useState({});
+  const [activePaymentTabs, setActivePaymentTabs] = useState({});
+
+  // Add this function to your ClientProfile component
+  const setActivePaymentTab = (jobId, tabName) => {
+    setActivePaymentTabs((prev) => ({
+      ...prev,
+      [jobId]: tabName,
+    }));
+  };
 
   // Fetch client and job data
   useEffect(() => {
@@ -3207,6 +3221,106 @@ function ClientProfile() {
                           )}
                         </motion.div>
                       </div>
+
+                      {/* Monthly Payment Records Section */}
+                      <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ delay: 0.6 }}
+                        className="mt-6"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-base font-medium text-gray-900 flex items-center">
+                            <CalendarIcon className="h-5 w-5 mr-2 text-blue-600" />
+                            Monthly Payment Records
+                          </h4>
+                        </div>
+
+                        {/* Tabbed Navigation */}
+                        <div className="border-b border-gray-200 mb-4">
+                          <nav className="flex space-x-8" aria-label="Tabs">
+                            <button
+                              onClick={() =>
+                                setActivePaymentTab(job._id, "add")
+                              }
+                              className={`${
+                                activePaymentTabs[job._id] === "add" ||
+                                !activePaymentTabs[job._id]
+                                  ? "border-blue-500 text-blue-600"
+                                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                            >
+                              Add New Month
+                            </button>
+                            <button
+                              onClick={() =>
+                                setActivePaymentTab(job._id, "history")
+                              }
+                              className={`${
+                                activePaymentTabs[job._id] === "history"
+                                  ? "border-blue-500 text-blue-600"
+                                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                            >
+                              View History
+                            </button>
+                          </nav>
+                        </div>
+
+                        {/* Add New Month View */}
+                        {(!activePaymentTabs[job._id] ||
+                          activePaymentTabs[job._id] === "add") && (
+                          <div>
+                            {/* Add new month button styled to match the mockup */}
+                            <div className="mb-4">
+                              <button
+                                onClick={() =>
+                                  setIsAddNewMonthOpen((prev) => ({
+                                    ...prev,
+                                    [job._id]: true,
+                                  }))
+                                }
+                                className="w-full sm:w-auto px-6 py-3 text-white bg-green-500 hover:bg-green-600 rounded-lg flex items-center justify-center transition-colors duration-200 shadow-sm"
+                              >
+                                <span className="font-medium">
+                                  Add new month
+                                </span>
+                              </button>
+                            </div>
+
+                            {/* Conditionally render the MonthlyPaymentForm component if open for this job */}
+                            {isAddNewMonthOpen &&
+                              isAddNewMonthOpen[job._id] && (
+                                <MonthlyPaymentForm
+                                  jobId={job._id}
+                                  jobType={job.serviceType}
+                                  onClose={() =>
+                                    setIsAddNewMonthOpen((prev) => ({
+                                      ...prev,
+                                      [job._id]: false,
+                                    }))
+                                  }
+                                  onSuccess={() => {
+                                    // Refresh data or update UI as needed after successful submission
+                                    if (
+                                      activePaymentTabs[job._id] !== "history"
+                                    ) {
+                                      setActivePaymentTab(job._id, "history");
+                                    }
+                                  }}
+                                />
+                              )}
+                          </div>
+                        )}
+
+                        {/* History View */}
+                        {activePaymentTabs[job._id] === "history" && (
+                          <EnhancedMonthlyPaymentHistory
+                            jobId={job._id}
+                            jobType={job.serviceType}
+                          />
+                        )}
+                      </motion.div>
                     </motion.div>
                   )}
                 </AnimatePresence>

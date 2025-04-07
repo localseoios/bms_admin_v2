@@ -15,6 +15,7 @@ import {
   BriefcaseIcon,
   IdentificationIcon,
   ClipboardIcon,
+  CurrencyDollarIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -94,6 +95,16 @@ const navigation = [
       },
     ],
   },
+  {
+    name: "Account Management",
+    items: [
+      {
+        name: "Account Management",
+        href: "/account-management",
+        icon: CurrencyDollarIcon,
+      },
+    ],
+  },
 ];
 
 function Sidebar() {
@@ -152,9 +163,9 @@ function Sidebar() {
                           }`}
                         />
                         <span className="truncate">{item.name}</span>
-                        {item.name === "BRA Management" && (
-                          <span className="ml-auto bg-teal-100 text-teal-700 py-0.5 px-2 rounded-lg text-xs font-medium">
-                            New
+                        {item.name === "Account Management" && (
+                          <span className="ml-auto bg-blue-100 text-blue-700 py-0.5 px-2 rounded-lg text-xs font-medium">
+                            Updated
                           </span>
                         )}
                       </NavLink>
