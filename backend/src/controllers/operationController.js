@@ -12,6 +12,8 @@ const Job = require("../models/Job");
 const notificationService = require("../services/notificationService");
 const mongoose = require("mongoose");
 const kycService = require("../services/kycService");
+const Client = require("../models/Client");
+const { findPersonDetailsByGmail } = require("../utils/clientUtils"); // Import the utility function
 
 // Helper function to safely upload to Cloudinary with fallback (reused from jobController)
 const safeCloudinaryUpload = async (filePath, options = {}) => {
@@ -30,7 +32,74 @@ const safeCloudinaryUpload = async (filePath, options = {}) => {
   }
 };
 
-// Get company details for a job
+// Fix the findPersonDetailsByGmail function
+// const findPersonDetailsByGmail = async (gmail, personType) => {
+//   try {
+//     // First find the client by Gmail
+//     const client = await Client.findOne({ gmail });
+//     if (!client) {
+//       console.log(`No client found with Gmail: ${gmail}`);
+//       return null;
+//     }
+
+//     // Find all jobs for this client
+//     const clientJobs = await Job.find({ clientId: client._id });
+//     if (!clientJobs || clientJobs.length === 0) {
+//       console.log(`No jobs found for client with Gmail: ${gmail}`);
+//       return null;
+//     }
+
+//     // Get all job IDs for this client
+//     const jobIds = clientJobs.map(job => job._id);
+//     console.log(`Found ${jobIds.length} jobs for Gmail ${gmail}, searching for ${personType} details`);
+
+//     // Find person details of the specified type for any of these jobs
+//     const personDetails = await PersonDetails.findOne({
+//       jobId: { $in: jobIds },
+//       personType
+//     }).sort({ updatedAt: -1 }); // Get the most recently updated one
+
+//     if (personDetails) {
+//       console.log(`Found existing ${personType} details for Gmail ${gmail}`);
+//     } else {
+//       console.log(`No existing ${personType} details found for Gmail ${gmail}`);
+//     }
+
+//     return personDetails;
+//   } catch (error) {
+//     console.error(`Error finding ${personType} details by Gmail ${gmail}:`, error);
+//     return null;
+//   }
+// };
+
+// Helper function to find engagement letter for a client email
+const findEngagementLetterByGmail = async (gmail) => {
+  try {
+    // First find the client by Gmail
+    const client = await Client.findOne({ gmail });
+    if (!client) return null;
+
+    // Find all jobs for this client
+    const clientJobs = await Job.find({ clientId: client._id });
+    if (!clientJobs || clientJobs.length === 0) return null;
+
+    // Get all job IDs for this client
+    const jobIds = clientJobs.map(job => job._id);
+
+    // Find company details with engagement letters for any of these jobs
+    const companyDetailsWithLetter = await CompanyDetails.findOne({
+      jobId: { $in: jobIds },
+      engagementLetters: { $exists: true, $ne: null }
+    }).sort({ updatedAt: -1 }); // Get the most recently updated one
+
+    return companyDetailsWithLetter ? companyDetailsWithLetter.engagementLetters : null;
+  } catch (error) {
+    console.error('Error finding engagement letter by Gmail:', error);
+    return null;
+  }
+};
+
+// Modify the getCompanyDetails function to check for existing engagement letters
 const getCompanyDetails = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
 
@@ -63,20 +132,71 @@ const getCompanyDetails = asyncHandler(async (req, res) => {
   // Get company details
   let companyDetails = await CompanyDetails.findOne({ jobId });
 
+  // If company details don't exist, create them
   if (!companyDetails) {
-    // Create empty company details if it doesn't exist
-    companyDetails = new CompanyDetails({
-      jobId,
-      companyName: job.clientName || "",
-      updatedBy: req.user._id,
-    });
-    await companyDetails.save();
+    // Check if there are existing company details for this client
+    const { findCompanyDetailsByGmail } = require("../utils/clientUtils");
+    const existingCompanyDetails = await findCompanyDetailsByGmail(job.gmail);
+
+    if (existingCompanyDetails) {
+      // Create new company details using existing data
+      companyDetails = new CompanyDetails({
+        jobId,
+        companyName: existingCompanyDetails.companyName || job.clientName || "",
+        qfcNo: existingCompanyDetails.qfcNo || "",
+        registeredAddress: existingCompanyDetails.registeredAddress || "",
+        incorporationDate: existingCompanyDetails.incorporationDate,
+        serviceType: existingCompanyDetails.serviceType || "",
+        engagementLetters: existingCompanyDetails.engagementLetters,
+        mainPurpose: existingCompanyDetails.mainPurpose || "",
+        expiryDate: existingCompanyDetails.expiryDate,
+        companyComputerCard: existingCompanyDetails.companyComputerCard,
+        companyComputerCardExpiry:
+          existingCompanyDetails.companyComputerCardExpiry,
+        taxCard: existingCompanyDetails.taxCard,
+        taxCardExpiry: existingCompanyDetails.taxCardExpiry,
+        crExtract: existingCompanyDetails.crExtract,
+        crExtractExpiry: existingCompanyDetails.crExtractExpiry,
+        scopeOfLicense: existingCompanyDetails.scopeOfLicense,
+        scopeOfLicenseExpiry: existingCompanyDetails.scopeOfLicenseExpiry,
+        articleOfAssociate: existingCompanyDetails.articleOfAssociate,
+        certificateOfIncorporate:
+          existingCompanyDetails.certificateOfIncorporate,
+        kycActiveStatus: existingCompanyDetails.kycActiveStatus || "yes",
+        updatedBy: req.user._id,
+      });
+
+      await companyDetails.save();
+
+      // Add a timeline entry to indicate auto-population
+      job.timeline.push({
+        status: job.status,
+        description:
+          "Company details auto-populated from existing client record",
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+      });
+      await job.save();
+
+      console.log(
+        `Auto-populated company details for job ${jobId} from existing client record with Gmail ${job.gmail}`
+      );
+    } else {
+      // If no existing company details, create with basic info
+      companyDetails = new CompanyDetails({
+        jobId,
+        companyName: job.clientName || "",
+        updatedBy: req.user._id,
+      });
+      await companyDetails.save();
+    }
   }
 
   res.status(200).json(companyDetails);
 });
 
-// Update company details - fixed version
+
+// Update company details - modified to synchronize across jobs
 const updateCompanyDetails = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
   const {
@@ -88,6 +208,7 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     mainPurpose,
     expiryDate,
     kycActiveStatus,
+    syncAcrossJobs, // New parameter to control synchronization
   } = req.body;
 
   // Check if job exists and if user has permission to access it
@@ -116,7 +237,7 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     throw new Error("You are not authorized to update this job");
   }
 
-  // Find company details - FIXED APPROACH
+  // Find company details
   let companyDetails = await CompanyDetails.findOne({ jobId });
   
   // If not found, create a new one
@@ -256,12 +377,34 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
 
   await job.save();
 
+  // Synchronize changes to other jobs for the same client if requested
+  // Convert string 'true' to boolean true
+  const shouldSync = syncAcrossJobs === true || syncAcrossJobs === 'true' || syncAcrossJobs === undefined; // Default to true
+  
+  let syncResult = null;
+  if (shouldSync) {
+    console.log(`Synchronizing company details across jobs for ${job.gmail}`);
+    const { synchronizeCompanyDetails } = require("../utils/clientUtils");
+    
+    try {
+      syncResult = await synchronizeCompanyDetails(job.gmail, job._id);
+      console.log("Sync result:", syncResult);
+    } catch (syncError) {
+      console.error(`Error synchronizing company details: ${syncError.message}`);
+      // Continue despite synchronization error
+    }
+  }
+
   // Create notification for company details update
   try {
+    const notificationText = syncResult && syncResult.success && syncResult.updatedRecords > 0 
+      ? `Company details updated for ${job.clientName}'s ${job.serviceType} job and synchronized across ${syncResult.updatedRecords} other job(s).`
+      : `Company details updated for ${job.clientName}'s ${job.serviceType} job.`;
+      
     await notificationService.createNotification(
       {
         title: "Company Details Updated",
-        description: `Company details updated for ${job.clientName}'s ${job.serviceType} job.`,
+        description: notificationText,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
@@ -271,12 +414,15 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     console.error("Error creating notification:", notificationError);
   }
 
-  res.status(200).json(updatedCompanyDetails);
+  res.status(200).json({
+    ...updatedCompanyDetails.toObject(),
+    syncResult: syncResult,
+  });
 });
 
-// Get person details (directors, shareholders, secretaries, SEF)
 const getPersonDetails = asyncHandler(async (req, res) => {
   const { jobId, personType } = req.params;
+  console.log(`Getting ${personType} details for job ${jobId}`);
 
   // Validate personType
   if (!["director", "shareholder", "secretary", "sef"].includes(personType)) {
@@ -291,45 +437,103 @@ const getPersonDetails = asyncHandler(async (req, res) => {
     throw new Error("Job not found");
   }
 
-  // Check if user is authorized
-  const isAdmin = req.user.role?.name === "admin";
-  const hasCompliancePermission =
-    req.user.role?.permissions?.complianceManagement;
-  const hasOperationPermission =
-    req.user.role?.permissions?.operationManagement;
-  const isAssignedPerson =
-    job.assignedPerson?.toString() === req.user._id.toString();
+  console.log(`Job Gmail: ${job.gmail}, checking for existing person details`);
 
-  if (
-    !isAdmin &&
-    !hasCompliancePermission &&
-    !hasOperationPermission &&
-    !isAssignedPerson
-  ) {
-    res.status(403);
-    throw new Error("You are not authorized to view this job");
-  }
-
-  // Get person details
+  // Get person details for this specific job
   const personDetails = await PersonDetails.find({
     jobId,
     personType,
   });
 
-  // If no entries found, create a default one
-  if (personDetails.length === 0 && personType === "director") {
-    const defaultPerson = new PersonDetails({
-      jobId,
-      personType,
-      name: job.clientName || "",
-      email: job.gmail || "",
-      updatedBy: req.user._id,
-    });
+  // If no entries found for this job, look for entries from other jobs with the same Gmail
+  if (personDetails.length === 0) {
+    console.log(
+      `No ${personType} details found for job ${jobId}, checking other jobs for Gmail ${job.gmail}`
+    );
 
-    await defaultPerson.save();
+    // Check if there are any existing person details for this Gmail address
+    const existingPersonDetails = await findPersonDetailsByGmail(
+      job.gmail,
+      personType
+    );
 
-    res.status(200).json([defaultPerson]);
+    if (existingPersonDetails) {
+      console.log(
+        `Found existing ${personType} details from another job for Gmail ${job.gmail}. Auto-populating...`
+      );
+
+      // Create a new person details entry using the existing data
+      const newPersonDetails = new PersonDetails({
+        jobId,
+        personType,
+        name: existingPersonDetails.name || job.clientName || "",
+        nationality: existingPersonDetails.nationality || "",
+        visaCopy: existingPersonDetails.visaCopy,
+        qidNo: existingPersonDetails.qidNo || "",
+        qidDoc: existingPersonDetails.qidDoc,
+        qidExpiry: existingPersonDetails.qidExpiry,
+        nationalAddress: existingPersonDetails.nationalAddress || "",
+        nationalAddressDoc: existingPersonDetails.nationalAddressDoc,
+        nationalAddressExpiry: existingPersonDetails.nationalAddressExpiry,
+        passportNo: existingPersonDetails.passportNo || "",
+        passportDoc: existingPersonDetails.passportDoc,
+        passportExpiry: existingPersonDetails.passportExpiry,
+        mobileNo: existingPersonDetails.mobileNo || "",
+        email: existingPersonDetails.email || job.gmail || "",
+        cv: existingPersonDetails.cv,
+        updatedBy: req.user._id,
+      });
+
+      await newPersonDetails.save();
+
+      // Add a timeline entry to indicate auto-population
+      job.timeline.push({
+        status: job.status,
+        description: `${
+          personType.charAt(0).toUpperCase() + personType.slice(1)
+        } details auto-populated from existing client record`,
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+      });
+      await job.save();
+
+      console.log(
+        `Successfully auto-populated ${personType} details for job ${jobId} from existing client data`
+      );
+
+      // Return the newly created person details
+      res.status(200).json([newPersonDetails]);
+      return;
+    } else {
+      console.log(
+        `No existing ${personType} details found for Gmail ${job.gmail}`
+      );
+    }
+
+    // If it's a director request and no existing data found, create a default entry with basic info
+    if (personType === "director") {
+      console.log(
+        `Creating default director entry for job ${jobId} with client name ${job.clientName}`
+      );
+      const defaultPerson = new PersonDetails({
+        jobId,
+        personType,
+        name: job.clientName || "",
+        email: job.gmail || "",
+        updatedBy: req.user._id,
+      });
+
+      await defaultPerson.save();
+      res.status(200).json([defaultPerson]);
+    } else {
+      // For other person types, just return empty array if nothing found
+      res.status(200).json([]);
+    }
   } else {
+    console.log(
+      `Found ${personDetails.length} existing ${personType} entries for job ${jobId}`
+    );
+    // Return the existing person details for this job
     res.status(200).json(personDetails);
   }
 });
@@ -491,7 +695,7 @@ const addPersonDetails = asyncHandler(async (req, res) => {
   res.status(201).json(savedPerson);
 });
 
-// Update person details
+// Update person details with synchronization
 const updatePersonDetails = asyncHandler(async (req, res) => {
   const { jobId, personType, personId } = req.params;
   const {
@@ -505,6 +709,7 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
     passportExpiry,
     mobileNo,
     email,
+    syncAcrossJobs, // Parameter from client
   } = req.body;
 
   // Validate personType
@@ -551,18 +756,23 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
     throw new Error("Person details not found");
   }
 
+  // Store the original email to check if it's changed
+  const originalEmail = personDetails.email;
+
   // Update text fields
-  if (name) personDetails.name = name;
-  if (nationality) personDetails.nationality = nationality;
-  if (qidNo) personDetails.qidNo = qidNo;
-  if (qidExpiry) personDetails.qidExpiry = qidExpiry;
-  if (nationalAddress) personDetails.nationalAddress = nationalAddress;
-  if (nationalAddressExpiry)
+  if (name !== undefined) personDetails.name = name;
+  if (nationality !== undefined) personDetails.nationality = nationality;
+  if (qidNo !== undefined) personDetails.qidNo = qidNo;
+  if (qidExpiry !== undefined) personDetails.qidExpiry = qidExpiry;
+  if (nationalAddress !== undefined)
+    personDetails.nationalAddress = nationalAddress;
+  if (nationalAddressExpiry !== undefined)
     personDetails.nationalAddressExpiry = nationalAddressExpiry;
-  if (passportNo) personDetails.passportNo = passportNo;
-  if (passportExpiry) personDetails.passportExpiry = passportExpiry;
-  if (mobileNo) personDetails.mobileNo = mobileNo;
-  if (email) personDetails.email = email;
+  if (passportNo !== undefined) personDetails.passportNo = passportNo;
+  if (passportExpiry !== undefined)
+    personDetails.passportExpiry = passportExpiry;
+  if (mobileNo !== undefined) personDetails.mobileNo = mobileNo;
+  if (email !== undefined) personDetails.email = email;
   personDetails.updatedBy = req.user._id;
 
   // Handle document uploads
@@ -635,7 +845,23 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
 
   await job.save();
 
-  // Create notification for person details update
+  // Check if we need to sync this change across all jobs for this client
+  // Convert string 'true' to boolean true
+  const shouldSync = syncAcrossJobs === true || syncAcrossJobs === 'true';
+  
+  let syncResult = null;
+  if (shouldSync) {
+    console.log(`Synchronizing ${personType} details across jobs for ${job.gmail}`);
+    const { synchronizePersonDetails } = require("../utils/clientUtils");
+    syncResult = await synchronizePersonDetails(
+      job.gmail,
+      personType,
+      personDetails._id.toString()
+    );
+    console.log("Sync result:", syncResult);
+  }
+
+  // Only notify about person details update
   try {
     await notificationService.createNotification(
       {
@@ -644,7 +870,11 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
         } Details Updated`,
         description: `${
           personType.charAt(0).toUpperCase() + personType.slice(1)
-        } details updated for ${job.clientName}'s ${job.serviceType} job.`,
+        } details updated for ${job.clientName}'s ${job.serviceType} job.${
+          syncResult?.success
+            ? " Changes synchronized across all jobs for this client."
+            : ""
+        }`,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
@@ -654,8 +884,12 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
     console.error("Error creating notification:", notificationError);
   }
 
-  res.status(200).json(updatedPerson);
+  res.status(200).json({
+    ...updatedPerson.toObject(),
+    syncResult: syncResult,
+  });
 });
+
 
 // Delete person details
 const deletePersonDetails = asyncHandler(async (req, res) => {
@@ -900,8 +1134,7 @@ const updateKycDocuments = asyncHandler(async (req, res) => {
   res.status(200).json(updatedKycDocuments);
 });
 
-// Update the uploadEngagementLetter function in operationController.js
-
+// Update the uploadEngagementLetter function to share across all jobs for the same client
 const uploadEngagementLetter = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
 
@@ -915,6 +1148,9 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
       res.status(404);
       throw new Error("Job not found");
     }
+
+    // Get the client's Gmail address
+    const gmail = job.gmail;
 
     // Check if user is authorized
     const isAdmin = req.user.role?.name === "admin";
@@ -945,9 +1181,8 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
     
     console.log(`File received: ${req.file.path}`);
 
-    // Find or create company details
+    // Find or create company details for current job
     let companyDetails = await CompanyDetails.findOne({ jobId });
-
     if (!companyDetails) {
       console.log(`Creating new company details for job ${jobId}`);
       companyDetails = new CompanyDetails({
@@ -957,12 +1192,11 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
       });
     }
 
-    // Import the improved file upload service
+    // Upload engagement letter to Cloudinary with better error handling
     const { uploadToCloudinary } = require('../services/fileUploadService');
     
-    // Upload engagement letter to Cloudinary with better error handling
     const uploadResult = await uploadToCloudinary(req.file.path, {
-      folder: `jobs/${jobId}/documents`,
+      folder: `clients/${job.gmail}/engagement_letters`,
       resource_type: 'auto',
     });
     
@@ -970,16 +1204,17 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
       console.warn(`Using fallback URL due to Cloudinary upload failure: ${uploadResult.url}`);
     }
     
+    // Update current job's company details
     companyDetails.engagementLetters = uploadResult.url;
     companyDetails.updatedBy = req.user._id;
+    await companyDetails.save();
+    
+    console.log(`Company details updated with engagement letter: ${uploadResult.url}`);
 
     // Clean up temporary file after successful upload
     fs.unlink(req.file.path, (err) => {
       if (err) console.error(`Error deleting temp file ${req.file.path}:`, err);
     });
-
-    const updatedCompanyDetails = await companyDetails.save();
-    console.log(`Company details updated with engagement letter: ${uploadResult.url}`);
 
     // Add a timeline entry for the job
     job.timeline.push({
@@ -988,8 +1223,70 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
       timestamp: new Date(),
       updatedBy: req.user._id,
     });
-
     await job.save();
+
+    // Now update all other jobs for the same client to share this engagement letter
+    try {
+      // Find the client by Gmail
+      const client = await Client.findOne({ gmail });
+      if (client) {
+        // Find all jobs for this client (except the current one)
+        const otherClientJobs = await Job.find({ 
+          clientId: client._id,
+          _id: { $ne: jobId }
+        });
+        
+        if (otherClientJobs && otherClientJobs.length > 0) {
+          console.log(`Found ${otherClientJobs.length} other jobs for client ${gmail}`);
+          
+          // Update company details for all other jobs
+          for (const otherJob of otherClientJobs) {
+            let otherCompanyDetails = await CompanyDetails.findOne({ jobId: otherJob._id });
+            
+            if (otherCompanyDetails) {
+              // Update existing company details
+              otherCompanyDetails.engagementLetters = uploadResult.url;
+              otherCompanyDetails.updatedBy = req.user._id;
+              await otherCompanyDetails.save();
+              
+              // Add timeline entry for the other job
+              otherJob.timeline.push({
+                status: otherJob.status,
+                description: "Engagement letter updated from another job",
+                timestamp: new Date(),
+                updatedBy: req.user._id,
+              });
+              await otherJob.save();
+              
+              console.log(`Updated engagement letter for job ${otherJob._id}`);
+            } else {
+              // Create new company details for the other job
+              const newCompanyDetails = new CompanyDetails({
+                jobId: otherJob._id,
+                companyName: otherJob.clientName || "",
+                engagementLetters: uploadResult.url,
+                updatedBy: req.user._id,
+              });
+              await newCompanyDetails.save();
+              
+              // Add timeline entry for the other job
+              otherJob.timeline.push({
+                status: otherJob.status,
+                description: "Engagement letter added from another job",
+                timestamp: new Date(),
+                updatedBy: req.user._id,
+              });
+              await otherJob.save();
+              
+              console.log(`Created company details with engagement letter for job ${otherJob._id}`);
+            }
+          }
+        }
+      }
+    } catch (updateError) {
+      // Log error but don't fail the request - the primary job was updated successfully
+      console.error(`Error updating engagement letters for other jobs: ${updateError.message}`);
+    }
 
     // Create notification for engagement letter upload
     try {
@@ -1020,6 +1317,9 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
     }
   }
 });
+
+
+
 
 // This function should be in operationController.js
 const completeOperation = asyncHandler(async (req, res) => {

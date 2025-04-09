@@ -37,11 +37,11 @@ const protect = asyncHandler(async (req, res, next) => {
     req.user = user;
 
     // For debugging - log the user's permissions
-    console.log("User role:", user.role?.name);
-    console.log(
-      "User permissions:",
-      JSON.stringify(user.role?.permissions, null, 2)
-    );
+    // console.log("User role:", user.role?.name);
+    // console.log(
+    //   "User permissions:",
+    //   JSON.stringify(user.role?.permissions, null, 2)
+    // );
 
     next();
   } catch (error) {

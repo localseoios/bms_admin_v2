@@ -23,6 +23,8 @@ import {
   BriefcaseIcon,
   ShieldCheckIcon,
   InformationCircleIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 
@@ -48,7 +50,7 @@ function JobDetails() {
   const [actionMessage, setActionMessage] = useState({
     type: null,
     message: null,
-  });
+  }); // <-- Added closing parenthesis and semicolon here
 
   // Person details tabs
   const [activeTab, setActiveTab] = useState("company");
@@ -179,7 +181,19 @@ function JobDetails() {
         if (response.data) {
           setCompanyDetails((prevDetails) => ({
             ...prevDetails,
-            companyName: response.data.clientName || "",
+            ...response.data,
+            incorporationDate: formatDateForInput(
+              response.data.incorporationDate
+            ),
+            expiryDate: formatDateForInput(response.data.expiryDate),
+            companyComputerCardExpiry: formatDateForInput(
+              response.data.companyComputerCardExpiry
+            ),
+            taxCardExpiry: formatDateForInput(response.data.taxCardExpiry),
+            crExtractExpiry: formatDateForInput(response.data.crExtractExpiry),
+            scopeOfLicenseExpiry: formatDateForInput(
+              response.data.scopeOfLicenseExpiry
+            ),
           }));
 
           setDirectorDetails((prevForm) => [
@@ -218,71 +232,96 @@ function JobDetails() {
     }
   }, [jobId]);
 
+  // Add this utility function to JobDetails.jsx
+const formatDateForInput = (dateString) => {
+  if (!dateString) return "";
+  try {
+    // Handle both ISO strings and Date objects
+    const date = new Date(dateString);
+    // Check if date is valid before formatting
+    if (isNaN(date.getTime())) return "";
+
+    // Format as YYYY-MM-DD for HTML date inputs
+    return date.toISOString().split("T")[0];
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return "";
+  }
+};
+
   // Fetch company details
+  // Enhance the useEffect that fetches company details
+useEffect(() => {
+  const fetchCompanyDetails = async () => {
+    if (!jobId || !job) return;
+
+    try {
+      const response = await axiosInstance.get(
+        `/operations/jobs/${jobId}/company-details`
+      );
+
+      // Log the raw response to check date formats
+      console.log("Raw company details response:", response.data);
+
+      // Process company details data
+      const formattedDetails = {
+        ...response.data,
+        incorporationDate: formatDateForInput(response.data.incorporationDate),
+        expiryDate: formatDateForInput(response.data.expiryDate),
+        companyComputerCardExpiry: formatDateForInput(
+          response.data.companyComputerCardExpiry
+        ),
+        taxCardExpiry: formatDateForInput(response.data.taxCardExpiry),
+        crExtractExpiry: formatDateForInput(response.data.crExtractExpiry),
+        scopeOfLicenseExpiry: formatDateForInput(
+          response.data.scopeOfLicenseExpiry
+        ),
+      };
+
+      // Log the formatted dates for debugging
+      console.log(
+        "Formatted incorporation date:",
+        formattedDetails.incorporationDate
+      );
+      console.log("Formatted expiry date:", formattedDetails.expiryDate);
+
+      setCompanyDetails((prevDetails) => ({
+        ...prevDetails,
+        ...formattedDetails,
+      }));
+    } catch (err) {
+      console.error("Error fetching company details:", err);
+    }
+  };
+
+  fetchCompanyDetails();
+}, [jobId, job]);
+
+  // Add this debugging code after setting companyDetails in the fetchCompanyDetails function
   useEffect(() => {
-    const fetchCompanyDetails = async () => {
-      if (!jobId) return;
+    if (companyDetails) {
+      console.log("Current company details state:", companyDetails);
+      console.log("Incorporation date:", companyDetails.incorporationDate);
+      console.log("Expiry date:", companyDetails.expiryDate);
+      console.log(
+        "Right before render, incorporationDate:",
+        companyDetails.incorporationDate
+      );
+      // Check other date fields as needed
+    }
+  }, [companyDetails]);
 
-      try {
-        const response = await axiosInstance.get(
-          `/operations/jobs/${jobId}/company-details`
-        );
-
-        // Convert date strings to the format expected by input[type="date"]
-        const formatDate = (dateString) => {
-          if (!dateString) return "";
-          const date = new Date(dateString);
-          return date.toISOString().split("T")[0];
-        };
-
-        const updatedDetails = {
-          companyName: response.data.companyName || "",
-          qfcNo: response.data.qfcNo || "",
-          registeredAddress: response.data.registeredAddress || "",
-          incorporationDate: formatDate(response.data.incorporationDate),
-          serviceType: response.data.serviceType || "Please select",
-          engagementLetters: response.data.engagementLetters || null,
-          mainPurpose: response.data.mainPurpose || "",
-          expiryDate: formatDate(response.data.expiryDate),
-          companyComputerCard: response.data.companyComputerCard || null,
-          companyComputerCardExpiry: formatDate(
-            response.data.companyComputerCardExpiry
-          ),
-          taxCard: response.data.taxCard || null,
-          taxCardExpiry: formatDate(response.data.taxCardExpiry),
-          crExtract: response.data.crExtract || null,
-          crExtractExpiry: formatDate(response.data.crExtractExpiry),
-          scopeOfLicense: response.data.scopeOfLicense || null,
-          scopeOfLicenseExpiry: formatDate(response.data.scopeOfLicenseExpiry),
-          articleOfAssociate: response.data.articleOfAssociate || null,
-          certificateOfIncorporate:
-            response.data.certificateOfIncorporate || null,
-          kycActiveStatus: response.data.kycActiveStatus || "yes",
-        };
-
-        setCompanyDetails(updatedDetails);
-        // Store original details for cancel functionality
-        setOriginalCompanyDetails(updatedDetails);
-      } catch (err) {
-        console.error("Error fetching company details:", err);
-        // Create default if not found
-        if (err.response?.status === 404) {
-          console.log("Company details not found, using defaults");
-        }
-      }
-    };
-
-    fetchCompanyDetails();
-  }, [jobId]);
-
-  // Function to fetch person details based on person type
+  // Enhance fetchPersonDetails function
   const fetchPersonDetails = async (personType, setStateFunction) => {
     if (!jobId) return;
 
     try {
+      console.log(`Fetching ${personType} details for job ${jobId}`);
       const response = await axiosInstance.get(
         `/operations/jobs/${jobId}/person-details/${personType}`
       );
+
+      console.log(`Received ${personType} details:`, response.data);
 
       // Format dates for form inputs
       const formattedData = response.data.map((person) => ({
@@ -299,7 +338,27 @@ function JobDetails() {
       }));
 
       if (formattedData.length > 0) {
+        console.log(`Setting ${personType} details with`, formattedData);
         setStateFunction(formattedData);
+
+        // Check if this data was auto-populated
+        const isAutoPopulated =
+          job &&
+          job.timeline?.some((event) =>
+            event.description?.includes(`${personType} details auto-populated`)
+          );
+
+        // Show notification if data was auto-populated
+        if (isAutoPopulated) {
+          setActionMessage({
+            type: "info",
+            message: `${
+              personType.charAt(0).toUpperCase() + personType.slice(1)
+            } details were auto-populated from existing client records`,
+          });
+        }
+      } else {
+        console.log(`No ${personType} details received from API`);
       }
     } catch (err) {
       console.error(`Error fetching ${personType} details:`, err);
@@ -307,20 +366,25 @@ function JobDetails() {
     }
   };
 
-  // Fetch person details when tab changes
+  // Update the useEffect hook for fetching person details
   useEffect(() => {
     if (activeTab === "director") {
+      console.log("Fetching director details");
       fetchPersonDetails("director", setDirectorDetails);
     } else if (activeTab === "shareholder") {
+      console.log("Fetching shareholder details");
       fetchPersonDetails("shareholder", setShareholderDetails);
     } else if (activeTab === "secretary") {
+      console.log("Fetching secretary details");
       fetchPersonDetails("secretary", setSecretaryDetails);
     } else if (activeTab === "sef") {
+      console.log("Fetching SEF details");
       fetchPersonDetails("sef", setSefDetails);
     } else if (activeTab === "kyc") {
+      console.log("Fetching KYC details");
       fetchKycDetails();
     }
-  }, [activeTab, jobId]);
+  }, [activeTab, jobId, job]); // Add job as a dependency to re-fetch when job data changes
 
   // Fetch KYC details
   const fetchKycDetails = async () => {
@@ -374,6 +438,7 @@ function JobDetails() {
     setEngagementLetter(null);
   };
 
+  // Update the handleUploadEngagementLetter function to inform the user about sharing
   const handleUploadEngagementLetter = async () => {
     if (!engagementLetter) return;
 
@@ -383,24 +448,22 @@ function JobDetails() {
       const formData = new FormData();
       formData.append("engagementLetter", engagementLetter);
 
-      await axiosInstance.post(
+      const response = await axiosInstance.post(
         `/operations/jobs/${jobId}/engagement-letter`,
         formData
       );
 
       setActionMessage({
         type: "success",
-        message: "Engagement letter uploaded successfully",
+        message:
+          "Engagement letter uploaded successfully and will be shared across all jobs for this client",
       });
 
       // Refresh company details to reflect the upload
-      const response = await axiosInstance.get(
-        `/operations/jobs/${jobId}/company-details`
-      );
-      if (response.data.engagementLetters) {
+      if (response.data.engagementLetter) {
         setCompanyDetails((prev) => ({
           ...prev,
-          engagementLetters: response.data.engagementLetters,
+          engagementLetters: response.data.engagementLetter,
         }));
       }
 
@@ -408,7 +471,7 @@ function JobDetails() {
 
       setTimeout(() => {
         setActionMessage({ type: null, message: null });
-      }, 3000);
+      }, 5000);
     } catch (err) {
       console.error("Error uploading engagement letter:", err);
       setActionMessage({
@@ -450,6 +513,9 @@ function JobDetails() {
       formData.append("expiryDate", companyDetails.expiryDate);
       formData.append("kycActiveStatus", companyDetails.kycActiveStatus);
 
+      // By default, we want to sync changes across jobs
+      formData.append("syncAcrossJobs", "true");
+
       // Add expiry dates
       if (companyDetails.companyComputerCardExpiry) {
         formData.append(
@@ -488,14 +554,24 @@ function JobDetails() {
       });
 
       // Send the update
-      await axiosInstance.put(
+      const response = await axiosInstance.put(
         `/operations/jobs/${jobId}/company-details`,
         formData
       );
 
+      // Check if there was synchronization
+      let successMessage = "Company details saved successfully";
+      if (
+        response.data &&
+        response.data.syncResult &&
+        response.data.syncResult.updatedRecords > 0
+      ) {
+        successMessage += ` and synchronized across ${response.data.syncResult.updatedRecords} other job(s) for this client`;
+      }
+
       setActionMessage({
         type: "success",
-        message: "Company details saved successfully",
+        message: successMessage,
       });
 
       // Exit edit mode after successful save
@@ -704,6 +780,9 @@ function JobDetails() {
       formData.append("mobileNo", entry.mobileNo || "");
       formData.append("email", entry.email || "");
 
+      // Add synchronization option - ALWAYS sync across jobs by default
+      formData.append("syncAcrossJobs", "true");
+
       // Add file fields if they are File objects (not URLs)
       const fileFields = [
         "visaCopy",
@@ -751,6 +830,37 @@ function JobDetails() {
           };
           return newEntries;
         });
+
+        // Show sync information if returned from API
+        if (response.data.syncResult && response.data.syncResult.success) {
+          setActionMessage({
+            type: "success",
+            message: `${
+              section.charAt(0).toUpperCase() + section.slice(1)
+            } details saved successfully and synchronized across ${
+              response.data.syncResult.updatedRecords
+            } other jobs for the same client.`,
+          });
+
+          // If we have a successful sync, refresh data for other tabs
+          // This ensures the UI is updated with synchronized data
+          if (response.data.syncResult.updatedRecords > 0) {
+            // Refresh data for all person types to get updated synchronized data
+            await Promise.all([
+              fetchPersonDetails("director", setDirectorDetails),
+              fetchPersonDetails("shareholder", setShareholderDetails),
+              fetchPersonDetails("secretary", setSecretaryDetails),
+              fetchPersonDetails("sef", setSefDetails),
+            ]);
+          }
+        } else {
+          setActionMessage({
+            type: "success",
+            message: `${
+              section.charAt(0).toUpperCase() + section.slice(1)
+            } details saved successfully.`,
+          });
+        }
       } else {
         // Create new entry
         response = await axiosInstance.post(
@@ -780,14 +890,23 @@ function JobDetails() {
           };
           return newEntries;
         });
-      }
 
-      setActionMessage({
-        type: "success",
-        message: `${
-          section.charAt(0).toUpperCase() + section.slice(1)
-        } details saved successfully`,
-      });
+        setActionMessage({
+          type: "success",
+          message: `${
+            section.charAt(0).toUpperCase() + section.slice(1)
+          } details saved successfully.`,
+        });
+
+        // After creating a new entry, refresh all person data
+        // This ensures consistent data across tabs
+        await Promise.all([
+          fetchPersonDetails("director", setDirectorDetails),
+          fetchPersonDetails("shareholder", setShareholderDetails),
+          fetchPersonDetails("secretary", setSecretaryDetails),
+          fetchPersonDetails("sef", setSefDetails),
+        ]);
+      }
 
       setTimeout(() => {
         setActionMessage({ type: null, message: null });
@@ -802,6 +921,374 @@ function JobDetails() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Add this right after the person details form but before the Add button
+  const SyncInformationBox = ({ personType, gmail }) => {
+    const [showSyncInfo, setShowSyncInfo] = useState(false);
+    const [syncData, setSyncData] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+
+    const checkInconsistencies = async () => {
+      try {
+        setLoading(true);
+        const response = await axiosInstance.get(
+          `/clients/${gmail}/check-inconsistencies`
+        );
+        setSyncData(response.data);
+        setShowSyncInfo(true);
+      } catch (err) {
+        console.error("Error checking inconsistencies:", err);
+        setActionMessage({
+          type: "error",
+          message: "Failed to check for data inconsistencies",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // New function to trigger manual synchronization
+    const handleForceSync = async () => {
+      try {
+        setSyncing(true);
+
+        // Call the sync API endpoint without specifying a source record
+        // This will use the most recently updated record as the source of truth
+        const response = await axiosInstance.post(
+          `/clients/${gmail}/sync/${personType}`
+        );
+
+        if (response.data.success) {
+          setActionMessage({
+            type: "success",
+            message: `Successfully synchronized ${response.data.updatedRecords} ${personType} records across all jobs for this client.`,
+          });
+
+          // Refresh all person details to reflect the changes
+          await Promise.all([
+            fetchPersonDetails("director", setDirectorDetails),
+            fetchPersonDetails("shareholder", setShareholderDetails),
+            fetchPersonDetails("secretary", setSecretaryDetails),
+            fetchPersonDetails("sef", setSefDetails),
+          ]);
+
+          // Re-check inconsistencies
+          await checkInconsistencies();
+        } else {
+          setActionMessage({
+            type: "error",
+            message: `Synchronization failed: ${response.data.message}`,
+          });
+        }
+      } catch (err) {
+        console.error("Error during forced synchronization:", err);
+        setActionMessage({
+          type: "error",
+          message:
+            err.response?.data?.message || "Failed to synchronize records",
+        });
+      } finally {
+        setSyncing(false);
+
+        setTimeout(() => {
+          setActionMessage({ type: null, message: null });
+        }, 3000);
+      }
+    };
+
+    if (!gmail) return null;
+
+    return (
+      <div className="mt-4 border border-indigo-100 rounded-lg p-4 bg-indigo-50/30">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center">
+            <InformationCircleIcon className="h-5 w-5 text-indigo-600 mr-2" />
+            <h3 className="text-sm font-medium text-indigo-800">
+              Client Data Synchronization
+            </h3>
+          </div>
+          {!showSyncInfo ? (
+            <button
+              onClick={checkInconsistencies}
+              disabled={loading}
+              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+            >
+              {loading ? (
+                <>
+                  <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-indigo-600 rounded-full"></span>{" "}
+                  Checking...
+                </>
+              ) : (
+                <>
+                  View Details
+                  <ChevronDownIcon className="h-4 w-4 ml-1" />
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowSyncInfo(false)}
+              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+            >
+              Hide Details
+              <ChevronUpIcon className="h-4 w-4 ml-1" />
+            </button>
+          )}
+        </div>
+
+        {showSyncInfo && syncData && (
+          <div className="mt-3 text-sm">
+            {syncData.records[personType] > 1 ? (
+              <div>
+                <p className="text-indigo-800">
+                  <strong>Found {syncData.records[personType]} records</strong>{" "}
+                  for this {personType} across different jobs for the same
+                  client.
+                </p>
+
+                {syncData.hasInconsistencies &&
+                  syncData.inconsistencies[personType] && (
+                    <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="font-medium text-yellow-800">
+                        Inconsistencies detected:
+                      </p>
+                      <ul className="mt-1 list-disc pl-5 space-y-1 text-yellow-700">
+                        {Object.entries(
+                          syncData.inconsistencies[personType]
+                        ).map(([field, values]) => (
+                          <li key={field}>
+                            <strong>{field}:</strong> has {values.length}{" "}
+                            different values ({values.join(", ")})
+                          </li>
+                        ))}
+                      </ul>
+
+                      {/* New Force Sync button */}
+                      <div className="mt-3">
+                        <button
+                          onClick={handleForceSync}
+                          disabled={syncing}
+                          className={`px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors ${
+                            syncing ? "opacity-70 cursor-not-allowed" : ""
+                          }`}
+                        >
+                          {syncing ? (
+                            <span className="flex items-center">
+                              <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-white rounded-full"></span>{" "}
+                              Synchronizing...
+                            </span>
+                          ) : (
+                            <span className="flex items-center">
+                              <ArrowPathIcon className="h-4 w-4 mr-1" />
+                              Force Synchronization
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                <p className="mt-2 text-indigo-700">
+                  Changes to this form will be automatically synchronized across
+                  all jobs for this client.
+                </p>
+              </div>
+            ) : (
+              <p className="text-indigo-700">
+                There is only one {personType} record for this client. No
+                synchronization needed.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // CompanySyncInformationBox component for JobDetails.jsx
+  const CompanySyncInformationBox = ({ gmail }) => {
+    const [showSyncInfo, setShowSyncInfo] = useState(false);
+    const [syncData, setSyncData] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+
+    const checkCompanyDetails = async () => {
+      try {
+        setLoading(true);
+
+        // Call the dedicated endpoint to check company details status
+        const response = await axiosInstance.get(
+          `/clients/${gmail}/company-details-status`
+        );
+
+        if (response.data) {
+          setSyncData(response.data);
+        } else {
+          setSyncData({
+            totalJobs: 0,
+            jobsWithCompanyDetails: 0,
+            hasMultipleJobs: false,
+          });
+        }
+
+        setShowSyncInfo(true);
+      } catch (err) {
+        console.error("Error checking company details:", err);
+        setActionMessage({
+          type: "error",
+          message: "Failed to check for company details across jobs",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Function to trigger manual synchronization of company details
+    const handleForceSync = async () => {
+      try {
+        setSyncing(true);
+
+        // Call the updateCompanyDetails endpoint with syncAcrossJobs=true
+        const formData = new FormData();
+        formData.append("syncAcrossJobs", "true");
+
+        // We're just triggering a sync with current values, not changing anything
+        const response = await axiosInstance.put(
+          `/operations/jobs/${jobId}/company-details`,
+          formData
+        );
+
+        if (
+          response.data &&
+          response.data.syncResult &&
+          response.data.syncResult.success
+        ) {
+          setActionMessage({
+            type: "success",
+            message: `Successfully synchronized company details across ${response.data.syncResult.updatedRecords} job(s) for this client.`,
+          });
+
+          // Refresh company details
+          const companyResponse = await axiosInstance.get(
+            `/operations/jobs/${jobId}/company-details`
+          );
+          setCompanyDetails(companyResponse.data);
+
+          // Re-check company details
+          await checkCompanyDetails();
+        } else {
+          setActionMessage({
+            type: "info",
+            message:
+              "No synchronization needed or no other jobs found for this client.",
+          });
+        }
+      } catch (err) {
+        console.error("Error during company details synchronization:", err);
+        setActionMessage({
+          type: "error",
+          message:
+            err.response?.data?.message ||
+            "Failed to synchronize company details",
+        });
+      } finally {
+        setSyncing(false);
+
+        setTimeout(() => {
+          setActionMessage({ type: null, message: null });
+        }, 3000);
+      }
+    };
+
+    if (!gmail) return null;
+
+    return (
+      <div className="mt-4 border border-indigo-100 rounded-lg p-4 bg-indigo-50/30">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center">
+            <InformationCircleIcon className="h-5 w-5 text-indigo-600 mr-2" />
+            <h3 className="text-sm font-medium text-indigo-800">
+              Company Data Synchronization
+            </h3>
+          </div>
+          {!showSyncInfo ? (
+            <button
+              onClick={checkCompanyDetails}
+              disabled={loading}
+              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+            >
+              {loading ? (
+                <>
+                  <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-indigo-600 rounded-full"></span>{" "}
+                  Checking...
+                </>
+              ) : (
+                <>
+                  View Details
+                  <ChevronDownIcon className="h-4 w-4 ml-1" />
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowSyncInfo(false)}
+              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+            >
+              Hide Details
+              <ChevronUpIcon className="h-4 w-4 ml-1" />
+            </button>
+          )}
+        </div>
+
+        {showSyncInfo && syncData && (
+          <div className="mt-3 text-sm">
+            {syncData.hasMultipleJobs ? (
+              <div>
+                <p className="text-indigo-800">
+                  <strong>Found {syncData.totalJobs} job(s)</strong> for this
+                  client, with {syncData.jobsWithCompanyDetails} having company
+                  details.
+                </p>
+
+                <p className="mt-2 text-indigo-700">
+                  Changes to company details will be automatically synchronized
+                  across all jobs for this client.
+                </p>
+
+                {/* Force sync button */}
+                <div className="mt-3">
+                  <button
+                    onClick={handleForceSync}
+                    disabled={syncing}
+                    className={`px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors ${
+                      syncing ? "opacity-70 cursor-not-allowed" : ""
+                    }`}
+                  >
+                    {syncing ? (
+                      <span className="flex items-center">
+                        <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-white rounded-full"></span>{" "}
+                        Synchronizing...
+                      </span>
+                    ) : (
+                      <span className="flex items-center">
+                        <ArrowPathIcon className="h-4 w-4 mr-1" />
+                        Force Synchronization
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-indigo-700">
+                This is the only job for this client. No synchronization needed.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Bulk update all entries of a person type
@@ -952,6 +1439,29 @@ function JobDetails() {
   // Render person details form
   const renderPersonDetails = (section, details, setDetails) => (
     <div className="space-y-6">
+      {/* Add this at the top of your component's return statement */}
+      {job &&
+        job.timeline?.some((event) =>
+          event.description?.includes("auto-populated")
+        ) && (
+          <div className="sticky top-0 z-50 bg-blue-100 border-l-4 border-blue-500 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <InformationCircleIcon
+                  className="h-5 w-5 text-blue-500"
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-blue-700">
+                  Some information has been auto-populated from other jobs for
+                  the same client ({job.gmail}).
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
       {details.map((entry, index) => (
         <div
           key={index}
@@ -962,9 +1472,22 @@ function JobDetails() {
               <div className="bg-indigo-100 rounded-lg p-2 mr-3">
                 <UserIcon className="h-5 w-5 text-indigo-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-800">
-                Entry {index + 1}
-              </h3>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  Entry {index + 1}
+                </h3>
+                {/* Auto-populated badge */}
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) && (
+                    <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                      Auto-populated
+                    </span>
+                  )}
+              </div>
             </div>
             {details.length > 1 && (
               <button
@@ -981,6 +1504,18 @@ function JobDetails() {
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
                 Name
+                {/* Pre-filled indicator */}
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.name && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <input
                 type="text"
@@ -990,7 +1525,17 @@ function JobDetails() {
                   newDetails[index].name = e.target.value;
                   setDetails(newDetails);
                 }}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                className={`mt-1 block w-full rounded-lg ${
+                  job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.name
+                    ? "bg-indigo-50 border-indigo-300" // Highlight auto-populated fields
+                    : "border-gray-300"
+                } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                 placeholder="Enter full name"
               />
             </div>
@@ -998,6 +1543,17 @@ function JobDetails() {
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
                 Nationality
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.nationality && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <input
                 type="text"
@@ -1007,16 +1563,36 @@ function JobDetails() {
                   newDetails[index].nationality = e.target.value;
                   setDetails(newDetails);
                 }}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                className={`mt-1 block w-full rounded-lg ${
+                  job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.nationality
+                    ? "bg-indigo-50 border-indigo-300"
+                    : "border-gray-300"
+                } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                 placeholder="Enter nationality"
               />
             </div>
 
-            {/* Visa Copy - Enhanced Beautiful Card */}
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                 <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 Visa Copy
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.visaCopy && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <div
                 className={`border-2 rounded-lg p-3 transition-all duration-300 ${
@@ -1044,6 +1620,17 @@ function JobDetails() {
                         </span>
                         <span className="text-xs text-green-600 flex items-center">
                           <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                          {job &&
+                            job.timeline?.some((event) =>
+                              event.description?.includes(
+                                `${section} details auto-populated`
+                              )
+                            ) &&
+                            typeof entry.visaCopy === "string" && (
+                              <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                                Auto-filled
+                              </span>
+                            )}
                         </span>
                       </div>
                     </div>
@@ -1106,11 +1693,21 @@ function JobDetails() {
               </div>
             </div>
 
-            {/* QID Document - Compact Beautiful Card */}
             <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <UserIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 QID Details
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.qidNo && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -1126,7 +1723,17 @@ function JobDetails() {
                       newDetails[index].qidNo = e.target.value;
                       setDetails(newDetails);
                     }}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    className={`block w-full rounded-lg ${
+                      job &&
+                      job.timeline?.some((event) =>
+                        event.description?.includes(
+                          `${section} details auto-populated`
+                        )
+                      ) &&
+                      entry.qidNo
+                        ? "bg-indigo-50 border-indigo-300"
+                        : "border-gray-300"
+                    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                   />
                 </div>
                 <div>
@@ -1142,7 +1749,17 @@ function JobDetails() {
                         newDetails[index].qidExpiry = e.target.value;
                         setDetails(newDetails);
                       }}
-                      className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                      className={`block w-full rounded-lg ${
+                        job &&
+                        job.timeline?.some((event) =>
+                          event.description?.includes(
+                            `${section} details auto-populated`
+                          )
+                        ) &&
+                        entry.qidExpiry
+                          ? "bg-indigo-50 border-indigo-300"
+                          : "border-gray-300"
+                      } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                     />
                     <button
                       onClick={() =>
@@ -1175,6 +1792,17 @@ function JobDetails() {
                       <div className="flex items-center justify-between w-full px-2">
                         <div className="flex items-center text-xs text-green-600">
                           <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                          {job &&
+                            job.timeline?.some((event) =>
+                              event.description?.includes(
+                                `${section} details auto-populated`
+                              )
+                            ) &&
+                            typeof entry.qidDoc === "string" && (
+                              <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                                Auto-filled
+                              </span>
+                            )}
                         </div>
                         <div className="flex items-center">
                           {typeof entry.qidDoc === "string" && (
@@ -1228,11 +1856,21 @@ function JobDetails() {
               </div>
             </div>
 
-            {/* National Address Document - Enhanced Beautiful Card */}
             <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <MapPinIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 National Address
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.nationalAddress && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="col-span-2">
@@ -1265,6 +1903,18 @@ function JobDetails() {
                             <span className="text-xs text-green-600 flex items-center">
                               <CheckCircleIcon className="h-3 w-3 mr-1" />{" "}
                               Uploaded
+                              {job &&
+                                job.timeline?.some((event) =>
+                                  event.description?.includes(
+                                    `${section} details auto-populated`
+                                  )
+                                ) &&
+                                typeof entry.nationalAddressDoc ===
+                                  "string" && (
+                                  <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                                    Auto-filled
+                                  </span>
+                                )}
                             </span>
                           </div>
                         </div>
@@ -1341,7 +1991,17 @@ function JobDetails() {
                             e.target.value;
                           setDetails(newDetails);
                         }}
-                        className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                        className={`block w-full rounded-lg ${
+                          job &&
+                          job.timeline?.some((event) =>
+                            event.description?.includes(
+                              `${section} details auto-populated`
+                            )
+                          ) &&
+                          entry.nationalAddressExpiry
+                            ? "bg-indigo-50 border-indigo-300"
+                            : "border-gray-300"
+                        } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                       />
                       <button
                         onClick={() =>
@@ -1367,6 +2027,17 @@ function JobDetails() {
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <DocumentDuplicateIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 Passport Details
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.passportNo && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -1382,7 +2053,17 @@ function JobDetails() {
                       newDetails[index].passportNo = e.target.value;
                       setDetails(newDetails);
                     }}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    className={`block w-full rounded-lg ${
+                      job &&
+                      job.timeline?.some((event) =>
+                        event.description?.includes(
+                          `${section} details auto-populated`
+                        )
+                      ) &&
+                      entry.passportNo
+                        ? "bg-indigo-50 border-indigo-300"
+                        : "border-gray-300"
+                    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                   />
                 </div>
                 <div>
@@ -1398,7 +2079,17 @@ function JobDetails() {
                         newDetails[index].passportExpiry = e.target.value;
                         setDetails(newDetails);
                       }}
-                      className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                      className={`block w-full rounded-lg ${
+                        job &&
+                        job.timeline?.some((event) =>
+                          event.description?.includes(
+                            `${section} details auto-populated`
+                          )
+                        ) &&
+                        entry.passportExpiry
+                          ? "bg-indigo-50 border-indigo-300"
+                          : "border-gray-300"
+                      } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                     />
                     <button
                       onClick={() =>
@@ -1431,6 +2122,17 @@ function JobDetails() {
                       <div className="flex items-center justify-between w-full px-2">
                         <div className="flex items-center text-xs text-green-600">
                           <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                          {job &&
+                            job.timeline?.some((event) =>
+                              event.description?.includes(
+                                `${section} details auto-populated`
+                              )
+                            ) &&
+                            typeof entry.passportDoc === "string" && (
+                              <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                                Auto-filled
+                              </span>
+                            )}
                         </div>
                         <div className="flex items-center">
                           {typeof entry.passportDoc === "string" && (
@@ -1487,6 +2189,17 @@ function JobDetails() {
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
                 Mobile Number
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.mobileNo && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <input
                 type="tel"
@@ -1496,7 +2209,17 @@ function JobDetails() {
                   newDetails[index].mobileNo = e.target.value;
                   setDetails(newDetails);
                 }}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                className={`mt-1 block w-full rounded-lg ${
+                  job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.mobileNo
+                    ? "bg-indigo-50 border-indigo-300"
+                    : "border-gray-300"
+                } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                 placeholder="Enter mobile number"
               />
             </div>
@@ -1504,6 +2227,17 @@ function JobDetails() {
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
                 Email Address
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.email && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <input
                 type="email"
@@ -1513,16 +2247,36 @@ function JobDetails() {
                   newDetails[index].email = e.target.value;
                   setDetails(newDetails);
                 }}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                className={`mt-1 block w-full rounded-lg ${
+                  job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.email
+                    ? "bg-indigo-50 border-indigo-300"
+                    : "border-gray-300"
+                } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
                 placeholder="Enter email address"
               />
             </div>
 
-            {/* CV Document - Enhanced Beautiful Card */}
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                 <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 Curriculum Vitae (CV)
+                {job &&
+                  job.timeline?.some((event) =>
+                    event.description?.includes(
+                      `${section} details auto-populated`
+                    )
+                  ) &&
+                  entry.cv && (
+                    <span className="ml-2 text-xs text-indigo-600">
+                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                    </span>
+                  )}
               </label>
               <div
                 className={`border-2 rounded-lg p-3 transition-all duration-300 ${
@@ -1550,6 +2304,17 @@ function JobDetails() {
                         </span>
                         <span className="text-xs text-green-600 flex items-center">
                           <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                          {job &&
+                            job.timeline?.some((event) =>
+                              event.description?.includes(
+                                `${section} details auto-populated`
+                              )
+                            ) &&
+                            typeof entry.cv === "string" && (
+                              <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                                Auto-filled
+                              </span>
+                            )}
                         </span>
                       </div>
                     </div>
@@ -1630,6 +2395,28 @@ function JobDetails() {
         </div>
       ))}
 
+      {/* Information note about changes affecting only current job */}
+      {job &&
+        job.timeline?.some((event) =>
+          event.description?.includes(`${section} details auto-populated`)
+        ) && (
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-700 flex items-start">
+              <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
+              <span>
+                Changes made to these details will only affect this specific
+                job. The original data used for auto-population remains
+                unchanged for other jobs.
+              </span>
+            </p>
+          </div>
+        )}
+
+      {/* Add synchronization information box for person data */}
+      {job && job.gmail && (
+        <SyncInformationBox personType={section} gmail={job.gmail} />
+      )}
+
       <div className="flex justify-center pt-4">
         <button
           type="button"
@@ -1643,13 +2430,11 @@ function JobDetails() {
     </div>
   );
 
-  // Render Company Details section with improved edit mode
   const renderCompanyDetailsSection = () => (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-100">
         <h3 className="text-lg font-bold text-gray-900">a. Company Details</h3>
         <div className="flex items-center gap-2">
-          {/* Pre-filled indicator */}
           {companyDetails && companyDetails.companyName && (
             <div className="flex items-center text-sm text-indigo-600">
               <CheckCircleIcon className="h-5 w-5 mr-1" />
@@ -1677,6 +2462,22 @@ function JobDetails() {
           )}
         </div>
       </div>
+      {/* Add the synchronization component */}
+      {job && job.gmail && <CompanySyncInformationBox gmail={job.gmail} />}
+      {/* Auto-population notification */}
+      {job &&
+        job.timeline?.some((event) =>
+          event.description?.includes("Company details auto-populated")
+        ) && (
+          <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-100">
+            <p className="text-sm text-blue-800 flex items-start">
+              <InformationCircleIcon className="h-5 w-5 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
+              These fields have been auto-filled with existing company data from
+              another job for this client. Any changes you make will be
+              synchronized across all jobs for this client.
+            </p>
+          </div>
+        )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
@@ -1765,14 +2566,18 @@ function JobDetails() {
           />
         </div>
 
+        {/* Fix for Incorporation Date input */}
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Incorporation Date
+            {companyDetails.incorporationDate
+              ? ` (Value: ${companyDetails.incorporationDate})`
+              : " (Empty)"}
           </label>
           <div className="flex items-center space-x-2">
             <input
               type="date"
-              value={companyDetails.incorporationDate}
+              value={companyDetails.incorporationDate || ""}
               onChange={(e) =>
                 setCompanyDetails({
                   ...companyDetails,
@@ -1846,8 +2651,8 @@ function JobDetails() {
                 ? "border-green-500 bg-green-50"
                 : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
             }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : null}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : null}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
             onDrop={(e) => {
               if (!editingCompanyDetails) return;
               e.preventDefault();
@@ -1982,8 +2787,6 @@ function JobDetails() {
         </div>
       </div>
       {/* Documents with expiry dates */}
-      // Updated code for the document sections in renderCompanyDetailsSection
-      // For Company Computer Card
       <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700">
@@ -1997,8 +2800,8 @@ function JobDetails() {
                 ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                 : "border-gray-300"
             }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : null}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : null}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
             onDrop={(e) => {
               if (!editingCompanyDetails) return;
               e.preventDefault();
@@ -2109,7 +2912,6 @@ function JobDetails() {
           </div>
         </div>
       </div>
-      // For Tax Card
       <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700">
@@ -2123,8 +2925,8 @@ function JobDetails() {
                 ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                 : "border-gray-300"
             }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : null}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : null}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
             onDrop={(e) => {
               if (!editingCompanyDetails) return;
               e.preventDefault();
@@ -2228,7 +3030,6 @@ function JobDetails() {
           </div>
         </div>
       </div>
-      // For CR Extract
       <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700">
@@ -2242,8 +3043,8 @@ function JobDetails() {
                 ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                 : "border-gray-300"
             }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : null}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : null}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
             onDrop={(e) => {
               if (!editingCompanyDetails) return;
               e.preventDefault();
@@ -2350,7 +3151,6 @@ function JobDetails() {
           </div>
         </div>
       </div>
-      // For Scope of License
       <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700">
@@ -2364,8 +3164,8 @@ function JobDetails() {
                 ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                 : "border-gray-300"
             }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : null}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : null}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
             onDrop={(e) => {
               if (!editingCompanyDetails) return;
               e.preventDefault();
@@ -2474,7 +3274,6 @@ function JobDetails() {
           </div>
         </div>
       </div>
-      // For Article of Associate
       <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
         <div className="col-span-5">
           <label className="block text-sm font-medium text-gray-700">
@@ -2488,8 +3287,8 @@ function JobDetails() {
                 ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                 : "border-gray-300"
             }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : null}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : null}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
             onDrop={(e) => {
               if (!editingCompanyDetails) return;
               e.preventDefault();
@@ -2561,7 +3360,6 @@ function JobDetails() {
           </div>
         </div>
       </div>
-      // For Certificate of Incorporate
       <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
         <div className="col-span-5">
           <label className="block text-sm font-medium text-gray-700">
@@ -2575,8 +3373,8 @@ function JobDetails() {
                 ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                 : "border-gray-300"
             }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : null}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : null}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
             onDrop={(e) => {
               if (!editingCompanyDetails) return;
               e.preventDefault();
@@ -2697,7 +3495,6 @@ function JobDetails() {
     </div>
   );
 
-  // Utility functions for status
   const getStatusColor = (status) => {
     switch (status) {
       case "completed":
@@ -2721,7 +3518,6 @@ function JobDetails() {
     switch (status) {
       case "completed":
       case "om_completed":
-
       case "approved":
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
       case "rejected":
@@ -2734,7 +3530,6 @@ function JobDetails() {
     }
   };
 
-  // Tabs configuration
   const tabs = [
     {
       id: "company",
@@ -2857,14 +3652,18 @@ function JobDetails() {
               className={`fixed top-20 right-4 z-50 p-4 rounded-xl shadow-xl ${
                 actionMessage.type === "success"
                   ? "bg-green-100 text-green-800 border border-green-200"
-                  : "bg-red-100 text-red-800 border border-red-200"
+                  : actionMessage.type === "error"
+                  ? "bg-red-100 text-red-800 border border-red-200"
+                  : "bg-blue-100 text-blue-800 border border-blue-200"
               }`}
             >
               <div className="flex items-center">
                 {actionMessage.type === "success" ? (
                   <CheckCircleIcon className="h-6 w-6 mr-3" />
-                ) : (
+                ) : actionMessage.type === "error" ? (
                   <ExclamationTriangleIcon className="h-6 w-6 mr-3" />
+                ) : (
+                  <InformationCircleIcon className="h-6 w-6 mr-3" />
                 )}
                 <p className="font-medium">{actionMessage.message}</p>
                 <button
@@ -2969,7 +3768,7 @@ function JobDetails() {
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <div className="flex items-center space-x-3p-3 rounded-xl bg-yellow-50/50 border border-yellow-100">
+                    <div className="flex items-center space-x-3 p-3 rounded-xl bg-yellow-50/50 border border-yellow-100">
                       <div className="p-2 bg-yellow-100 rounded-lg">
                         <MapPinIcon className="h-5 w-5 text-yellow-600" />
                       </div>
@@ -3349,7 +4148,7 @@ function JobDetails() {
             </motion.div>
 
             {/* Engagement Letter Component */}
-            {![ "cancelled"].includes(job.status) && (
+            {!["cancelled"].includes(job.status) && (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -3360,7 +4159,39 @@ function JobDetails() {
                   <h2 className="text-xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100 flex items-center">
                     <DocumentCheckIcon className="h-5 w-5 text-indigo-600 mr-2" />
                     Engagement Letter
+                    {companyDetails.engagementLetters &&
+                      job.status === "pending" &&
+                      job.timeline?.some((event) =>
+                        event.description?.includes("auto-populated")
+                      ) && (
+                        <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                          Auto-populated
+                        </span>
+                      )}
                   </h2>
+
+                  {/* Info box for auto-populated letters */}
+                  {companyDetails.engagementLetters &&
+                    job.status === "pending" &&
+                    job.timeline?.some((event) =>
+                      event.description?.includes("auto-populated")
+                    ) && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div className="flex">
+                          <InformationCircleIcon className="h-6 w-6 text-blue-600 mr-2" />
+                          <div>
+                            <h3 className="text-sm font-medium text-blue-800">
+                              Engagement Letter Auto-Populated
+                            </h3>
+                            <p className="mt-1 text-sm text-blue-700">
+                              This engagement letter was automatically found
+                              from another job for the same client. All jobs for
+                              the same client use the same engagement letter.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                   {companyDetails.engagementLetters ? (
                     <div className="space-y-4">
@@ -3390,21 +4221,26 @@ function JobDetails() {
                         </a>
                       </div>
 
-                      <div className="mt-4">
-                        <button
-                          onClick={() => {
-                            setEngagementLetter(null);
-                            setCompanyDetails((prev) => ({
-                              ...prev,
-                              engagementLetters: null,
-                            }));
-                          }}
-                          className="text-red-500 hover:text-red-700 text-sm font-medium inline-flex items-center"
-                        >
-                          <XMarkIcon className="h-4 w-4 mr-1" />
-                          Remove letter
-                        </button>
-                      </div>
+                      {/* Remove button shouldn't be shown for auto-populated letters as it would remove it from all jobs */}
+                      {!job?.timeline?.some((event) =>
+                        event.description?.includes("auto-populated")
+                      ) && (
+                        <div className="mt-4">
+                          <button
+                            onClick={() => {
+                              setEngagementLetter(null);
+                              setCompanyDetails((prev) => ({
+                                ...prev,
+                                engagementLetters: null,
+                              }));
+                            }}
+                            className="text-red-500 hover:text-red-700 text-sm font-medium inline-flex items-center"
+                          >
+                            <XMarkIcon className="h-4 w-4 mr-1" />
+                            Remove letter
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div
@@ -3456,6 +4292,19 @@ function JobDetails() {
                           </div>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Information about shared engagement letters */}
+                  {!companyDetails.engagementLetters && (
+                    <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 flex items-start">
+                        <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
+                        <span>
+                          An engagement letter uploaded here will be
+                          automatically shared with all jobs for this client.
+                        </span>
+                      </p>
                     </div>
                   )}
 

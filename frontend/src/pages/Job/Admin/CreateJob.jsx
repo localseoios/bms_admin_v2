@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axiosInstance from "../../../utils/axios"; // Adjust the path based on your project structure
+import axiosInstance from "../../../utils/axios";
 import {
   DocumentIcon,
   UserIcon,
@@ -12,6 +12,8 @@ import {
   EnvelopeIcon,
   MapPinIcon,
   ArrowPathIcon,
+  CheckCircleIcon,
+  CheckIcon,
 } from "@heroicons/react/24/outline";
 
 // Service types for the dropdown
@@ -27,8 +29,12 @@ const serviceTypes = [
 function CreateJob() {
   const navigate = useNavigate();
 
-  // -- State for operation managers (will be populated from backend)
+  // Operation managers state
   const [operationManagers, setOperationManagers] = useState([]);
+
+  // New state for checking existing clients
+  const [existingClient, setExistingClient] = useState(null);
+  const [checkingClient, setCheckingClient] = useState(false);
 
   // State for form data
   const [formData, setFormData] = useState({
@@ -36,7 +42,7 @@ function CreateJob() {
     documentPassport: null,
     documentID: null,
     otherDocuments: [],
-    assignedPerson: "", // Will hold the ID of the selected operation manager
+    assignedPerson: "",
     jobDetails: "",
     specialDescription: "",
     clientName: "",
@@ -51,15 +57,10 @@ function CreateJob() {
   // State for form submission status
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ===========================================================================
-  // 1. Fetch all operation managers from the backend
-  // ===========================================================================
+  // Fetch operation managers
   useEffect(() => {
     const fetchOperationManagers = async () => {
       try {
-        // Example GET request to fetch all operation managers
-        // (ensure you have this route on your backend)
-        // e.g. GET /users/operation-managers
         const response = await axiosInstance.get("/users/operation-managers");
         setOperationManagers(response.data);
       } catch (error) {
@@ -70,9 +71,55 @@ function CreateJob() {
     fetchOperationManagers();
   }, []);
 
-  // ===========================================================================
-  // 2. Validate Form
-  // ===========================================================================
+  // Function to check if a client with the given Gmail exists
+  const checkExistingClient = async (gmail) => {
+    if (!gmail || !gmail.endsWith("@gmail.com")) {
+      setExistingClient(null);
+      return;
+    }
+
+    setCheckingClient(true);
+    try {
+      // Try to fetch client by Gmail
+      const response = await axiosInstance.get(`/clients/${gmail}`);
+
+      if (response.data && response.data.client) {
+        setExistingClient(response.data.client);
+
+        // Auto-fill client name and starting point if available
+        setFormData((prev) => ({
+          ...prev,
+          clientName: response.data.client.name || prev.clientName,
+          startingPoint:
+            response.data.client.startingPoint || prev.startingPoint,
+        }));
+      }
+    } catch (error) {
+      // 404 means client doesn't exist, which is fine
+      if (error.response && error.response.status !== 404) {
+        console.error("Error checking client:", error);
+      }
+      setExistingClient(null);
+    } finally {
+      setCheckingClient(false);
+    }
+  };
+
+  // Debounce function for Gmail checks
+  const debounce = (func, delay) => {
+    let timeoutId;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        func(...args);
+      }, delay);
+    };
+  };
+
+  // Create debounced version of the client check
+  const debouncedCheckClient = debounce(checkExistingClient, 500);
+
+  // Validate Form
   const validateForm = () => {
     const newErrors = {};
     if (!formData.serviceType)
@@ -96,9 +143,6 @@ function CreateJob() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // ===========================================================================
-  // 3. Handlers for input/file changes
-  // ===========================================================================
   // Handle text input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -106,11 +150,26 @@ function CreateJob() {
       ...prev,
       [name]: value,
     }));
+
     if (errors[name]) {
       setErrors((prev) => ({
         ...prev,
         [name]: "",
       }));
+    }
+
+    // Check for existing client when Gmail changes
+    if (name === "gmail" && value.endsWith("@gmail.com")) {
+      debouncedCheckClient(value);
+    } else if (name === "gmail" && !value.endsWith("@gmail.com")) {
+      setExistingClient(null);
+    }
+  };
+
+  // Handle Gmail field blur for immediate checking
+  const handleGmailBlur = () => {
+    if (formData.gmail && formData.gmail.endsWith("@gmail.com")) {
+      checkExistingClient(formData.gmail);
     }
   };
 
@@ -160,9 +219,7 @@ function CreateJob() {
     }));
   };
 
-  // ===========================================================================
-  // 4. Form submission
-  // ===========================================================================
+  // Form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (validateForm()) {
@@ -206,11 +263,7 @@ function CreateJob() {
     }
   };
 
-  // ===========================================================================
-  // 5. Optional: If you want to show a “status” badge next to the user
-  //    you can store a “status” property in your user data. For now,
-  //    this is just an example function. Adjust as needed.
-  // ===========================================================================
+  // Optional: Get status color for user
   const getStatusColor = (status) => {
     switch (status) {
       case "Available":
@@ -242,6 +295,24 @@ function CreateJob() {
                 </p>
               </div>
             </div>
+
+            {/* Existing Client Auto-Approval Notice */}
+            {existingClient && (
+              <div className="mb-8 bg-green-50 border border-green-200 rounded-xl p-4">
+                <div className="flex items-start">
+                  <CheckCircleIcon className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-green-800">
+                      Existing Client Detected
+                    </h3>
+                    <p className="mt-1 text-sm text-green-700">
+                      This client is already in our system. The job will be
+                      auto-approved and bypass Compliance Management review.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-8">
               {/* Service Type Section */}
@@ -518,13 +589,12 @@ function CreateJob() {
                         <option value="">Select an assigned person</option>
                         {operationManagers.map((manager) => (
                           <option key={manager._id} value={manager._id}>
-                            {/* You can customize what you show here */}
-                            {manager.name} {/* e.g. {manager.role.name} */}
+                            {manager.name}
                           </option>
                         ))}
                       </select>
 
-                      {/* If you want to show the status badge or other user details, do so below: */}
+                      {/* User status badge */}
                       {formData.assignedPerson && (
                         <div className="mt-2">
                           {operationManagers
@@ -534,7 +604,6 @@ function CreateJob() {
                                 key={person._id}
                                 className="flex items-center space-x-2"
                               >
-                                {/* If you have a 'status' property in person, do something like: */}
                                 {person.status && (
                                   <span
                                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
@@ -611,6 +680,12 @@ function CreateJob() {
                   <h2 className="text-lg font-semibold text-gray-900">
                     Client Information
                   </h2>
+                  {existingClient && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <CheckIcon className="h-3.5 w-3.5 mr-1" />
+                      Existing Client
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   {/* Client Name */}
@@ -628,10 +703,20 @@ function CreateJob() {
                         value={formData.clientName}
                         onChange={handleInputChange}
                         className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                          errors.clientName ? "border-red-300" : ""
+                          errors.clientName
+                            ? "border-red-300"
+                            : existingClient
+                            ? "border-green-300 bg-green-50"
+                            : ""
                         }`}
                         placeholder="Enter client's full name"
+                        readOnly={!!existingClient}
                       />
+                      {existingClient && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <CheckIcon className="h-5 w-5 text-green-500" />
+                        </div>
+                      )}
                     </div>
                     {errors.clientName && (
                       <p className="mt-1 text-sm text-red-600">
@@ -654,15 +739,35 @@ function CreateJob() {
                         name="gmail"
                         value={formData.gmail}
                         onChange={handleInputChange}
+                        onBlur={handleGmailBlur}
                         className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                          errors.gmail ? "border-red-300" : ""
+                          errors.gmail
+                            ? "border-red-300"
+                            : existingClient
+                            ? "border-green-300 bg-green-50"
+                            : ""
                         }`}
                         placeholder="Enter client's Gmail address"
                       />
+                      {checkingClient && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />
+                        </div>
+                      )}
+                      {existingClient && !checkingClient && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <CheckIcon className="h-5 w-5 text-green-500" />
+                        </div>
+                      )}
                     </div>
                     {errors.gmail && (
                       <p className="mt-1 text-sm text-red-600">
                         {errors.gmail}
+                      </p>
+                    )}
+                    {existingClient && (
+                      <p className="mt-1 text-sm text-green-600">
+                        Existing client - job will be auto-approved
                       </p>
                     )}
                   </div>
@@ -683,10 +788,20 @@ function CreateJob() {
                       value={formData.startingPoint}
                       onChange={handleInputChange}
                       className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                        errors.startingPoint ? "border-red-300" : ""
+                        errors.startingPoint
+                          ? "border-red-300"
+                          : existingClient
+                          ? "border-green-300 bg-green-50"
+                          : ""
                       }`}
                       placeholder="Enter the starting location"
+                      readOnly={!!existingClient}
                     />
+                    {existingClient && (
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <CheckIcon className="h-5 w-5 text-green-500" />
+                      </div>
+                    )}
                   </div>
                   {errors.startingPoint && (
                     <p className="mt-1 text-sm text-red-600">
@@ -721,7 +836,11 @@ function CreateJob() {
                     ) : (
                       <>
                         <BriefcaseIcon className="h-5 w-5" />
-                        <span>Create Job</span>
+                        <span>
+                          {existingClient
+                            ? "Create Auto-Approved Job"
+                            : "Create Job"}
+                        </span>
                       </>
                     )}
                   </span>

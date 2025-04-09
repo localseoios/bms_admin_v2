@@ -38,7 +38,7 @@ const createJob = async (req, res) => {
 
     if (
       !serviceType ||
-      !assignedPerson || // Now required
+      !assignedPerson ||
       !jobDetails ||
       !clientName ||
       !gmail ||
@@ -61,6 +61,8 @@ const createJob = async (req, res) => {
 
     // Check if client exists, create if not
     let client = await Client.findOne({ gmail });
+    const clientExists = !!client; // Flag to track if this is an existing client
+
     if (!client) {
       client = new Client({ name: clientName, gmail, startingPoint });
       await client.save();
@@ -80,18 +82,23 @@ const createJob = async (req, res) => {
         )
       : [];
 
+    // Set initial status based on whether client exists
+    // If client exists, auto-approve the job (status = "approved")
+    const initialStatus = clientExists ? "approved" : "pending";
+
     const job = new Job({
       clientId: client._id,
       serviceType,
       documentPassport: documentPassportUrl.url,
       documentID: documentIDUrl.url,
       otherDocuments: otherDocumentsUrls.map((result) => result.url),
-      assignedPerson, // Now stores user ID
+      assignedPerson,
       jobDetails,
       specialDescription,
       clientName,
       gmail,
       startingPoint,
+      status: initialStatus, // Auto-approve for existing clients
       // Initialize the timeline with job creation
       timeline: [
         {
@@ -100,12 +107,24 @@ const createJob = async (req, res) => {
           timestamp: new Date(),
           updatedBy: req.user._id,
         },
+        // Add screening_done entry if client exists
+        ...(clientExists
+          ? [
+              {
+                status: "screening_done",
+                description:
+                  "Screening Done (Auto-approved for existing client)",
+                timestamp: new Date(),
+                updatedBy: req.user._id,
+              },
+            ]
+          : []),
       ],
     });
 
     const savedJob = await job.save();
 
-    // Notification logic (unchanged)
+    // Standard notifications for all jobs
     await notificationService.createNotification(
       {
         title: "New Job Created",
@@ -136,17 +155,43 @@ const createJob = async (req, res) => {
       { _id: req.user._id }
     );
 
-    // NEW: Notification to the assigned person
+    // Notification to the assigned person
     await notificationService.createNotification(
       {
         title: "New Job Assigned",
         description: `You have been assigned to a new ${serviceType} job for ${clientName}.`,
         type: "job",
-        subType: "assignment", // Used for styling
+        subType: "assignment",
         relatedTo: { model: "Job", id: savedJob._id },
       },
-      assignedPerson // Direct user ID
+      assignedPerson
     );
+
+    // Additional notifications for auto-approved jobs
+    if (clientExists) {
+      // Notify compliance team about auto-approval
+      await notificationService.createNotification(
+        {
+          title: "Job Auto-Approved",
+          description: `The ${serviceType} job for ${clientName} was automatically approved (existing client).`,
+          type: "job",
+          relatedTo: { model: "Job", id: savedJob._id },
+        },
+        { "role.permissions.complianceManagement": true }
+      );
+
+      // Notify the assigned person about the approved status
+      await notificationService.createNotification(
+        {
+          title: "Job Ready for Processing",
+          description: `A ${serviceType} job for ${clientName} has been auto-approved and is ready for processing.`,
+          type: "job",
+          subType: "approval",
+          relatedTo: { model: "Job", id: savedJob._id },
+        },
+        assignedPerson
+      );
+    }
 
     res.status(201).json(savedJob);
   } catch (error) {
@@ -161,26 +206,28 @@ const createJob = async (req, res) => {
 const getJobDetails = asyncHandler(async (req, res) => {
   try {
     const job = await Job.findById(req.params.id)
-      .populate('clientId', 'name gmail startingPoint')
-      .populate('assignedPerson', 'name email')
-      .populate('timeline.updatedBy', 'name');
-      
+      .populate("clientId", "name gmail startingPoint")
+      .populate("assignedPerson", "name email")
+      .populate("timeline.updatedBy", "name");
+
     if (!job) {
       res.status(404);
       throw new Error("Job not found");
     }
-    
+
     // Check if user is authorized to view this job
     // Allow if: user is admin, has compliance management permission, or is the assigned person
     const isAdmin = req.user.role?.name === "admin";
-    const hasCompliancePermission = req.user.role?.permissions?.complianceManagement;
-    const isAssignedPerson = job.assignedPerson?._id.toString() === req.user._id.toString();
-    
+    const hasCompliancePermission =
+      req.user.role?.permissions?.complianceManagement;
+    const isAssignedPerson =
+      job.assignedPerson?._id.toString() === req.user._id.toString();
+
     if (!isAdmin && !hasCompliancePermission && !isAssignedPerson) {
       res.status(403);
       throw new Error("You are not authorized to view this job");
     }
-    
+
     res.status(200).json(job);
   } catch (error) {
     res.status(error.statusCode || 500).json({
@@ -189,6 +236,7 @@ const getJobDetails = asyncHandler(async (req, res) => {
     });
   }
 });
+
 
 
 
