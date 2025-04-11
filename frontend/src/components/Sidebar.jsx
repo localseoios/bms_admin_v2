@@ -16,6 +16,8 @@ import {
   IdentificationIcon,
   ClipboardIcon,
   CurrencyDollarIcon,
+  UsersIcon,
+  BuildingStorefrontIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -72,6 +74,27 @@ const navigation = [
         name: "My Jobs",
         href: "/operation-management",
         icon: BriefcaseIcon,
+      },
+      {
+        name: "My Clients",
+        href: "/assigned-clients",
+        icon: UsersIcon,
+        badge: "New",
+      },
+    ],
+  },
+  {
+    name: "Services",
+    items: [
+      {
+        name: "All Services",
+        href: "/admin/services",
+        icon: BuildingStorefrontIcon,
+      },
+      {
+        name: "Add Service",
+        href: "/admin/services/add",
+        icon: ClipboardDocumentListIcon,
       },
     ],
   },
@@ -163,9 +186,9 @@ function Sidebar() {
                           }`}
                         />
                         <span className="truncate">{item.name}</span>
-                        {item.name === "Account Management" && (
+                        {item.badge && (
                           <span className="ml-auto bg-blue-100 text-blue-700 py-0.5 px-2 rounded-lg text-xs font-medium">
-                            Updated
+                            {item.badge}
                           </span>
                         )}
                       </NavLink>

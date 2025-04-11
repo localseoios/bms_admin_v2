@@ -15,6 +15,7 @@ const kycRoutes = require("./src/routes/kycRoutes");
 const errorLoggingMiddleware = require("./src/middleware/errorLoggingMiddleware");
 const braRoutes = require("./src/routes/braRoutes"); // New BRA routes
 const monthlyPaymentRoutes = require("./src/routes/monthlyPaymentRoutes");
+const serviceRoutes = require("./src/routes/serviceRoutes");
 
 // Ensure temp uploads directory exists
 const tempUploadsDir = path.join(__dirname, "src/temp-uploads");
@@ -114,6 +115,7 @@ app.use("/api/kyc", kycRoutes);
 app.use("/api/bra", braRoutes); // New BRA routes added here
 app.use("/api/monthlypayment", monthlyPaymentRoutes);
 app.use("/api/account", require("./src/routes/accountManagementRoutes"));
+app.use("/api/services", serviceRoutes);
 
 // Add specific handler for multer errors
 app.use((err, req, res, next) => {

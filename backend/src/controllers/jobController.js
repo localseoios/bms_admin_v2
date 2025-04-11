@@ -99,6 +99,8 @@ const createJob = async (req, res) => {
       gmail,
       startingPoint,
       status: initialStatus, // Auto-approve for existing clients
+      createdBy: req.user._id, // Add this line to set who created the job
+
       // Initialize the timeline with job creation
       timeline: [
         {
@@ -208,6 +210,7 @@ const getJobDetails = asyncHandler(async (req, res) => {
     const job = await Job.findById(req.params.id)
       .populate("clientId", "name gmail startingPoint")
       .populate("assignedPerson", "name email")
+      .populate("createdBy", "name email") // Add this line to show who created the job
       .populate("timeline.updatedBy", "name");
 
     if (!job) {
@@ -322,10 +325,15 @@ const getKycStatus = asyncHandler(async (req, res) => {
 // Similarly, update other functions that handle KYC-related statuses
 
 
-// Get All Jobs Admin (existing function)
+// Update the getAllJobsAdmin function
 const getAllJobsAdmin = asyncHandler(async (req, res) => {
   try {
-    const jobs = await Job.find();
+    const jobs = await Job.find()
+      .populate('clientId', 'name gmail startingPoint')
+      .populate('assignedPerson', 'name email')
+      .populate('createdBy', 'name email') // Add this line to populate the creator details
+      .sort({ createdAt: -1 }); // Sort by newest first
+      
     res.status(200).json(jobs);
   } catch (error) {
     res.status(500).json({

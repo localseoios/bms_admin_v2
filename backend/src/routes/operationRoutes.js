@@ -13,6 +13,8 @@ const {
   updateKycDocuments,
   uploadEngagementLetter,
   completeOperation,
+  createPreApprovedJob,
+  getPersonFieldHistory,
 } = require("../controllers/operationController");
 const multer = require("multer");
 const path = require("path");
@@ -161,6 +163,70 @@ router.put(
   protect,
   checkPermission("operationManagement"),
   completeOperation
+);
+
+router.post(
+  "/pre-approved-job",
+  protect,
+  checkPermission("operationManagement"),
+  upload.fields([
+    // Job documents
+    { name: "documentPassport", maxCount: 1 },
+    { name: "documentID", maxCount: 1 },
+    { name: "otherDocuments", maxCount: 10 },
+
+    // Company documents
+    { name: "engagementLetters", maxCount: 1 },
+    { name: "companyComputerCard", maxCount: 1 },
+    { name: "taxCard", maxCount: 1 },
+    { name: "crExtract", maxCount: 1 },
+    { name: "scopeOfLicense", maxCount: 1 },
+    { name: "articleOfAssociate", maxCount: 1 },
+    { name: "certificateOfIncorporate", maxCount: 1 },
+
+    // Director documents (supporting multiple directors)
+    { name: "directorVisaCopy", maxCount: 5 },
+    { name: "directorQidDoc", maxCount: 5 },
+    { name: "directorNationalAddressDoc", maxCount: 5 },
+    { name: "directorPassportDoc", maxCount: 5 },
+    { name: "directorCv", maxCount: 5 },
+
+    // Shareholder documents
+    { name: "shareholderVisaCopy", maxCount: 5 },
+    { name: "shareholderQidDoc", maxCount: 5 },
+    { name: "shareholderNationalAddressDoc", maxCount: 5 },
+    { name: "shareholderPassportDoc", maxCount: 5 },
+    { name: "shareholderCv", maxCount: 5 },
+
+    // Secretary documents
+    { name: "secretaryVisaCopy", maxCount: 5 },
+    { name: "secretaryQidDoc", maxCount: 5 },
+    { name: "secretaryNationalAddressDoc", maxCount: 5 },
+    { name: "secretaryPassportDoc", maxCount: 5 },
+    { name: "secretaryCv", maxCount: 5 },
+
+    // SEF documents
+    { name: "sefVisaCopy", maxCount: 5 },
+    { name: "sefQidDoc", maxCount: 5 },
+    { name: "sefNationalAddressDoc", maxCount: 5 },
+    { name: "sefPassportDoc", maxCount: 5 },
+    { name: "sefCv", maxCount: 5 },
+
+    // KYC documents
+    { name: "kycDocuments", maxCount: 10 },
+
+    // BRA documents
+    { name: "braDocuments", maxCount: 10 },
+  ]),
+  createPreApprovedJob
+);
+
+// Route to get history for a specific field
+router.get(
+  "/jobs/:jobId/person-details/:personType/:personId/history",
+  protect,
+  checkPermission("operationManagement"),
+  getPersonFieldHistory
 );
 
 module.exports = router;

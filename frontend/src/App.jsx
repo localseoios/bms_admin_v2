@@ -14,6 +14,10 @@ import { AuthProvider } from "./context/AuthContext";
 import ClientProfile from "./pages/ClientProfile";
 import AccountManagement from "./pages/AccountManagement/AccountManagement";
 import ClientPaymentDetails from "./pages/AccountManagement/ClientPaymentDetails";
+import AssignedClients from "./pages/Job/OperationManagement/AssignedClients";
+import CreatePreApprovedJob from "./pages/Job/OperationManagement/CreatePreApprovedJob";
+import AllServices from "./pages/AdminService/AllServices";
+import AddService from "./pages/AdminService/AddService";
 
 function App() {
   return (
@@ -52,7 +56,14 @@ function App() {
               path="operation-management"
               element={<OperationManagement />}
             />
+            <Route path="assigned-clients" element={<AssignedClients />} />
             <Route path="job/:jobId" element={<JobDetails />} />
+
+            {/* New pre-approved job route */}
+            <Route
+              path="create-pre-approved-job"
+              element={<CreatePreApprovedJob />}
+            />
 
             {/* KYC Management route */}
             <Route path="kyc-management" element={<KYCManagement />} />
@@ -66,6 +77,11 @@ function App() {
               path="account-management/client/:gmail"
               element={<ClientPaymentDetails />}
             />
+
+            <Route path="admin/services" element={<AllServices />} />
+            <Route path="admin/services/add" element={<AddService />} />
+            <Route path="admin/services/edit/:id" element={<AddService />} />
+            
           </Route>
         </Routes>
       </Router>

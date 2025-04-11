@@ -16,21 +16,15 @@ import {
   CheckIcon,
 } from "@heroicons/react/24/outline";
 
-// Service types for the dropdown
-const serviceTypes = [
-  "Company Registration",
-  "Tax Filing",
-  "Business License",
-  "Legal Consultation",
-  "Document Verification",
-  "Compliance Audit",
-];
-
 function CreateJob() {
   const navigate = useNavigate();
 
   // Operation managers state
   const [operationManagers, setOperationManagers] = useState([]);
+
+  // Services state - dynamic from service management
+  const [services, setServices] = useState([]);
+  const [loadingServices, setLoadingServices] = useState(false);
 
   // New state for checking existing clients
   const [existingClient, setExistingClient] = useState(null);
@@ -69,6 +63,27 @@ function CreateJob() {
     };
 
     fetchOperationManagers();
+  }, []);
+
+  // Fetch services from service management
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        setLoadingServices(true);
+        const response = await axiosInstance.get("/services");
+        // Only use active services
+        const activeServices = response.data.filter(
+          (service) => service.status === "active"
+        );
+        setServices(activeServices);
+      } catch (error) {
+        console.error("Error fetching services:", error);
+      } finally {
+        setLoadingServices(false);
+      }
+    };
+
+    fetchServices();
   }, []);
 
   // Function to check if a client with the given Gmail exists
@@ -254,7 +269,8 @@ function CreateJob() {
         });
 
         console.log("Job created:", response.data);
-        navigate("/");
+        // Navigate to admin jobs page to see the job
+        navigate("/admin/jobs");
       } catch (error) {
         console.error("Error creating job:", error);
       } finally {
@@ -336,13 +352,20 @@ function CreateJob() {
                     className={`block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
                       errors.serviceType ? "border-red-300" : ""
                     }`}
+                    disabled={loadingServices}
                   >
                     <option value="">Select a service type</option>
-                    {serviceTypes.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
+                    {loadingServices ? (
+                      <option value="" disabled>
+                        Loading services...
                       </option>
-                    ))}
+                    ) : (
+                      services.map((service) => (
+                        <option key={service._id} value={service.name}>
+                          {service.name}
+                        </option>
+                      ))
+                    )}
                   </select>
                   {errors.serviceType && (
                     <p className="mt-1 text-sm text-red-600">
@@ -352,6 +375,7 @@ function CreateJob() {
                 </div>
               </div>
 
+              {/* Rest of the form remains unchanged... */}
               {/* Documents Section */}
               <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <div className="flex items-center space-x-3 mb-4">

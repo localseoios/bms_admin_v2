@@ -27,6 +27,11 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
+import {
+  TextInputWithHistory,
+  DateInputWithHistory,
+} from "./PersonDetailsHistory";
+
 
 function JobDetails() {
   const { jobId } = useParams();
@@ -1504,7 +1509,7 @@ useEffect(() => {
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
                 Name
-                {/* Pre-filled indicator */}
+                {/* Pre-filled indicator remains the same */}
                 {job &&
                   job.timeline?.some((event) =>
                     event.description?.includes(
@@ -1517,8 +1522,13 @@ useEffect(() => {
                     </span>
                   )}
               </label>
-              <input
-                type="text"
+
+              {/* Replace standard input with history-aware input */}
+              <TextInputWithHistory
+                fieldName="name"
+                personId={entry._id}
+                personType={section}
+                jobId={jobId}
                 value={entry.name}
                 onChange={(e) => {
                   const newDetails = [...details];
@@ -1714,9 +1724,11 @@ useEffect(() => {
                   <label className="block text-xs text-gray-500 mb-1">
                     QID Number
                   </label>
-                  <input
-                    type="text"
-                    placeholder="QID Number"
+                  <TextInputWithHistory
+                    fieldName="qidNo"
+                    personId={entry._id}
+                    personType={section}
+                    jobId={jobId}
                     value={entry.qidNo}
                     onChange={(e) => {
                       const newDetails = [...details];
@@ -1734,6 +1746,7 @@ useEffect(() => {
                         ? "bg-indigo-50 border-indigo-300"
                         : "border-gray-300"
                     } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+                    placeholder="QID Number"
                   />
                 </div>
                 <div>
@@ -1741,8 +1754,11 @@ useEffect(() => {
                     Expiry Date
                   </label>
                   <div className="flex items-center space-x-2">
-                    <input
-                      type="date"
+                    <DateInputWithHistory
+                      fieldName="qidExpiry"
+                      personId={entry._id}
+                      personType={section}
+                      jobId={jobId}
                       value={entry.qidExpiry}
                       onChange={(e) => {
                         const newDetails = [...details];
@@ -2044,9 +2060,11 @@ useEffect(() => {
                   <label className="block text-xs text-gray-500 mb-1">
                     Passport Number
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Passport Number"
+                  <TextInputWithHistory
+                    fieldName="passportNo"
+                    personId={entry._id}
+                    personType={section}
+                    jobId={jobId}
                     value={entry.passportNo}
                     onChange={(e) => {
                       const newDetails = [...details];
@@ -2064,6 +2082,7 @@ useEffect(() => {
                         ? "bg-indigo-50 border-indigo-300"
                         : "border-gray-300"
                     } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+                    placeholder="Passport Number"
                   />
                 </div>
                 <div>
@@ -2071,8 +2090,11 @@ useEffect(() => {
                     Expiry Date
                   </label>
                   <div className="flex items-center space-x-2">
-                    <input
-                      type="date"
+                    <DateInputWithHistory
+                      fieldName="passportExpiry"
+                      personId={entry._id}
+                      personType={section}
+                      jobId={jobId}
                       value={entry.passportExpiry}
                       onChange={(e) => {
                         const newDetails = [...details];
@@ -2201,8 +2223,11 @@ useEffect(() => {
                     </span>
                   )}
               </label>
-              <input
-                type="tel"
+              <TextInputWithHistory
+                fieldName="mobileNo"
+                personId={entry._id}
+                personType={section}
+                jobId={jobId}
                 value={entry.mobileNo}
                 onChange={(e) => {
                   const newDetails = [...details];

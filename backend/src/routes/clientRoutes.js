@@ -7,9 +7,19 @@ const {
   getPersonDetailsByGmail,
   checkPersonDetailsInconsistencies,
   synchronizeClientPersonDetails,
-  checkCompanyDetailsStatus, // Add the new function
+  checkCompanyDetailsStatus,
+  getAssignedClients, // Add the new function
 } = require("../controllers/clientController");
 const { protect, checkPermission } = require("../middleware/authMiddleware");
+
+// Route to get clients assigned to current user (Operation Manager)
+router.get(
+  '/assigned',
+  protect,
+  checkPermission("operationManagement"),
+  getAssignedClients
+);
+
 
 // Route to get client details by Gmail
 router.get("/:gmail", protect, getClientByGmail);
@@ -46,5 +56,7 @@ router.get(
   checkPermission("operationManagement"),
   checkCompanyDetailsStatus
 );
+
+
 
 module.exports = router;

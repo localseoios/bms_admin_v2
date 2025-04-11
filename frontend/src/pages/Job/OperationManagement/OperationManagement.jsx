@@ -12,6 +12,7 @@ import {
   ArrowDownTrayIcon,
   CalendarIcon,
   UserIcon,
+  PlusCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment } from "react";
@@ -288,7 +289,14 @@ function OperationManagement() {
               Track and manage your assigned tasks efficiently
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:flex-none">
+          <div className="mt-4 sm:mt-0 sm:flex space-x-4">
+            <button
+              onClick={() => navigate("/create-pre-approved-job")}
+              className="inline-flex items-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"
+            >
+              <PlusCircleIcon className="h-5 w-5 mr-2 group-hover:animate-pulse" />
+              Create Pre-Approved Job
+            </button>
             <button
               onClick={exportJobs}
               className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"

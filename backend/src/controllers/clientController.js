@@ -4,6 +4,7 @@ const Client = require("../models/Client");
 const Job = require("../models/Job");
 const { CompanyDetails } = require("../models/OperationModels");
 const { findPersonDetailsByGmail } = require("../utils/clientUtils"); // Import the utility function
+const asyncHandler = require("express-async-handler");
 
 // Get client by Gmail with enhanced information including engagement letter
 const getClientByGmail = async (req, res) => {
@@ -275,6 +276,182 @@ const checkCompanyDetailsStatus = async (req, res) => {
   }
 };
 
+const getAssignedClients = asyncHandler(async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    console.log(`Finding jobs assigned to user ${req.user._id}`);
+
+    // First, get all jobs assigned to this user
+    const assignedJobs = await Job.find({ assignedPerson: req.user._id })
+      .select("clientId serviceType status createdAt")
+      .populate("clientId", "name gmail startingPoint");
+
+    console.log(
+      `Found ${assignedJobs ? assignedJobs.length : 0} assigned jobs`
+    );
+
+    if (!assignedJobs || assignedJobs.length === 0) {
+      return res.status(200).json({
+        clients: [],
+        pagination: {
+          currentPage: page,
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: limit,
+        },
+        message: "No clients are currently assigned to you",
+      });
+    }
+
+    // Group jobs by client
+    const clientsMap = {};
+
+    assignedJobs.forEach((job) => {
+      // Skip jobs with no valid clientId (just in case)
+      if (!job.clientId || !job.clientId._id) {
+        console.log(`Job ${job._id} has no valid clientId, skipping`);
+        return;
+      }
+
+      const clientId = job.clientId._id.toString();
+
+      if (!clientsMap[clientId]) {
+        clientsMap[clientId] = {
+          _id: job.clientId._id,
+          name: job.clientId.name,
+          gmail: job.clientId.gmail,
+          startingPoint: job.clientId.startingPoint,
+          jobs: [],
+          jobCount: 0,
+          activeJobCount: 0,
+          latestJobDate: null,
+          latestServiceType: null,
+        };
+      }
+
+      // Add job to client's jobs array
+      clientsMap[clientId].jobs.push({
+        _id: job._id,
+        serviceType: job.serviceType,
+        status: job.status,
+        createdAt: job.createdAt,
+      });
+
+      // Update counts
+      clientsMap[clientId].jobCount++;
+
+      if (!["completed", "cancelled", "rejected"].includes(job.status)) {
+        clientsMap[clientId].activeJobCount++;
+      }
+
+      // Update latest job info if needed
+      if (
+        !clientsMap[clientId].latestJobDate ||
+        new Date(job.createdAt) > new Date(clientsMap[clientId].latestJobDate)
+      ) {
+        clientsMap[clientId].latestJobDate = job.createdAt;
+        clientsMap[clientId].latestServiceType = job.serviceType;
+      }
+    });
+
+    // Convert to array and sort by latest job date
+    let clientsArray = Object.values(clientsMap);
+
+    console.log(`Grouped into ${clientsArray.length} unique clients`);
+
+    if (clientsArray.length === 0) {
+      return res.status(200).json({
+        clients: [],
+        pagination: {
+          currentPage: page,
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: limit,
+        },
+        message: "No valid clients found in your assigned jobs",
+      });
+    }
+
+    clientsArray.sort((a, b) => {
+      if (!a.latestJobDate) return 1;
+      if (!b.latestJobDate) return -1;
+      return new Date(b.latestJobDate) - new Date(a.latestJobDate);
+    });
+
+    // Get total count for pagination
+    const totalClients = clientsArray.length;
+
+    // Apply pagination
+    clientsArray = clientsArray.slice(skip, skip + limit);
+
+    // For each client in the paginated list, find engagement letter
+    const jobIdsByClient = {};
+    clientsArray.forEach((client) => {
+      jobIdsByClient[client._id.toString()] = client.jobs.map((job) => job._id);
+    });
+
+    // Flatten job IDs array for query
+    const allJobIds = [].concat(...Object.values(jobIdsByClient));
+
+    console.log(`Looking for engagement letters for ${allJobIds.length} jobs`);
+
+    // Get all engagement letters in one query
+    const companyDetailsWithLetters = await CompanyDetails.find({
+      jobId: { $in: allJobIds },
+      engagementLetters: { $exists: true, $ne: null },
+    }).select("jobId engagementLetters");
+
+    console.log(`Found ${companyDetailsWithLetters.length} engagement letters`);
+
+    // Map job IDs to letters
+    const engagementLettersByJob = {};
+    companyDetailsWithLetters.forEach((detail) => {
+      engagementLettersByJob[detail.jobId.toString()] =
+        detail.engagementLetters;
+    });
+
+    // Add engagement letter to each client
+    clientsArray = clientsArray.map((client) => {
+      // Find first job with a letter
+      const jobWithLetter = client.jobs.find(
+        (job) => engagementLettersByJob[job._id.toString()]
+      );
+
+      // Clean up by removing the jobs array which we no longer need to return
+      const { jobs, ...clientData } = client;
+
+      return {
+        ...clientData,
+        engagementLetter: jobWithLetter
+          ? engagementLettersByJob[jobWithLetter._id.toString()]
+          : null,
+      };
+    });
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(totalClients / limit);
+
+    res.status(200).json({
+      clients: clientsArray,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems: totalClients,
+        itemsPerPage: limit,
+      },
+    });
+  } catch (error) {
+    console.error("Error retrieving assigned clients:", error);
+    res.status(500).json({
+      message: "Error retrieving assigned clients",
+      error: error.message,
+    });
+  }
+});
+
 
 module.exports = {
   getClientByGmail,
@@ -283,4 +460,5 @@ module.exports = {
   synchronizeClientPersonDetails,
   checkPersonDetailsInconsistencies,
   checkCompanyDetailsStatus,
+  getAssignedClients, // New function added
 };
