@@ -18,6 +18,7 @@ import AssignedClients from "./pages/Job/OperationManagement/AssignedClients";
 import CreatePreApprovedJob from "./pages/Job/OperationManagement/CreatePreApprovedJob";
 import AllServices from "./pages/AdminService/AllServices";
 import AddService from "./pages/AdminService/AddService";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
   return (
@@ -34,10 +35,8 @@ function App() {
             <Route path="admin/jobs" element={<AdminJobs />} />
             <Route path="compliance" element={<ComplianceManagement />} />
             <Route path="notifications" element={<Notifications />} />
-            <Route
-              path="dashboard"
-              element={<div>Dashboard (Coming Soon)</div>}
-            />
+            <Route path="dashboard" element={<Dashboard />} />
+
             <Route path="reports" element={<div>Reports (Coming Soon)</div>} />
             <Route
               path="documents"
@@ -81,7 +80,6 @@ function App() {
             <Route path="admin/services" element={<AllServices />} />
             <Route path="admin/services/add" element={<AddService />} />
             <Route path="admin/services/edit/:id" element={<AddService />} />
-            
           </Route>
         </Routes>
       </Router>

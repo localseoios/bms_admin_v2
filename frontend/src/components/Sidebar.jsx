@@ -37,7 +37,7 @@ const navigation = [
         icon: UserGroupIcon,
       },
       { name: "Documents", href: "/documents", icon: DocumentTextIcon },
-      { name: "Database", href: "/database", icon: CircleStackIcon },
+      // { name: "Database", href: "/database", icon: CircleStackIcon },
     ],
   },
   {
@@ -53,8 +53,8 @@ const navigation = [
         href: "/admin/jobs",
         icon: BriefcaseIcon,
       },
-      { name: "Profile", href: "/profile", icon: UserIcon },
-      { name: "Settings", href: "/settings", icon: Cog6ToothIcon },
+      // { name: "Profile", href: "/profile", icon: UserIcon },
+      // { name: "Settings", href: "/settings", icon: Cog6ToothIcon },
     ],
   },
   {
