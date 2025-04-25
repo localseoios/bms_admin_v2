@@ -21,11 +21,11 @@ function Header() {
     const fetchUser = async () => {
       try {
         const response = await axiosInstance.get("/users/me");
-        setUser(response.data); // { _id, name, email, role }
+        setUser(response.data); 
         localStorage.setItem("user", JSON.stringify(response.data));
       } catch (error) {
         setUser(null);
-        localStorage.removeItem("user"); // Clear if token is invalid/expired
+        localStorage.removeItem("user"); 
       } finally {
         setLoading(false);
       }
