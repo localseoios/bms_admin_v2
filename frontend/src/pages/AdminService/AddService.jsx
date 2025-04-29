@@ -5,7 +5,7 @@ import {
   ExclamationCircleIcon,
 } from "@heroicons/react/24/outline";
 import { motion } from "framer-motion";
-import axios from "axios";
+import axiosInstance from "../../utils/axios"; // CHANGED: Use axiosInstance instead of axios
 
 function AddService() {
   const navigate = useNavigate();
@@ -18,6 +18,18 @@ function AddService() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [authInfo, setAuthInfo] = useState(null); // DEBUG: Added to check auth state
+
+  // DEBUG: Check authentication state on load
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    setAuthInfo({
+      isLoggedIn: !!user.token,
+      hasToken: !!user.token,
+      roles: user.roles || []
+    });
+    console.log('Current user state:', user);
+  }, []);
 
   // Fetch service data if editing
   useEffect(() => {
@@ -25,16 +37,26 @@ function AddService() {
       if (id) {
         try {
           setLoading(true);
-          const res = await axios.get(`/api/services/${id}`);
-          setService({
-            name: res.data.name,
-            description: res.data.description,
-            status: res.data.status || "active",
-          });
-          setError(null);
+          console.log('Fetching service with ID:', id);
+          
+          const res = await axiosInstance.get(`services/${id}`); // CHANGED: Use axiosInstance & removed /api prefix
+          
+          if (res.data && typeof res.data === 'object') {
+            setService({
+              name: res.data.name || "",
+              description: res.data.description || "",
+              status: res.data.status || "active",
+            });
+            setError(null);
+          } else {
+            throw new Error("Invalid data format received from server");
+          }
         } catch (err) {
-          console.error("Error fetching service:", err);
-          setError("Failed to load service details. Please try again.");
+          console.error("Error fetching service:", err.response || err);
+          setError(
+            err.response?.data?.message || 
+            "Failed to load service details. Please try again."
+          );
         } finally {
           setLoading(false);
         }
@@ -49,21 +71,41 @@ function AddService() {
     setSubmitting(true);
 
     try {
+      // Debug: Log the request details
+      console.log('Submitting service with data:', service);
+      console.log('Auth info:', authInfo);
+      
       if (id) {
         // Update existing service
-        await axios.put(`/api/services/${id}`, service);
+        await axiosInstance.put(`services/${id}`, service); // CHANGED: Use axiosInstance & removed /api prefix
       } else {
         // Create new service
-        await axios.post("/api/services", service);
+        await axiosInstance.post("services", service); // CHANGED: Use axiosInstance & removed /api prefix
       }
 
       navigate("/admin/services");
     } catch (err) {
-      console.error("Error saving service:", err);
-      setError(
-        err.response?.data?.message ||
-          "Failed to save service. Please check your inputs and try again."
-      );
+      console.error("Error saving service:", err.response || err);
+      
+      // More detailed error handling
+      let errorMessage = "Failed to save service. Please check your inputs and try again.";
+      
+      if (err.response) {
+        console.error("Response status:", err.response.status);
+        console.error("Response data:", err.response.data);
+        
+        if (err.response.status === 401) {
+          errorMessage = "Authentication error. Please log in again.";
+        } else if (err.response.status === 403) {
+          errorMessage = "You don't have permission to perform this action.";
+        } else if (err.response.status === 405) {
+          errorMessage = "This operation is not allowed. Please contact support.";
+        }
+        
+        errorMessage = err.response.data?.message || errorMessage;
+      }
+      
+      setError(errorMessage);
       setSubmitting(false);
     }
   };
@@ -86,6 +128,16 @@ function AddService() {
             </h1>
           </div>
         </div>
+
+        {/* Auth Debug Info - Remove in production */}
+        {authInfo && (
+          <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md text-xs">
+            <p><strong>Debug Auth Info:</strong></p>
+            <p>Logged in: {authInfo.isLoggedIn ? 'Yes' : 'No'}</p>
+            <p>Token exists: {authInfo.hasToken ? 'Yes' : 'No'}</p>
+            <p>Roles: {authInfo.roles.length > 0 ? authInfo.roles.join(', ') : 'None'}</p>
+          </div>
+        )}
 
         {/* Loading State */}
         {loading && (

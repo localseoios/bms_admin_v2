@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
+import axiosInstance from "../../utils/axios"; // CHANGED: Use axiosInstance instead of axios
 import {
   PlusIcon,
   PencilIcon,
@@ -26,14 +26,22 @@ function AllServices() {
     const fetchServices = async () => {
       try {
         setLoading(true);
-        const res = await axios.get("/api/services");
+        console.log('Fetching services...');
+        
+        const res = await axiosInstance.get("services"); // CHANGED: Use axiosInstance & removed /api prefix
+        
         // Ensure we're always setting an array
         const servicesData = Array.isArray(res.data) ? res.data : [];
+        console.log('Services fetched:', servicesData.length);
+        
         setServices(servicesData);
         setError(null);
       } catch (err) {
-        console.error("Error fetching services:", err);
-        setError("Failed to load services. Please try again.");
+        console.error("Error fetching services:", err.response || err);
+        setError(
+          err.response?.data?.message || 
+          "Failed to load services. Please try again."
+        );
         // Set services to empty array on error
         setServices([]);
       } finally {
@@ -47,11 +55,27 @@ function AllServices() {
   const handleDelete = async (serviceId) => {
     if (window.confirm("Are you sure you want to delete this service?")) {
       try {
-        await axios.delete(`/api/services/${serviceId}`);
+        await axiosInstance.delete(`services/${serviceId}`); // CHANGED: Use axiosInstance & removed /api prefix
         setServices(services.filter((service) => service._id !== serviceId));
       } catch (err) {
-        console.error("Error deleting service:", err);
-        alert("Failed to delete service. Please try again.");
+        console.error("Error deleting service:", err.response || err);
+        
+        // Better error message based on status code
+        let errorMessage = "Failed to delete service. Please try again.";
+        
+        if (err.response) {
+          if (err.response.status === 401) {
+            errorMessage = "Authentication error. Please log in again.";
+          } else if (err.response.status === 403) {
+            errorMessage = "You don't have permission to delete this service.";
+          } else if (err.response.status === 404) {
+            errorMessage = "Service not found. It may have been already deleted.";
+          }
+          
+          errorMessage = err.response.data?.message || errorMessage;
+        }
+        
+        alert(errorMessage);
       }
     }
   };
