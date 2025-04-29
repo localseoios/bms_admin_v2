@@ -6,16 +6,17 @@ const { CompanyDetails } = require("../models/OperationModels");
 const { findPersonDetailsByGmail } = require("../utils/clientUtils"); // Import the utility function
 const asyncHandler = require("express-async-handler");
 
-// Get client by Gmail with enhanced information including engagement letter
+// Modified getClientByGmail to work with any email format
 const getClientByGmail = async (req, res) => {
-  const { gmail } = req.params;
+  const { gmail } = req.params; // Despite the name, this now contains any email
   try {
-    // Find the client
+    // Find the client using the email (stored in the gmail field)
     const client = await Client.findOne({ gmail });
     if (!client) {
       return res.status(404).json({ message: "Client not found" });
     }
 
+    // Rest of the function remains the same
     // Get all jobs for this client
     const jobs = await Job.find({ clientId: client._id });
 
@@ -43,6 +44,9 @@ const getClientByGmail = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+// We don't need to modify other functions as they will work with any email
+// stored in the gmail field of the Client model
 
 // Get engagement letter for a specific client by Gmail
 const getEngagementLetterByGmail = async (req, res) => {

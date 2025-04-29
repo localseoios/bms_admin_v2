@@ -32,7 +32,7 @@ const createJob = async (req, res) => {
       jobDetails,
       specialDescription,
       clientName,
-      gmail,
+      gmail, // This will now contain any email (not just Gmail)
       startingPoint,
     } = req.body;
 
@@ -47,11 +47,12 @@ const createJob = async (req, res) => {
       return res.status(400).json({ message: "Missing required text fields" });
     }
 
-    if (!gmail.endsWith("@gmail.com")) {
-      return res
-        .status(400)
-        .json({ message: "Please provide a valid Gmail address" });
-    }
+ // Updated validation to check for valid email format instead of just gmail
+ if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(gmail)) {
+  return res
+    .status(400)
+    .json({ message: "Please provide a valid email address" });
+}
 
     if (!req.files["documentPassport"] || !req.files["documentID"]) {
       return res
@@ -59,14 +60,14 @@ const createJob = async (req, res) => {
         .json({ message: "Required documents are missing" });
     }
 
-    // Check if client exists, create if not
-    let client = await Client.findOne({ gmail });
-    const clientExists = !!client; // Flag to track if this is an existing client
+// Check if client exists, create if not - using the email as the identifier
+let client = await Client.findOne({ gmail }); // Despite the field name, this will store any email
+const clientExists = !!client; // Flag to track if this is an existing client
 
-    if (!client) {
-      client = new Client({ name: clientName, gmail, startingPoint });
-      await client.save();
-    }
+if (!client) {
+  client = new Client({ name: clientName, gmail, startingPoint });
+  await client.save();
+}
 
     const documentPassportUrl = await safeCloudinaryUpload(
       req.files["documentPassport"][0].path
@@ -96,10 +97,10 @@ const createJob = async (req, res) => {
       jobDetails,
       specialDescription,
       clientName,
-      gmail,
+      gmail, // This now contains any email
       startingPoint,
       status: initialStatus, // Auto-approve for existing clients
-      createdBy: req.user._id, // Add this line to set who created the job
+      createdBy: req.user._id,
 
       // Initialize the timeline with job creation
       timeline: [

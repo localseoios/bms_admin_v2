@@ -1,4 +1,4 @@
-// routes/clientRoutes.js
+// Modified client routes to handle any email format
 const express = require("express");
 const router = express.Router();
 const {
@@ -8,7 +8,7 @@ const {
   checkPersonDetailsInconsistencies,
   synchronizeClientPersonDetails,
   checkCompanyDetailsStatus,
-  getAssignedClients, // Add the new function
+  getAssignedClients,
 } = require("../controllers/clientController");
 const { protect, checkPermission } = require("../middleware/authMiddleware");
 
@@ -20,8 +20,8 @@ router.get(
   getAssignedClients
 );
 
-
-// Route to get client details by Gmail
+// Route to get client details by email (encoded in URL)
+// Note: We keep the :gmail parameter name for backward compatibility
 router.get("/:gmail", protect, getClientByGmail);
 
 // New route to get engagement letter specifically
@@ -56,7 +56,5 @@ router.get(
   checkPermission("operationManagement"),
   checkCompanyDetailsStatus
 );
-
-
 
 module.exports = router;

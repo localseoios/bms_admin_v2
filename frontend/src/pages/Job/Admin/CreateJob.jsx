@@ -86,17 +86,17 @@ function CreateJob() {
     fetchServices();
   }, []);
 
-  // Function to check if a client with the given Gmail exists
-  const checkExistingClient = async (gmail) => {
-    if (!gmail || !gmail.endsWith("@gmail.com")) {
+  // Modified function to check if a client with the given email exists
+  const checkExistingClient = async (email) => {
+    if (!email || !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email)) {
       setExistingClient(null);
       return;
     }
 
     setCheckingClient(true);
     try {
-      // Try to fetch client by Gmail
-      const response = await axiosInstance.get(`/clients/${gmail}`);
+      // Try to fetch client by email
+      const response = await axiosInstance.get(`/clients/${encodeURIComponent(email)}`);
 
       if (response.data && response.data.client) {
         setExistingClient(response.data.client);
@@ -120,7 +120,7 @@ function CreateJob() {
     }
   };
 
-  // Debounce function for Gmail checks
+  // Debounce function for email checks
   const debounce = (func, delay) => {
     let timeoutId;
     return (...args) => {
@@ -134,31 +134,7 @@ function CreateJob() {
   // Create debounced version of the client check
   const debouncedCheckClient = debounce(checkExistingClient, 500);
 
-  // Validate Form
-  const validateForm = () => {
-    const newErrors = {};
-    if (!formData.serviceType)
-      newErrors.serviceType = "Service type is required";
-    if (!formData.documentPassport)
-      newErrors.documentPassport = "Passport document is required";
-    if (!formData.documentID) newErrors.documentID = "ID document is required";
-    if (!formData.assignedPerson)
-      newErrors.assignedPerson = "Assigned person is required";
-    if (!formData.jobDetails) newErrors.jobDetails = "Job details are required";
-    if (!formData.clientName) newErrors.clientName = "Client name is required";
-    if (!formData.gmail) {
-      newErrors.gmail = "Gmail is required";
-    } else if (!/^[A-Z0-9._%+-]+@gmail\.com$/i.test(formData.gmail)) {
-      newErrors.gmail = "Invalid Gmail address. Must end with @gmail.com";
-    }
-    if (!formData.startingPoint)
-      newErrors.startingPoint = "Starting point is required";
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  // Handle text input changes
+  // Handle text input changes with updated email checks
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -173,19 +149,43 @@ function CreateJob() {
       }));
     }
 
-    // Check for existing client when Gmail changes
-    if (name === "gmail" && value.endsWith("@gmail.com")) {
+    // Check for existing client when email changes
+    if (name === "gmail" && /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)) {
       debouncedCheckClient(value);
-    } else if (name === "gmail" && !value.endsWith("@gmail.com")) {
+    } else if (name === "gmail") {
       setExistingClient(null);
     }
   };
 
-  // Handle Gmail field blur for immediate checking
+  // Handle email field blur for immediate checking
   const handleGmailBlur = () => {
-    if (formData.gmail && formData.gmail.endsWith("@gmail.com")) {
+    if (formData.gmail && /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formData.gmail)) {
       checkExistingClient(formData.gmail);
     }
+  };
+
+  // Validate Form
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.serviceType)
+      newErrors.serviceType = "Service type is required";
+    if (!formData.documentPassport)
+      newErrors.documentPassport = "Passport document is required";
+    if (!formData.documentID) newErrors.documentID = "ID document is required";
+    if (!formData.assignedPerson)
+      newErrors.assignedPerson = "Assigned person is required";
+    if (!formData.jobDetails) newErrors.jobDetails = "Job details are required";
+    if (!formData.clientName) newErrors.clientName = "Client name is required";
+    if (!formData.gmail) {
+      newErrors.gmail = "Email address is required";
+    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formData.gmail)) {
+      newErrors.gmail = "Invalid email address format";
+    }
+    if (!formData.startingPoint)
+      newErrors.startingPoint = "Starting point is required";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   // Handle single file uploads (passport and ID)
@@ -375,7 +375,6 @@ function CreateJob() {
                 </div>
               </div>
 
-              {/* Rest of the form remains unchanged... */}
               {/* Documents Section */}
               <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <div className="flex items-center space-x-3 mb-4">
@@ -749,10 +748,10 @@ function CreateJob() {
                     )}
                   </div>
 
-                  {/* Gmail */}
+                  {/* Email field */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Gmail Address
+                      Email Address
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -771,7 +770,7 @@ function CreateJob() {
                             ? "border-green-300 bg-green-50"
                             : ""
                         }`}
-                        placeholder="Enter client's Gmail address"
+                        placeholder="Enter client's email address"
                       />
                       {checkingClient && (
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
