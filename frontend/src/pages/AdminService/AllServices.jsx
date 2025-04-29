@@ -27,11 +27,15 @@ function AllServices() {
       try {
         setLoading(true);
         const res = await axios.get("/api/services");
-        setServices(res.data);
+        // Ensure we're always setting an array
+        const servicesData = Array.isArray(res.data) ? res.data : [];
+        setServices(servicesData);
         setError(null);
       } catch (err) {
         console.error("Error fetching services:", err);
         setError("Failed to load services. Please try again.");
+        // Set services to empty array on error
+        setServices([]);
       } finally {
         setLoading(false);
       }
@@ -56,20 +60,23 @@ function AllServices() {
     navigate(`/admin/services/edit/${serviceId}`);
   };
 
-  const filteredServices = services.filter(
-    (service) =>
-      service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      service.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Only filter if services is an array
+  const filteredServices = Array.isArray(services) 
+    ? services.filter(
+        (service) =>
+          service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          service.description.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : [];
 
-  const totalServices = services.length;
-  const totalUsage = services.reduce(
-    (sum, service) => sum + (service.usageCount || 0),
-    0
-  );
-  const activeServices = services.filter(
-    (service) => service.status === "active"
-  ).length;
+  // Safely calculate stats
+  const totalServices = Array.isArray(services) ? services.length : 0;
+  const totalUsage = Array.isArray(services) 
+    ? services.reduce((sum, service) => sum + (service.usageCount || 0), 0)
+    : 0;
+  const activeServices = Array.isArray(services)
+    ? services.filter((service) => service.status === "active").length
+    : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
