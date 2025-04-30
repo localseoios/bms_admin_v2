@@ -447,7 +447,7 @@ const getPersonDetails = asyncHandler(async (req, res) => {
     personType,
   });
 
-  
+  getEngagementLetters; 
 
   // If no entries found for this job, look for entries from other jobs with the same Gmail
   if (personDetails.length === 0) {
@@ -1192,7 +1192,7 @@ const updateKycDocuments = asyncHandler(async (req, res) => {
   res.status(200).json(updatedKycDocuments);
 });
 
-// Update the uploadEngagementLetter function to share across all jobs for the same client
+// Updated uploadEngagementLetter function for operationController.js
 const uploadEngagementLetter = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
 
@@ -1247,24 +1247,36 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
         jobId,
         companyName: job.clientName || "",
         updatedBy: req.user._id,
+        engagementLetters: [] // Initialize as empty array
       });
+    } else if (!Array.isArray(companyDetails.engagementLetters)) {
+      // Ensure engagementLetters is an array
+      companyDetails.engagementLetters = [];
     }
 
-    // Upload engagement letter to Cloudinary with better error handling
-    const { uploadToCloudinary } = require('../services/fileUploadService');
-    
-    const uploadResult = await uploadToCloudinary(req.file.path, {
-      folder: `clients/${job.gmail}/engagement_letters`,
-      resource_type: 'auto',
-    });
+    // Upload engagement letter to Cloudinary
+    const uploadResult = await safeCloudinaryUpload(
+      req.file.path,
+      { folder: `clients/${job.gmail}/engagement_letters`, resource_type: 'auto' }
+    );
     
     if (!uploadResult.success) {
       console.warn(`Using fallback URL due to Cloudinary upload failure: ${uploadResult.url}`);
     }
     
-    // Update current job's company details
-    companyDetails.engagementLetters = uploadResult.url;
+    // Create a properly formatted engagement letter object
+    const engagementLetterObject = {
+      fileUrl: uploadResult.url,
+      fileName: req.file.originalname || 'Engagement Letter',
+      uploadedAt: new Date(),
+      uploadedBy: req.user._id,
+      description: req.body.description || `Uploaded on ${new Date().toLocaleDateString()}`
+    };
+    
+    // Add the new engagement letter to the array
+    companyDetails.engagementLetters.push(engagementLetterObject);
     companyDetails.updatedBy = req.user._id;
+    
     await companyDetails.save();
     
     console.log(`Company details updated with engagement letter: ${uploadResult.url}`);
@@ -1302,8 +1314,13 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
             let otherCompanyDetails = await CompanyDetails.findOne({ jobId: otherJob._id });
             
             if (otherCompanyDetails) {
-              // Update existing company details
-              otherCompanyDetails.engagementLetters = uploadResult.url;
+              // Update existing company details with proper array format
+              if (!Array.isArray(otherCompanyDetails.engagementLetters)) {
+                otherCompanyDetails.engagementLetters = [];
+              }
+              
+              // Add the same engagement letter to other jobs
+              otherCompanyDetails.engagementLetters.push(engagementLetterObject);
               otherCompanyDetails.updatedBy = req.user._id;
               await otherCompanyDetails.save();
               
@@ -1322,7 +1339,7 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
               const newCompanyDetails = new CompanyDetails({
                 jobId: otherJob._id,
                 companyName: otherJob.clientName || "",
-                engagementLetters: uploadResult.url,
+                engagementLetters: [engagementLetterObject],
                 updatedBy: req.user._id,
               });
               await newCompanyDetails.save();
@@ -1363,7 +1380,7 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
 
     res.status(200).json({
       message: "Engagement letter uploaded successfully",
-      engagementLetter: companyDetails.engagementLetters,
+      engagementLetter: engagementLetterObject
     });
   } catch (error) {
     console.error(`Error in uploadEngagementLetter: ${error.message}`);
@@ -1376,7 +1393,39 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
   }
 });
 
+// An additional endpoint to get all engagement letters
+const getEngagementLetters = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
 
+  // Check if job exists and if user has permission
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  // Get company details
+  const companyDetails = await CompanyDetails.findOne({ jobId });
+  if (!companyDetails) {
+    return res.status(200).json([]);
+  }
+
+  // Handle both array and string formats for backward compatibility
+  let engagementLetters = [];
+  if (Array.isArray(companyDetails.engagementLetters)) {
+    engagementLetters = companyDetails.engagementLetters;
+  } else if (companyDetails.engagementLetters) {
+    // Convert string to object format
+    engagementLetters = [{
+      fileUrl: companyDetails.engagementLetters,
+      fileName: 'Engagement Letter',
+      uploadedAt: companyDetails.updatedAt,
+      uploadedBy: companyDetails.updatedBy
+    }];
+  }
+
+  res.status(200).json(engagementLetters);
+});
 
 
 // This function should be in operationController.js
@@ -2317,6 +2366,7 @@ module.exports = {
   getKycDocuments,
   updateKycDocuments,
   uploadEngagementLetter,
+  getEngagementLetters,
   completeOperation,
   createPreApprovedJob,
   getPersonFieldHistory,

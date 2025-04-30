@@ -13,7 +13,18 @@ const companyDetailsSchema = new mongoose.Schema(
     registeredAddress: { type: String },
     incorporationDate: { type: Date },
     serviceType: { type: String },
-    engagementLetters: { type: String }, // URL to document
+    engagementLetters: [
+      {
+        fileUrl: { type: String, required: true }, // URL to document
+        fileName: { type: String },
+        uploadedAt: { type: Date, default: Date.now },
+        uploadedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        description: { type: String }, // Optional description for the file
+      },
+    ],
     mainPurpose: { type: String },
     expiryDate: { type: Date },
     companyComputerCard: { type: String }, // URL to document

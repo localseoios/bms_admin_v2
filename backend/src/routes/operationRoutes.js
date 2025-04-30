@@ -15,6 +15,7 @@ const {
   completeOperation,
   createPreApprovedJob,
   getPersonFieldHistory,
+  getEngagementLetters,
 } = require("../controllers/operationController");
 const multer = require("multer");
 const path = require("path");
@@ -139,6 +140,14 @@ router.get(
   protect,
   checkPermission("operationManagement"),
   getKycDocuments
+);
+
+// Add this route to retrieve all engagement letters for a job
+router.get(
+  "/jobs/:jobId/engagement-letters",
+  protect,
+  checkPermission("operationManagement"),
+  getEngagementLetters
 );
 
 router.put(

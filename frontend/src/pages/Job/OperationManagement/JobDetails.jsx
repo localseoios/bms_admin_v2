@@ -25,6 +25,7 @@ import {
   InformationCircleIcon,
   ChevronUpIcon,
   ChevronDownIcon,
+  PlusIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 import {
@@ -44,6 +45,8 @@ function JobDetails() {
 
   // Form states
   const [engagementLetter, setEngagementLetter] = useState(null);
+  const [engagementLetters, setEngagementLetters] = useState([]);
+
   const [isDragging, setIsDragging] = useState(false);
 
   // Timeline state
@@ -174,6 +177,24 @@ function JobDetails() {
     },
   ]);
 
+  // Move the handleEngagementLetterDrop function outside of useEffect
+  // so it's accessible in the component scope
+  const handleEngagementLetterDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      setEngagementLetters((prev) => [...prev, ...files]);
+    }
+  };
+
+  // Function to remove a specific engagement letter
+  const removeEngagementLetter = (index) => {
+    setEngagementLetters((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // Fetch job details
   useEffect(() => {
     const fetchJobDetails = async () => {
@@ -219,6 +240,14 @@ function JobDetails() {
       }
     };
 
+    // Add a function to add engagement letters
+    const handleEngagementLetterChange = (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length > 0) {
+        setEngagementLetters((prev) => [...prev, ...files]);
+      }
+    };
+
     const fetchTimeline = async () => {
       try {
         setTimelineLoading(true);
@@ -238,69 +267,71 @@ function JobDetails() {
   }, [jobId]);
 
   // Add this utility function to JobDetails.jsx
-const formatDateForInput = (dateString) => {
-  if (!dateString) return "";
-  try {
-    // Handle both ISO strings and Date objects
-    const date = new Date(dateString);
-    // Check if date is valid before formatting
-    if (isNaN(date.getTime())) return "";
-
-    // Format as YYYY-MM-DD for HTML date inputs
-    return date.toISOString().split("T")[0];
-  } catch (error) {
-    console.error("Error formatting date:", error);
-    return "";
-  }
-};
-
-  // Fetch company details
-  // Enhance the useEffect that fetches company details
-useEffect(() => {
-  const fetchCompanyDetails = async () => {
-    if (!jobId || !job) return;
-
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return "";
     try {
-      const response = await axiosInstance.get(
-        `/operations/jobs/${jobId}/company-details`
-      );
+      // Handle both ISO strings and Date objects
+      const date = new Date(dateString);
+      // Check if date is valid before formatting
+      if (isNaN(date.getTime())) return "";
 
-      // Log the raw response to check date formats
-      console.log("Raw company details response:", response.data);
-
-      // Process company details data
-      const formattedDetails = {
-        ...response.data,
-        incorporationDate: formatDateForInput(response.data.incorporationDate),
-        expiryDate: formatDateForInput(response.data.expiryDate),
-        companyComputerCardExpiry: formatDateForInput(
-          response.data.companyComputerCardExpiry
-        ),
-        taxCardExpiry: formatDateForInput(response.data.taxCardExpiry),
-        crExtractExpiry: formatDateForInput(response.data.crExtractExpiry),
-        scopeOfLicenseExpiry: formatDateForInput(
-          response.data.scopeOfLicenseExpiry
-        ),
-      };
-
-      // Log the formatted dates for debugging
-      console.log(
-        "Formatted incorporation date:",
-        formattedDetails.incorporationDate
-      );
-      console.log("Formatted expiry date:", formattedDetails.expiryDate);
-
-      setCompanyDetails((prevDetails) => ({
-        ...prevDetails,
-        ...formattedDetails,
-      }));
-    } catch (err) {
-      console.error("Error fetching company details:", err);
+      // Format as YYYY-MM-DD for HTML date inputs
+      return date.toISOString().split("T")[0];
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "";
     }
   };
 
-  fetchCompanyDetails();
-}, [jobId, job]);
+  // Fetch company details
+  // Enhance the useEffect that fetches company details
+  useEffect(() => {
+    const fetchCompanyDetails = async () => {
+      if (!jobId || !job) return;
+
+      try {
+        const response = await axiosInstance.get(
+          `/operations/jobs/${jobId}/company-details`
+        );
+
+        // Log the raw response to check date formats
+        console.log("Raw company details response:", response.data);
+
+        // Process company details data
+        const formattedDetails = {
+          ...response.data,
+          incorporationDate: formatDateForInput(
+            response.data.incorporationDate
+          ),
+          expiryDate: formatDateForInput(response.data.expiryDate),
+          companyComputerCardExpiry: formatDateForInput(
+            response.data.companyComputerCardExpiry
+          ),
+          taxCardExpiry: formatDateForInput(response.data.taxCardExpiry),
+          crExtractExpiry: formatDateForInput(response.data.crExtractExpiry),
+          scopeOfLicenseExpiry: formatDateForInput(
+            response.data.scopeOfLicenseExpiry
+          ),
+        };
+
+        // Log the formatted dates for debugging
+        console.log(
+          "Formatted incorporation date:",
+          formattedDetails.incorporationDate
+        );
+        console.log("Formatted expiry date:", formattedDetails.expiryDate);
+
+        setCompanyDetails((prevDetails) => ({
+          ...prevDetails,
+          ...formattedDetails,
+        }));
+      } catch (err) {
+        console.error("Error fetching company details:", err);
+      }
+    };
+
+    fetchCompanyDetails();
+  }, [jobId, job]);
 
   // Add this debugging code after setting companyDetails in the fetchCompanyDetails function
   useEffect(() => {
@@ -410,9 +441,9 @@ useEffect(() => {
 
   // File handling functions
   const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setEngagementLetter(file);
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      setEngagementLetters((prev) => [...prev, ...files]);
     }
   };
 
@@ -439,50 +470,85 @@ useEffect(() => {
     }
   };
 
-  const removeEngagementLetter = () => {
-    setEngagementLetter(null);
-  };
+  // const removeEngagementLetter = (index) => {
+  //   setEngagementLetters((prev) => prev.filter((_, i) => i !== index));
+  // };
 
-  // Update the handleUploadEngagementLetter function to inform the user about sharing
-  const handleUploadEngagementLetter = async () => {
-    if (!engagementLetter) return;
+  // Updated handleUploadEngagementLetters function for JobDetails.jsx
+
+  const handleUploadEngagementLetters = async () => {
+    if (engagementLetters.length === 0) return;
 
     try {
       setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: "Uploading engagement letters...",
+      });
 
-      const formData = new FormData();
-      formData.append("engagementLetter", engagementLetter);
+      // Upload each letter one by one
+      for (const letter of engagementLetters) {
+        const formData = new FormData();
+        formData.append("engagementLetter", letter);
 
-      const response = await axiosInstance.post(
-        `/operations/jobs/${jobId}/engagement-letter`,
-        formData
-      );
+        // Add metadata to help the backend create proper document object
+        formData.append("fileName", letter.name || "Engagement Letter");
+        formData.append(
+          "description",
+          `Uploaded on ${new Date().toLocaleDateString()}`
+        );
 
+        console.log(`Uploading letter: ${letter.name}`);
+
+        try {
+          await axiosInstance.post(
+            `/operations/jobs/${jobId}/engagement-letter`,
+            formData
+          );
+        } catch (uploadError) {
+          console.error("Error uploading letter:", uploadError);
+          console.error("Error details:", uploadError.response?.data);
+          throw uploadError; // Re-throw to be caught by outer catch
+        }
+      }
+
+      // Show success message
       setActionMessage({
         type: "success",
         message:
-          "Engagement letter uploaded successfully and will be shared across all jobs for this client",
+          "Engagement letters uploaded successfully and will be shared across all jobs for this client",
       });
 
-      // Refresh company details to reflect the upload
-      if (response.data.engagementLetter) {
-        setCompanyDetails((prev) => ({
-          ...prev,
-          engagementLetters: response.data.engagementLetter,
-        }));
+      // Refresh company details to reflect the uploads
+      try {
+        const response = await axiosInstance.get(
+          `/operations/jobs/${jobId}/company-details`
+        );
+
+        if (response.data) {
+          setCompanyDetails((prev) => ({
+            ...prev,
+            engagementLetters: response.data.engagementLetters,
+          }));
+        }
+      } catch (refreshError) {
+        console.error("Error refreshing company details:", refreshError);
+        // Continue anyway since the upload was successful
       }
 
-      setEngagementLetter(null);
+      // Clear the uploaded files
+      setEngagementLetters([]);
 
       setTimeout(() => {
         setActionMessage({ type: null, message: null });
       }, 5000);
     } catch (err) {
-      console.error("Error uploading engagement letter:", err);
+      console.error("Error uploading engagement letters:", err);
       setActionMessage({
         type: "error",
         message:
-          err.response?.data?.message || "Failed to upload engagement letter",
+          err.response?.data?.message ||
+          "Failed to upload engagement letters. Please try again.",
       });
     } finally {
       setSubmitting(false);
@@ -4174,188 +4240,286 @@ useEffect(() => {
 
             {/* Engagement Letter Component */}
             {!["cancelled"].includes(job.status) && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
+<motion.div
+  initial={{ opacity: 0, x: 20 }}
+  animate={{ opacity: 1, x: 0 }}
+  transition={{ duration: 0.5, delay: 0.2 }}
+  className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
+>
+  <div className="px-6 py-8">
+    <h2 className="text-xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100 flex items-center">
+      <DocumentCheckIcon className="h-5 w-5 text-indigo-600 mr-2" />
+      Engagement Letters
+      {companyDetails?.engagementLetters?.length > 0 && job?.status === "pending" && 
+       job?.timeline?.some((event) => event.description?.includes("auto-populated")) && (
+        <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
+          Auto-populated
+        </span>
+      )}
+    </h2>
+
+    {/* Info box for auto-populated letters */}
+    {companyDetails?.engagementLetters?.length > 0 &&
+      job?.status === "pending" &&
+      job?.timeline?.some((event) =>
+        event.description?.includes("auto-populated")
+      ) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="flex">
+            <InformationCircleIcon className="h-6 w-6 text-blue-600 mr-2" />
+            <div>
+              <h3 className="text-sm font-medium text-blue-800">
+                Engagement Letter Auto-Populated
+              </h3>
+              <p className="mt-1 text-sm text-blue-700">
+                This engagement letter was automatically found
+                from another job for the same client. All jobs for
+                the same client use the same engagement letter.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+    {Array.isArray(companyDetails?.engagementLetters) && companyDetails.engagementLetters.length > 0 ? (
+      <div className="space-y-4">
+        <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+          <div className="flex items-center space-x-3">
+            <CheckCircleIcon className="h-6 w-6 text-green-600" />
+            <span className="font-medium text-green-800">
+              {companyDetails.engagementLetters.length} {companyDetails.engagementLetters.length === 1 ? 'letter' : 'letters'} uploaded
+            </span>
+          </div>
+        </div>
+
+        {companyDetails.engagementLetters.map((letter, index) => (
+          <div key={index} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center space-x-3">
+              <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
+              <div>
+                <span className="text-sm font-medium text-gray-900">
+                  {letter.fileName || `Engagement Letter ${index + 1}`}
+                </span>
+                {letter.description && (
+                  <p className="text-xs text-gray-500">{letter.description}</p>
+                )}
+                {letter.uploadedAt && (
+                  <p className="text-xs text-gray-400">
+                    {new Date(letter.uploadedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <a
+              href={letter.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-white rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+            >
+              View Document
+            </a>
+          </div>
+        ))}
+
+        {/* Add button to upload additional engagement letters */}
+        <div className="mt-4">
+          <label className="cursor-pointer flex items-center justify-center px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200">
+            <PlusIcon className="h-4 w-4 mr-1" />
+            Upload Additional Letters
+            <input
+              type="file"
+              className="sr-only"
+              onChange={handleFileChange}
+              multiple
+              accept=".pdf,.doc,.docx"
+            />
+          </label>
+        </div>
+
+        {/* Show newly selected files if any */}
+        {engagementLetters.length > 0 && (
+          <div className="mt-4 space-y-3">
+            <div className="text-sm font-medium text-gray-700 mb-2">
+              Additional files to upload:
+            </div>
+            {engagementLetters.map((letter, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border border-gray-200"
               >
-                <div className="px-6 py-8">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100 flex items-center">
-                    <DocumentCheckIcon className="h-5 w-5 text-indigo-600 mr-2" />
-                    Engagement Letter
-                    {companyDetails.engagementLetters &&
-                      job.status === "pending" &&
-                      job.timeline?.some((event) =>
-                        event.description?.includes("auto-populated")
-                      ) && (
-                        <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
-                          Auto-populated
-                        </span>
-                      )}
-                  </h2>
-
-                  {/* Info box for auto-populated letters */}
-                  {companyDetails.engagementLetters &&
-                    job.status === "pending" &&
-                    job.timeline?.some((event) =>
-                      event.description?.includes("auto-populated")
-                    ) && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                        <div className="flex">
-                          <InformationCircleIcon className="h-6 w-6 text-blue-600 mr-2" />
-                          <div>
-                            <h3 className="text-sm font-medium text-blue-800">
-                              Engagement Letter Auto-Populated
-                            </h3>
-                            <p className="mt-1 text-sm text-blue-700">
-                              This engagement letter was automatically found
-                              from another job for the same client. All jobs for
-                              the same client use the same engagement letter.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                  {companyDetails.engagementLetters ? (
-                    <div className="space-y-4">
-                      <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                        <div className="flex items-center space-x-3">
-                          <CheckCircleIcon className="h-6 w-6 text-green-600" />
-                          <span className="font-medium text-green-800">
-                            Engagement letter has been uploaded
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="flex items-center space-x-3">
-                          <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
-                          <span className="text-sm font-medium text-gray-900">
-                            Engagement Letter Document
-                          </span>
-                        </div>
-                        <a
-                          href={companyDetails.engagementLetters}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-white rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-                        >
-                          View Document
-                        </a>
-                      </div>
-
-                      {/* Remove button shouldn't be shown for auto-populated letters as it would remove it from all jobs */}
-                      {!job?.timeline?.some((event) =>
-                        event.description?.includes("auto-populated")
-                      ) && (
-                        <div className="mt-4">
-                          <button
-                            onClick={() => {
-                              setEngagementLetter(null);
-                              setCompanyDetails((prev) => ({
-                                ...prev,
-                                engagementLetters: null,
-                              }));
-                            }}
-                            className="text-red-500 hover:text-red-700 text-sm font-medium inline-flex items-center"
-                          >
-                            <XMarkIcon className="h-4 w-4 mr-1" />
-                            Remove letter
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div
-                      className={`border-2 border-dashed rounded-xl p-6 transition-all duration-200 ${
-                        isDragging
-                          ? "border-indigo-500 bg-indigo-50"
-                          : engagementLetter
-                          ? "border-green-500 bg-green-50"
-                          : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-                      }`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                    >
-                      {engagementLetter ? (
-                        <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm">
-                          <div className="flex items-center space-x-3">
-                            <DocumentTextIcon className="h-5 w-5 text-green-600" />
-                            <span className="text-sm font-medium text-gray-900">
-                              {engagementLetter.name}
-                            </span>
-                          </div>
-                          <button
-                            onClick={removeEngagementLetter}
-                            className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
-                          >
-                            <XMarkIcon className="h-5 w-5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-center py-4">
-                          <CloudArrowUpIcon className="mx-auto h-14 w-14 text-gray-400" />
-                          <div className="mt-4">
-                            <label className="block text-sm font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer transition-colors">
-                              <span>Upload a file</span>
-                              <input
-                                type="file"
-                                className="sr-only"
-                                onChange={handleFileChange}
-                                accept=".pdf,.doc,.docx"
-                              />
-                            </label>
-                            <p className="mt-1 text-xs text-gray-500">
-                              or drag and drop
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              PDF, DOC up to 10MB
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Information about shared engagement letters */}
-                  {!companyDetails.engagementLetters && (
-                    <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                      <p className="text-xs text-gray-600 flex items-start">
-                        <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
-                        <span>
-                          An engagement letter uploaded here will be
-                          automatically shared with all jobs for this client.
-                        </span>
-                      </p>
-                    </div>
-                  )}
-
-                  {engagementLetter && !companyDetails.engagementLetters && (
-                    <div className="mt-6 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleUploadEngagementLetter}
-                        disabled={submitting}
-                        className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
-                          submitting ? "opacity-50 cursor-not-allowed" : ""
-                        }`}
-                      >
-                        {submitting ? (
-                          <>
-                            <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                            Uploading...
-                          </>
-                        ) : (
-                          "Upload Letter"
-                        )}
-                      </button>
-                    </div>
-                  )}
+                <div className="flex items-center space-x-3">
+                  <DocumentTextIcon className="h-5 w-5 text-blue-600" />
+                  <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                    {letter.name}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {(letter.size / 1024).toFixed(1)}KB
+                  </span>
                 </div>
-              </motion.div>
+                <button
+                  onClick={() => removeEngagementLetter(index)}
+                  className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+            ))}
+            
+            {/* Upload button for additional letters */}
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={handleUploadEngagementLetters}
+                disabled={submitting}
+                className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
+                  submitting ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                {submitting ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                    Uploading...
+                  </>
+                ) : (
+                  `Upload ${engagementLetters.length} ${
+                    engagementLetters.length > 1 ? "Letters" : "Letter"
+                  }`
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    ) : (
+      <div
+        className={`border-2 border-dashed rounded-xl p-6 transition-all duration-200 ${
+          isDragging
+            ? "border-indigo-500 bg-indigo-50"
+            : engagementLetters.length > 0
+            ? "border-green-500 bg-green-50"
+            : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleEngagementLetterDrop}
+      >
+        {engagementLetters.length > 0 ? (
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-gray-700 mb-2">
+              Selected files:
+            </div>
+            {engagementLetters.map((letter, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm"
+              >
+                <div className="flex items-center space-x-3">
+                  <DocumentTextIcon className="h-5 w-5 text-green-600" />
+                  <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                    {letter.name}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {(letter.size / 1024).toFixed(1)}KB
+                  </span>
+                </div>
+                <button
+                  onClick={() => removeEngagementLetter(index)}
+                  className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+            ))}
+
+            <div className="mt-4 flex items-center justify-center">
+              <label className="cursor-pointer flex items-center px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Add More Files
+                <input
+                  type="file"
+                  className="sr-only"
+                  onChange={handleFileChange}
+                  multiple
+                  accept=".pdf,.doc,.docx"
+                />
+              </label>
+            </div>
+            
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={handleUploadEngagementLetters}
+                disabled={submitting}
+                className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
+                  submitting ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                {submitting ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                    Uploading...
+                  </>
+                ) : (
+                  `Upload ${engagementLetters.length} ${
+                    engagementLetters.length > 1 ? "Letters" : "Letter"
+                  }`
+                )}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <CloudArrowUpIcon className="mx-auto h-14 w-14 text-gray-400" />
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer transition-colors">
+                <span>Upload files</span>
+                <input
+                  type="file"
+                  className="sr-only"
+                  onChange={handleFileChange}
+                  multiple
+                  accept=".pdf,.doc,.docx"
+                />
+              </label>
+              <p className="mt-1 text-xs text-gray-500">
+                or drag and drop
+              </p>
+              <p className="text-xs text-gray-500">
+                PDF, DOC up to 10MB (multiple files allowed)
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Information about shared engagement letters */}
+    <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+      <p className="text-xs text-gray-600 flex items-start">
+        <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
+        <span>
+          All engagement letters uploaded here will be
+          automatically shared with all jobs for this client.
+        </span>
+      </p>
+    </div>
+
+    {/* Upload button for new letters */}
+    {engagementLetters.length > 0 && !submitting && (
+      <div className="mt-6 flex justify-end">
+        <button
+          type="button"
+          onClick={handleUploadEngagementLetters}
+          className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium"
+        >
+          Upload {engagementLetters.length > 1 ? `${engagementLetters.length} Letters` : 'Letter'}
+        </button>
+      </div>
+    )}
+  </div>
+</motion.div>
             )}
 
             {/* Complete Operation Info Message - Only shown for approved jobs without engagement letter */}
@@ -4416,7 +4580,6 @@ useEffect(() => {
                 </div>
               </motion.div>
             )}
-
             {/* Complete Operation Button - Only shown for approved jobs with engagement letter */}
             {job.status === "approved" && companyDetails.engagementLetters && (
               <motion.div
