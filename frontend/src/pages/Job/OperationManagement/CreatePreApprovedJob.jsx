@@ -431,8 +431,12 @@ const CreatePreApprovedJob = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+      console.log("Starting form submission...");
+      console.log("Email being submitted:", formData.gmail);
+
     try {
       setLoading(true);
+      console.log("About to validate email format");
 
       // Validate required fields
       if (
@@ -454,14 +458,38 @@ const CreatePreApprovedJob = () => {
         return;
       }
 
-      // Email validation for Gmail
-      if (!formData.gmail.endsWith("@gmail.com")) {
-        toast.error(
-          "Email must be a valid Gmail address (ending with @gmail.com)"
-        );
+      // Replace the Gmail-specific validation code in the handleSubmit function
+      // Find this code:
+      // if (!formData.gmail.endsWith("@gmail.com")) {
+      //   toast.error(
+      //     "Email must be a valid Gmail address (ending with @gmail.com)"
+      //   );
+      //   setLoading(false);
+      //   return;
+      // }
+
+      // Replace it with this more general email validation:
+      if (
+        !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(formData.gmail)
+      ) {
+        toast.error("Please provide a valid email address");
         setLoading(false);
         return;
       }
+
+      // Test and log the email validation result
+      const emailIsValid =
+        /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(formData.gmail);
+      console.log("Email validation result:", emailIsValid);
+
+      if (!emailIsValid) {
+        console.log("Email validation failed");
+        toast.error("Please provide a valid email address");
+        setLoading(false);
+        return;
+      }
+
+      console.log("Email validation passed, continuing submission");
 
       // Create FormData for file uploads
       const formDataToSend = new FormData();
@@ -784,7 +812,7 @@ const CreatePreApprovedJob = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Gmail Address <span className="text-red-500">*</span>
+                  Email Address <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
@@ -795,7 +823,7 @@ const CreatePreApprovedJob = () => {
                   required
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Must be a valid Gmail address
+                  Must be a valid email address
                 </p>
               </div>
 

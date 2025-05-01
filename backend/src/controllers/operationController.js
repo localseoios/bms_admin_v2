@@ -1586,17 +1586,31 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!serviceType || !assignedPerson || !jobDetails || !clientName || !gmail || !startingPoint) {
+    if (
+      !serviceType ||
+      !assignedPerson ||
+      !jobDetails ||
+      !clientName ||
+      !gmail ||
+      !startingPoint
+    ) {
       return res.status(400).json({ message: "Missing required job fields" });
     }
 
-    if (!gmail.endsWith("@gmail.com")) {
-      return res.status(400).json({ message: "Please provide a valid Gmail address" });
+    // Replace it with this general email validation:
+    if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(gmail)) {
+      return res
+        .status(400)
+        .json({ message: "Please provide a valid email address" });
     }
 
     // Check for required documents
     if (!req.files["documentPassport"] || !req.files["documentID"]) {
-      return res.status(400).json({ message: "Required job documents (passport and ID) are missing" });
+      return res
+        .status(400)
+        .json({
+          message: "Required job documents (passport and ID) are missing",
+        });
     }
 
     // Start a MongoDB transaction
@@ -1955,20 +1969,27 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
 
       // Process and upload KYC documents first
       if (req.files["kycDocuments"] && req.files["kycDocuments"].length > 0) {
-        console.log(`Processing ${req.files["kycDocuments"].length} KYC documents`);
+        console.log(
+          `Processing ${req.files["kycDocuments"].length} KYC documents`
+        );
 
         // Upload all KYC documents and store results
         for (let i = 0; i < req.files["kycDocuments"].length; i++) {
           const file = req.files["kycDocuments"][i];
-          const uploadResult = await safeCloudinaryUpload(
-            file.path,
-            { folder: `clients/${gmail}/kyc_documents` }
-          );
+          const uploadResult = await safeCloudinaryUpload(file.path, {
+            folder: `clients/${gmail}/kyc_documents`,
+          });
 
           kycDocuments.push({
             file: uploadResult.url,
-            description: kycDocumentInfo && kycDocumentInfo[i] ? kycDocumentInfo[i].description : `KYC Document ${i + 1}`,
-            date: kycDocumentInfo && kycDocumentInfo[i] ? kycDocumentInfo[i].date : new Date()
+            description:
+              kycDocumentInfo && kycDocumentInfo[i]
+                ? kycDocumentInfo[i].description
+                : `KYC Document ${i + 1}`,
+            date:
+              kycDocumentInfo && kycDocumentInfo[i]
+                ? kycDocumentInfo[i].date
+                : new Date(),
           });
 
           // Store URLs for later use in approvals
@@ -1976,7 +1997,7 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
             url: uploadResult.url,
             fileName: file.originalname,
             fileType: file.mimetype,
-            cloudinaryId: uploadResult.publicId || "manual-upload"
+            cloudinaryId: uploadResult.publicId || "manual-upload",
           };
 
           // Clean up temporary file
@@ -2070,17 +2091,16 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         // Upload all BRA documents and store results
         for (let i = 0; i < req.files["braDocuments"].length; i++) {
           const file = req.files["braDocuments"][i];
-          const uploadResult = await safeCloudinaryUpload(
-            file.path,
-            { folder: `clients/${gmail}/bra_documents` }
-          );
+          const uploadResult = await safeCloudinaryUpload(file.path, {
+            folder: `clients/${gmail}/bra_documents`,
+          });
 
           // Store URLs for later use in approvals
           braDocUrls[i] = {
             url: uploadResult.url,
             fileName: file.originalname,
             fileType: file.mimetype,
-            cloudinaryId: uploadResult.publicId || "manual-upload"
+            cloudinaryId: uploadResult.publicId || "manual-upload",
           };
 
           // Clean up temporary file
@@ -2169,11 +2189,11 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       // Abort transaction on error
       await session.abortTransaction();
       session.endSession();
-      
+
       console.error("Error creating pre-approved job:", error);
-      res.status(500).json({ 
-        message: "Failed to create pre-approved job", 
-        error: error.message 
+      res.status(500).json({
+        message: "Failed to create pre-approved job",
+        error: error.message,
       });
     }
   } catch (error) {
