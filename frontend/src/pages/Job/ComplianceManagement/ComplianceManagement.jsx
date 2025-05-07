@@ -131,6 +131,7 @@ function ComplianceManagement() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
 
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedClient, setSelectedClient] = useState(null);
@@ -139,6 +140,13 @@ function ComplianceManagement() {
   const [rejectionFile, setRejectionFile] = useState(null);
   const [fileDetails, setFileDetails] = useState(null);
   const [dragActive, setDragActive] = useState(false);
+  
+  // New state for approval
+  const [approvalNotes, setApprovalNotes] = useState("");
+  const [approvalFile, setApprovalFile] = useState(null);
+  const [approvalFileDetails, setApprovalFileDetails] = useState(null);
+  const [approvalDragActive, setApprovalDragActive] = useState(false);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showResubmissionHistory, setShowResubmissionHistory] = useState(false);
 
@@ -214,7 +222,7 @@ function ComplianceManagement() {
     return "Loading...";
   };
 
-  // Handle file selection and update file details
+  // Handle file selection and update file details for rejection
   const handleFileChange = (file) => {
     if (!file) {
       setRejectionFile(null);
@@ -234,7 +242,27 @@ function ComplianceManagement() {
     });
   };
 
-  // Handle file drag events
+  // Handle file selection and update file details for approval
+  const handleApprovalFileChange = (file) => {
+    if (!file) {
+      setApprovalFile(null);
+      setApprovalFileDetails(null);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File size exceeds the 10MB limit. Please select a smaller file.");
+      return;
+    }
+    setApprovalFile(file);
+    setApprovalFileDetails({
+      name: file.name,
+      size: formatFileSize(file.size),
+      type: file.type,
+      extension: file.name.split(".").pop().toLowerCase(),
+    });
+  };
+
+  // Handle file drag events for rejection
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -245,7 +273,18 @@ function ComplianceManagement() {
     }
   };
 
-  // Handle file drop
+  // Handle file drag events for approval
+  const handleApprovalDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setApprovalDragActive(true);
+    } else if (e.type === "dragleave") {
+      setApprovalDragActive(false);
+    }
+  };
+
+  // Handle file drop for rejection
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -255,10 +294,26 @@ function ComplianceManagement() {
     }
   };
 
-  // Remove selected file
+  // Handle file drop for approval
+  const handleApprovalDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setApprovalDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleApprovalFileChange(e.dataTransfer.files[0]);
+    }
+  };
+
+  // Remove selected file for rejection
   const removeFile = () => {
     setRejectionFile(null);
     setFileDetails(null);
+  };
+
+  // Remove selected file for approval
+  const removeApprovalFile = () => {
+    setApprovalFile(null);
+    setApprovalFileDetails(null);
   };
 
   // Fetch jobs and populate user data
@@ -346,6 +401,15 @@ function ComplianceManagement() {
     }
   }, [isRejectionModalOpen]);
 
+  // Reset file state when approval modal closes
+  useEffect(() => {
+    if (!isApprovalModalOpen) {
+      setApprovalFile(null);
+      setApprovalFileDetails(null);
+      setApprovalNotes("");
+    }
+  }, [isApprovalModalOpen]);
+
   // Reset resubmission history view when detail modal closes
   useEffect(() => {
     if (!isDetailModalOpen) {
@@ -396,22 +460,10 @@ function ComplianceManagement() {
     setIsRejectionModalOpen(true);
   };
 
-  const handleApproveJob = async (job) => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      await axiosInstance.put(`/jobs/${job._id}/approve`, {});
-      setJobs((prevJobs) =>
-        prevJobs.map((j) =>
-          j._id === job._id ? { ...j, status: "approved" } : j
-        )
-      );
-    } catch (err) {
-      console.error("Error approving job:", err);
-      alert("Failed to approve job. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
+  // Modified to open approval modal
+  const handleApproveJob = (job) => {
+    setSelectedJob(job);
+    setIsApprovalModalOpen(true);
   };
 
   // Show a simple profile modal (example)
@@ -455,6 +507,37 @@ function ComplianceManagement() {
     } catch (err) {
       console.error("Error rejecting job:", err);
       alert("Failed to reject job. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Submitting approval with document
+  const submitApproval = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append("approvalNotes", approvalNotes);
+      if (approvalFile) {
+        formData.append("approvalDocument", approvalFile);
+      }
+      const response = await axiosInstance.put(
+        `/jobs/${selectedJob._id}/approve`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      const updatedJob = response.data;
+      setJobs((prevJobs) =>
+        prevJobs.map((j) => (j._id === selectedJob._id ? updatedJob : j))
+      );
+      setIsApprovalModalOpen(false);
+      setApprovalNotes("");
+      setApprovalFile(null);
+      setApprovalFileDetails(null);
+    } catch (err) {
+      console.error("Error approving job:", err);
+      alert("Failed to approve job. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1093,9 +1176,49 @@ function ComplianceManagement() {
                                         </a>
                                       </div>
                                     )}
+
+                                    {/* Display approval document if exists */}
+                                    {selectedJob.approvalDocument && (
+                                      <div className="flex items-center justify-between p-2 bg-white rounded-lg">
+                                        <div className="flex items-center space-x-2">
+                                          <DocumentCheckIcon className="h-5 w-5 text-green-500" />
+                                          <span className="text-sm text-gray-900">
+                                            Approval Document:
+                                          </span>
+                                          <a
+                                            href={selectedJob.approvalDocument}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-sm text-blue-600 hover:underline"
+                                          >
+                                            View Document
+                                          </a>
+                                        </div>
+                                        <a
+                                          href={selectedJob.approvalDocument}
+                                          download
+                                          title="Download Approval Document"
+                                          className="text-gray-500 hover:text-green-500"
+                                        >
+                                          <ArrowDownTrayIcon className="h-5 w-5" />
+                                        </a>
+                                      </div>
+                                    )}
                                   </>
                                 );
                               })()}
+                            </div>
+                          )}
+
+                          {/* Show approval notes if they exist */}
+                          {selectedJob.approvalNotes && (
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                Approval Notes
+                              </h5>
+                              <p className="text-sm text-gray-600">
+                                {selectedJob.approvalNotes}
+                              </p>
                             </div>
                           )}
 
@@ -1370,6 +1493,194 @@ function ComplianceManagement() {
                       </div>
                     </>
                   )}
+                </div>
+              </Transition.Child>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* -------- APPROVAL MODAL -------- */}
+        <Transition appear show={isApprovalModalOpen} as={Fragment}>
+          <Dialog
+            as="div"
+            className="fixed inset-0 z-50 overflow-y-auto"
+            onClose={() => setIsApprovalModalOpen(false)}
+          >
+            <div className="min-h-screen px-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0"
+                enterTo="opacity-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100"
+                leaveTo="opacity-0"
+              >
+                <Dialog.Overlay className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
+              </Transition.Child>
+
+              <span
+                className="inline-block h-screen align-middle"
+                aria-hidden="true"
+              >
+                ​
+              </span>
+
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-gray-900 mb-4"
+                  >
+                    Approve Job
+                    {selectedJob && selectedJob.status === "corrected" && (
+                      <div className="mt-1 text-sm font-normal text-gray-500">
+                        This job was resubmitted with corrections
+                      </div>
+                    )}
+                  </Dialog.Title>
+
+                  <div className="mt-4">
+                    <label
+                      htmlFor="approval-notes"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
+                      Approval Notes (Optional)
+                    </label>
+                    <textarea
+                      id="approval-notes"
+                      rows={4}
+                      className="mt-1 block w-full rounded-xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 resize-none"
+                      value={approvalNotes}
+                      onChange={(e) => setApprovalNotes(e.target.value)}
+                      placeholder="Add any notes about this approval..."
+                    />
+                  </div>
+
+                  {/* File Upload Section */}
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Supporting Document (Optional)
+                    </label>
+                    <div
+                      className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 ${
+                        approvalDragActive
+                          ? "border-green-500 bg-green-50"
+                          : "border-gray-300 hover:border-green-400"
+                      } border-dashed rounded-xl transition-colors duration-200 relative`}
+                      onDragEnter={handleApprovalDrag}
+                      onDragLeave={handleApprovalDrag}
+                      onDragOver={handleApprovalDrag}
+                      onDrop={handleApprovalDrop}
+                    >
+                      <AnimatePresence mode="wait">
+                        {approvalFileDetails ? (
+                          <motion.div
+                            key="file-details"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="flex flex-col w-full"
+                          >
+                            <div className="flex items-center justify-between w-full mb-2">
+                              <div className="flex items-center space-x-3">
+                                {getFileTypeIcon(approvalFileDetails.name)}
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-medium text-gray-900 truncate max-w-[180px]">
+                                    {approvalFileDetails.name}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {approvalFileDetails.size}
+                                  </span>
+                                </div>
+                              </div>
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                type="button"
+                                className="text-green-600 hover:text-green-800 p-1 rounded-full hover:bg-green-50"
+                                onClick={removeApprovalFile}
+                              >
+                                <TrashIcon className="h-5 w-5" />
+                              </motion.button>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5">
+                              <div
+                                className="bg-green-600 h-1.5 rounded-full"
+                                style={{ width: "100%" }}
+                              ></div>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="file-upload"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="space-y-1 text-center"
+                          >
+                            <DocumentCheckIcon className="mx-auto h-12 w-12 text-gray-400" />
+                            <div className="flex text-sm text-gray-600">
+                              <label
+                                htmlFor="approval-file"
+                                className="relative cursor-pointer rounded-md font-medium text-green-600 hover:text-green-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-green-500"
+                              >
+                                <span>Upload a file</span>
+                                <input
+                                  id="approval-file"
+                                  type="file"
+                                  className="sr-only"
+                                  accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
+                                  onChange={(e) =>
+                                    handleApprovalFileChange(
+                                      e.target.files?.[0] || null
+                                    )
+                                  }
+                                />
+                              </label>
+                              <p className="pl-1">or drag and drop</p>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                              PDF, DOC, DOCX, JPG, PNG up to 10MB
+                            </p>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="button"
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                      onClick={() => setIsApprovalModalOpen(false)}
+                    >
+                      Cancel
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="button"
+                      className={`px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors duration-200 ${
+                        isSubmitting ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      onClick={submitApproval}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? "Approving..." : "Approve Job"}
+                    </motion.button>
+                  </div>
                 </div>
               </Transition.Child>
             </div>

@@ -63,6 +63,9 @@ const jobSchema = new mongoose.Schema(
       },
     },
     rejectionDocument: { type: String },
+    // Add new fields for approval document and notes
+    approvalDocument: { type: String },
+    approvalNotes: { type: String },
     resubmissions: [
       {
         resubmitNotes: { type: String },

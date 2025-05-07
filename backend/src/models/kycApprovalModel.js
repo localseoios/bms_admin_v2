@@ -1,4 +1,4 @@
-// models/KycApproval.js
+// models/kycApprovalModel.js
 const mongoose = require("mongoose");
 
 // Add document schema to track uploaded files to Cloudinary

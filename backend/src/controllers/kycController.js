@@ -147,7 +147,7 @@ const initializeKyc = asyncHandler(async (req, res) => {
   }
 });
 
-// Get KYC approval status - UPDATED to use consistent 200 responses
+// Get KYC approval status - UPDATED to include compliance documents
 const getKycStatus = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
 
@@ -181,14 +181,25 @@ const getKycStatus = asyncHandler(async (req, res) => {
           clientName: job.clientName,
           serviceType: job.serviceType,
           createdAt: job.createdAt,
+          // Include compliance approval document and notes
+          approvalDocument: job.approvalDocument,
+          approvalNotes: job.approvalNotes
         },
       });
     }
 
-    // When returning an existing KYC approval, include exists:true
+    // When returning an existing KYC approval, include exists:true and job details
     res.status(200).json({
       exists: true,
       ...kycApproval.toObject(),
+      // Include job details with compliance documents
+      jobInfo: {
+        clientName: job.clientName,
+        serviceType: job.serviceType,
+        createdAt: job.createdAt,
+        approvalDocument: job.approvalDocument,
+        approvalNotes: job.approvalNotes
+      }
     });
   } catch (error) {
     console.error(`Error in getKycStatus for job ${jobId}:`, error);

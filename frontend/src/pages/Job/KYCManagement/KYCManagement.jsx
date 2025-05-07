@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../../../context/AuthContext";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { useNavigate } from "react-router-dom"; // Add this import
+import { useNavigate } from "react-router-dom";
 import {
   DocumentTextIcon,
   CloudArrowUpIcon,
@@ -22,6 +22,7 @@ import {
   PaperClipIcon,
   DocumentArrowUpIcon,
   ArrowDownTrayIcon,
+  DocumentCheckIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 
@@ -31,7 +32,7 @@ const showNotification = ({ type, message, duration = 3000 }) => {
 };
 
 function KYCManagement() {
-  const navigate = useNavigate(); // Initialize navigate
+  const navigate = useNavigate();
   const [kycRequests, setKycRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -44,17 +45,17 @@ function KYCManagement() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // New state for document upload
+  // State for document upload
   const [documentFile, setDocumentFile] = useState(null);
   const [documentError, setDocumentError] = useState("");
 
-  // Add separate loading states for different actions
+  // Loading states for different actions
   const [initializingId, setInitializingId] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const { user } = useAuth(); // Get the current user
+  const { user } = useAuth();
 
   // Check user permissions for KYC roles
   const isLMRO = user?.role?.permissions?.kycManagement?.lmro;
@@ -63,17 +64,15 @@ function KYCManagement() {
   const isAdmin = user?.role?.name === "admin";
   const hasKYCRole = isLMRO || isDLMRO || isCEO || isAdmin;
 
-  // Navigate to client profile with a better approach
+  // Navigate to client profile
   const navigateToClientProfile = (job, e) => {
-    if (e) e.stopPropagation(); // Prevent event bubbling
+    if (e) e.stopPropagation();
 
-    // Navigate to the compliance page with the client name pre-filled in the search
     if (job && job.clientName) {
       console.log(
         `Navigating to compliance search for client: ${job.clientName}`
       );
 
-      // This redirects to the compliance management page with search pre-filled
       navigate(`/compliance?search=${encodeURIComponent(job.clientName)}`);
 
       showNotification({
@@ -120,6 +119,7 @@ function KYCManagement() {
             ? {
                 ...job,
                 kycApproval: response.data.exists ? response.data : null,
+                jobInfo: response.data.jobInfo || null,
                 status: response.data.exists
                   ? job.status
                   : response.data.jobStatus,
@@ -140,7 +140,6 @@ function KYCManagement() {
     try {
       setLoading(true);
 
-      // First, fetch all jobs with the relevant statuses
       const response = await axiosInstance.get("/kyc/jobs", {
         params: {
           status: [
@@ -152,17 +151,14 @@ function KYCManagement() {
         },
       });
 
-      // Log the job data to verify structure
       console.log("Jobs data fetched:", response.data);
 
-      // Check if the response is valid
       if (!Array.isArray(response.data)) {
         setError("Received invalid data format from server");
         setLoading(false);
         return;
       }
 
-      // Get detailed KYC status for each job with improved error handling
       const jobsWithKycStatus = await Promise.all(
         response.data.map(async (job) => {
           try {
@@ -170,16 +166,20 @@ function KYCManagement() {
               `/kyc/jobs/${job._id}/status`
             );
 
-            // Check if the KYC record exists
             if (!kycResponse.data.exists) {
               return {
                 ...job,
                 kycApproval: null,
+                jobInfo: kycResponse.data.jobInfo || null,
                 canInitialize: kycResponse.data.canInitialize,
               };
             }
 
-            return { ...job, kycApproval: kycResponse.data };
+            return { 
+              ...job, 
+              kycApproval: kycResponse.data,
+              jobInfo: kycResponse.data.jobInfo || null
+            };
           } catch (err) {
             console.log(
               `Error fetching KYC status for job ${job._id}: ${err.message}`
@@ -245,7 +245,7 @@ function KYCManagement() {
         label: "Ready for KYC",
         color: "bg-blue-50 text-blue-700 ring-blue-600/20",
         icon: <ArrowPathIcon className="h-5 w-5 text-blue-500" />,
-        actionText: "Initialize KYC", // Added for UI clarity
+        actionText: "Initialize KYC",
       };
     }
 
@@ -556,9 +556,8 @@ function KYCManagement() {
     });
   };
 
-  // Render document link - for document replacement model
+  // Render document link - fixed for proper handling of compliance documents
   const renderDocumentLink = (job) => {
-    // If no KYC approval exists, return null
     if (!job.kycApproval) return null;
 
     // Determine which document to show based on approval stage
@@ -961,17 +960,47 @@ function KYCManagement() {
                         </div>
                       </div>
 
-                      {/* Document Link - Only show current document */}
-                      {job.kycApproval && (
-                        <div className="mt-2 border-t border-gray-100 pt-2">
-                          <div className="text-xs text-gray-500 font-medium">
-                            Current Document:
+                      {/* Document Links - FIXED: Single document section with both compliance and KYC docs */}
+                      <div className="mt-2 border-t border-gray-100 pt-2">
+                        {/* Compliance Document */}
+                        {job.jobInfo && job.jobInfo.approvalDocument && (
+                          <div className="mb-1">
+                            <div className="flex items-center">
+                              <span className="text-xs text-gray-500 font-medium mr-2">
+                                Compliance Doc:
+                              </span>
+                              <a
+                                href={job.jobInfo.approvalDocument}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center text-xs text-blue-600 hover:text-blue-800"
+                              >
+                                <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
+                                View Document
+                              </a>
+                            </div>
+                            {job.jobInfo.approvalNotes && (
+                              <div className="ml-14 text-xs text-gray-500 mt-1">
+                                Note: {job.jobInfo.approvalNotes}
+                              </div>
+                            )}
                           </div>
-                          <div className="flex flex-col space-y-1">
-                            {renderDocumentLink(job)}
+                        )}
+                        
+                        {/* KYC Document */}
+                        {job.kycApproval && (
+                          <div>
+                            <div className="flex items-center">
+                              <span className="text-xs text-gray-500 font-medium mr-2">
+                                KYC Doc:
+                              </span>
+                              <div className="flex flex-col">
+                                {renderDocumentLink(job)}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
 
                       {/* KYC Progress Bar */}
                       {job.kycApproval && (
@@ -1037,7 +1066,7 @@ function KYCManagement() {
         </div>
       </div>
 
-      {/* Approval Modal - Updated to include document upload to Cloudinary */}
+      {/* Approval Modal */}
       <AnimatePresence>
         {approvalModalOpen && (
           <motion.div
@@ -1204,7 +1233,7 @@ function KYCManagement() {
         )}
       </AnimatePresence>
 
-      {/* Rejection Modal remains the same */}
+      {/* Rejection Modal */}
       <AnimatePresence>
         {rejectionModalOpen && (
           <motion.div

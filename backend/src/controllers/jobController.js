@@ -344,7 +344,10 @@ const getAllJobsAdmin = asyncHandler(async (req, res) => {
   }
 });
 
-// Approve Job (updated function with timeline)
+// Import the necessary helper function if not already at the top of the file
+// const safeCloudinaryUpload = require("../utils/cloudinaryHelpers").safeCloudinaryUpload;
+
+// Update the approveJob function to handle document uploads
 const approveJob = asyncHandler(async (req, res) => {
   const job = await Job.findById(req.params.id);
   if (!job) {
@@ -353,11 +356,40 @@ const approveJob = asyncHandler(async (req, res) => {
   }
 
   job.status = "approved";
+  
+  // Handle optional approval document
+  let approvalDocumentUrl = null;
+  if (req.file) {
+    const uploadResult = await safeCloudinaryUpload(req.file.path);
+    if (uploadResult.success) {
+      approvalDocumentUrl = uploadResult.url;
+      // Clean up temporary file after successful upload
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+    } else {
+      console.error("Failed to upload approval document:", uploadResult.error);
+      // Proceed even if upload fails, as the document is optional
+    }
+  }
 
-  // Add timeline entry for job approval (Screening Done)
+  // Save approval document URL if provided
+  if (approvalDocumentUrl) {
+    job.approvalDocument = approvalDocumentUrl;
+  }
+
+  // Get approval notes from request body
+  const { approvalNotes } = req.body;
+  if (approvalNotes) {
+    job.approvalNotes = approvalNotes;
+  }
+
+  // Add timeline entry for job approval with optional notes
   job.timeline.push({
     status: "screening_done",
-    description: "Screening Done",
+    description: approvalNotes 
+      ? `Screening Done: ${approvalNotes}` 
+      : "Screening Done",
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -386,6 +418,18 @@ const approveJob = asyncHandler(async (req, res) => {
         relatedTo: { model: "Job", id: job._id },
       },
       { "role.name": "admin" }
+    );
+    
+    // Notify the assigned person about the approved status
+    await notificationService.createNotification(
+      {
+        title: "Job Ready for Processing",
+        description: `A ${job.serviceType} job for ${job.clientName} has been approved and is ready for processing.`,
+        type: "job",
+        subType: "approval",
+        relatedTo: { model: "Job", id: job._id },
+      },
+      job.assignedPerson
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);

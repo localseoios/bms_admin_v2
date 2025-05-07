@@ -95,10 +95,12 @@ router.get(
 );
 
 // Job status management routes
+// Update the approve job route to use multer for file uploads
 router.put(
   "/:id/approve",
   protect,
   checkPermission("complianceManagement"),
+  upload.single("approvalDocument"),
   approveJob
 );
 router.put(
