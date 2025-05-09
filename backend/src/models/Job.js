@@ -13,7 +13,7 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
     serviceType: { type: String, required: true },
-    documentPassport: { type: String, required: true },
+    documentPassport: { type: String, required: false },
     documentID: { type: String, required: true },
     otherDocuments: [{ type: String }],
     assignedPerson: {

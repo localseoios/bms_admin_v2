@@ -14,6 +14,7 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
   CheckIcon,
+  InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 
 function CreateJob() {
@@ -96,7 +97,9 @@ function CreateJob() {
     setCheckingClient(true);
     try {
       // Try to fetch client by email
-      const response = await axiosInstance.get(`/clients/${encodeURIComponent(email)}`);
+      const response = await axiosInstance.get(
+        `/clients/${encodeURIComponent(email)}`
+      );
 
       if (response.data && response.data.client) {
         setExistingClient(response.data.client);
@@ -150,7 +153,10 @@ function CreateJob() {
     }
 
     // Check for existing client when email changes
-    if (name === "gmail" && /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)) {
+    if (
+      name === "gmail" &&
+      /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)
+    ) {
       debouncedCheckClient(value);
     } else if (name === "gmail") {
       setExistingClient(null);
@@ -159,7 +165,10 @@ function CreateJob() {
 
   // Handle email field blur for immediate checking
   const handleGmailBlur = () => {
-    if (formData.gmail && /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formData.gmail)) {
+    if (
+      formData.gmail &&
+      /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formData.gmail)
+    ) {
       checkExistingClient(formData.gmail);
     }
   };
@@ -169,8 +178,7 @@ function CreateJob() {
     const newErrors = {};
     if (!formData.serviceType)
       newErrors.serviceType = "Service type is required";
-    if (!formData.documentPassport)
-      newErrors.documentPassport = "Passport document is required";
+    // Passport is optional, so we don't validate it
     if (!formData.documentID) newErrors.documentID = "ID document is required";
     if (!formData.assignedPerson)
       newErrors.assignedPerson = "Assigned person is required";
@@ -178,7 +186,9 @@ function CreateJob() {
     if (!formData.clientName) newErrors.clientName = "Client name is required";
     if (!formData.gmail) {
       newErrors.gmail = "Email address is required";
-    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formData.gmail)) {
+    } else if (
+      !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formData.gmail)
+    ) {
       newErrors.gmail = "Invalid email address format";
     }
     if (!formData.startingPoint)
@@ -343,7 +353,7 @@ function CreateJob() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Service Type
+                    Service Type <span className="text-red-500 text-xs">*</span>
                   </label>
                   <select
                     name="serviceType"
@@ -384,12 +394,31 @@ function CreateJob() {
                   <h2 className="text-lg font-semibold text-gray-900">
                     Required Documents
                   </h2>
+                  <span className="text-xs text-gray-500">
+                    (* indicates required)
+                  </span>
                 </div>
+
+                {/* Document Requirements Info */}
+                <div className="mb-4 bg-blue-50 border border-blue-100 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <InformationCircleIcon className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <div className="ml-3">
+                      <p className="text-sm text-blue-700">
+                        ID document is required, while passport document is
+                        optional. You can upload other supporting documents if
+                        needed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-6">
                   {/* Passport Document */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Passport Document
+                      Passport Document{" "}
+                      <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
                     <div className="flex items-center">
                       <input
@@ -432,7 +461,7 @@ function CreateJob() {
                           >
                             {formData.documentPassport
                               ? formData.documentPassport.name
-                              : "Click to upload passport document"}
+                              : "Click to upload passport document (optional)"}
                           </span>
                         </div>
                       </label>
@@ -447,7 +476,8 @@ function CreateJob() {
                   {/* ID Document */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      ID Document
+                      ID Document{" "}
+                      <span className="text-red-500 text-xs">*</span>
                     </label>
                     <div className="flex items-center">
                       <input
@@ -488,7 +518,7 @@ function CreateJob() {
                           >
                             {formData.documentID
                               ? formData.documentID.name
-                              : "Click to upload ID document"}
+                              : "Click to upload ID document (required)"}
                           </span>
                         </div>
                       </label>
@@ -503,7 +533,8 @@ function CreateJob() {
                   {/* Other Documents (Drag and Drop) */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Other Documents (Optional)
+                      Other Documents{" "}
+                      <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
                     <div
                       className={`border-2 border-dashed rounded-xl p-8 transition-all duration-200 ${
@@ -598,7 +629,8 @@ function CreateJob() {
                   {/* Assigned Person (Dynamic) */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Assigned Person
+                      Assigned Person{" "}
+                      <span className="text-red-500 text-xs">*</span>
                     </label>
                     <div className="relative">
                       <select
@@ -652,7 +684,8 @@ function CreateJob() {
                   {/* Job Details */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Job Details
+                      Job Details{" "}
+                      <span className="text-red-500 text-xs">*</span>
                       <span
                         className="ml-1 inline-block"
                         title="Provide detailed information about the job requirements"
@@ -680,7 +713,8 @@ function CreateJob() {
                   {/* Special Description */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Special Description (Optional)
+                      Special Description{" "}
+                      <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
                     <textarea
                       name="specialDescription"
@@ -714,7 +748,8 @@ function CreateJob() {
                   {/* Client Name */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Client Name
+                      Client Name{" "}
+                      <span className="text-red-500 text-xs">*</span>
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -751,7 +786,8 @@ function CreateJob() {
                   {/* Email field */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Email Address
+                      Email Address{" "}
+                      <span className="text-red-500 text-xs">*</span>
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -799,7 +835,8 @@ function CreateJob() {
                 {/* Starting Point */}
                 <div className="mt-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Starting Point
+                    Starting Point{" "}
+                    <span className="text-red-500 text-xs">*</span>
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

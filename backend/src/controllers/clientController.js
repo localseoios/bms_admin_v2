@@ -456,6 +456,95 @@ const getAssignedClients = asyncHandler(async (req, res) => {
   }
 });
 
+const getAllClients = asyncHandler(async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get all clients with pagination
+    const totalClients = await Client.countDocuments();
+    const clients = await Client.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // For each client, find their jobs and calculate metrics
+    const enhancedClients = await Promise.all(
+      clients.map(async (client) => {
+        // Find all jobs for this client
+        const jobs = await Job.find({ clientId: client._id });
+
+        // Calculate metrics
+        const jobCount = jobs.length;
+        const activeJobCount = jobs.filter(
+          (job) => !["completed", "cancelled", "rejected"].includes(job.status)
+        ).length;
+
+        // Find latest job
+        let latestJob = null;
+        let latestJobDate = null;
+        let latestServiceType = null;
+
+        if (jobs.length > 0) {
+          latestJob = jobs.reduce(
+            (latest, job) =>
+              new Date(job.createdAt) > new Date(latest.createdAt)
+                ? job
+                : latest,
+            jobs[0]
+          );
+
+          latestJobDate = latestJob.createdAt;
+          latestServiceType = latestJob.serviceType;
+        }
+
+        // Find engagement letter
+        let engagementLetter = null;
+        if (jobs.length > 0) {
+          const jobIds = jobs.map((job) => job._id);
+          const companyDetails = await CompanyDetails.findOne({
+            jobId: { $in: jobIds },
+            engagementLetters: { $exists: true, $ne: null },
+          });
+
+          if (companyDetails) {
+            engagementLetter = companyDetails.engagementLetters;
+          }
+        }
+
+        return {
+          _id: client._id,
+          name: client.name,
+          gmail: client.gmail,
+          startingPoint: client.startingPoint,
+          jobCount,
+          activeJobCount,
+          latestJobDate,
+          latestServiceType,
+          engagementLetter,
+        };
+      })
+    );
+
+    res.status(200).json({
+      clients: enhancedClients,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalClients / limit),
+        totalItems: totalClients,
+        itemsPerPage: limit,
+      },
+    });
+  } catch (error) {
+    console.error("Error retrieving all clients:", error);
+    res.status(500).json({
+      message: "Error retrieving all clients",
+      error: error.message,
+    });
+  }
+});
+
 
 module.exports = {
   getClientByGmail,
@@ -465,4 +554,5 @@ module.exports = {
   checkPersonDetailsInconsistencies,
   checkCompanyDetailsStatus,
   getAssignedClients, // New function added
+  getAllClients,
 };

@@ -9,6 +9,7 @@ const {
   synchronizeClientPersonDetails,
   checkCompanyDetailsStatus,
   getAssignedClients,
+  getAllClients,
 } = require("../controllers/clientController");
 const { protect, checkPermission } = require("../middleware/authMiddleware");
 
@@ -18,6 +19,14 @@ router.get(
   protect,
   checkPermission("operationManagement"),
   getAssignedClients
+);
+
+// Route to get all clients (with appropriate permission)
+router.get(
+  "/all",
+  protect,
+  checkPermission("operationManagement"), // Adjust permission as needed
+  getAllClients
 );
 
 // Route to get client details by email (encoded in URL)

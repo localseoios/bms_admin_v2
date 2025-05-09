@@ -19,6 +19,7 @@ import CreatePreApprovedJob from "./pages/Job/OperationManagement/CreatePreAppro
 import AllServices from "./pages/AdminService/AllServices";
 import AddService from "./pages/AdminService/AddService";
 import Dashboard from "./pages/Dashboard";
+import AllClients from "./pages/Job/OperationManagement/AllClients";
 
 function App() {
   return (
@@ -57,6 +58,7 @@ function App() {
             />
             <Route path="assigned-clients" element={<AssignedClients />} />
             <Route path="job/:jobId" element={<JobDetails />} />
+            <Route path="all-clients" element={<AllClients />} />
 
             {/* New pre-approved job route */}
             <Route
