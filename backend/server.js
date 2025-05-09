@@ -27,6 +27,68 @@ if (!fs.existsSync(tempUploadsDir)) {
 dotenv.config();
 const app = express();
 
+// Debug middleware - logs request information for troubleshooting
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  console.log("Content-Length:", req.headers["content-length"]);
+  console.log("Content-Type:", req.headers["content-type"]);
+  console.log("Origin:", req.headers["origin"]);
+
+  // Track response for debugging
+  const originalSend = res.send;
+  res.send = function (...args) {
+    console.log(`Response status: ${res.statusCode}`);
+    return originalSend.apply(res, args);
+  };
+
+  next();
+});
+
+// Special CORS preflight handler - MUST be before ANY other middleware
+app.options("*", function (req, res) {
+  const allowedOrigins = [
+    "http://localhost:5173",
+    "https://testapp.newoon.com",
+  ];
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    console.log(`Setting preflight CORS headers for: ${origin}`);
+  }
+
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.sendStatus(200);
+});
+
+// Additional explicit CORS header middleware
+app.use(function (req, res, next) {
+  const allowedOrigins = [
+    "http://localhost:5173",
+    "https://testapp.newoon.com",
+  ];
+  const origin = req.headers.origin;
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    console.log(`Setting regular CORS headers for: ${origin}`);
+  }
+
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  res.header("Access-Control-Allow-Credentials", "true");
+
+  next();
+});
+
 // Add this BEFORE your existing error handler
 app.use(errorLoggingMiddleware);
 
@@ -39,11 +101,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 app.use(cookieParser());
 
-app.use((req, res, next) => {
-  console.log("Request origin:", req.headers.origin);
-  next();
-});
-
+// Enhanced CORS settings for file uploads (keep this as a fallback)
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -57,7 +115,7 @@ app.use(
         console.log("Rejected origin:", origin);
         return callback(null, false);
       }
-      console.log("Accepted origin:", origin);
+      console.log("Accepted origin in cors middleware:", origin);
       return callback(null, true);
     },
     credentials: true,
@@ -72,6 +130,7 @@ app.use(
     exposedHeaders: ["Content-Disposition"],
   })
 );
+
 // Configure static folder for temp uploads with proper headers
 app.use(
   "/temp-uploads",
@@ -120,6 +179,7 @@ app.get("/files/:filename", (req, res) => {
   }
 });
 
+// API Routes
 app.use("/api/auth", require("./src/routes/authRoute"));
 app.use("/api/users", require("./src/routes/userRoute"));
 app.use("/api/roles", require("./src/routes/roleRoute"));
@@ -142,7 +202,7 @@ app.use((err, req, res, next) => {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res.status(413).json({
         message: "File too large",
-        error: `Maximum file size is ${(err.size || 10) / (1024 * 1024)}MB`,
+        error: `Maximum file size is ${(err.size || 50) / (1024 * 1024)}MB`,
       });
     }
 

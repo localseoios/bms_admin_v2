@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axiosInstance from "../../../utils/axios";
+import axiosInstance, { fileUploadInstance } from "../../../utils/axios";
+import { compressImage } from "../../../utils/imageCompression"; // Import the compression utility
 import {
   DocumentIcon,
   UserIcon,
@@ -15,6 +16,7 @@ import {
   CheckCircleIcon,
   CheckIcon,
   InformationCircleIcon,
+  ExclamationCircleIcon,
 } from "@heroicons/react/24/outline";
 
 function CreateJob() {
@@ -51,6 +53,12 @@ function CreateJob() {
   const [dragActive, setDragActive] = useState(false);
   // State for form submission status
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // New state for file processing
+  const [processingFile, setProcessingFile] = useState(false);
+  // New state for upload progress
+  const [uploadProgress, setUploadProgress] = useState(0);
+  // State for submission errors
+  const [submissionError, setSubmissionError] = useState("");
 
   // Fetch operation managers
   useEffect(() => {
@@ -152,6 +160,11 @@ function CreateJob() {
       }));
     }
 
+    // Reset submission error whenever any input changes
+    if (submissionError) {
+      setSubmissionError("");
+    }
+
     // Check for existing client when email changes
     if (
       name === "gmail" &&
@@ -198,20 +211,71 @@ function CreateJob() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle single file uploads (passport and ID)
-  const handleFileChange = (e, field) => {
+  // Improved file handling with compression
+  const handleFileChange = async (e, field) => {
     const file = e.target.files[0];
-    if (file) {
+    if (!file) return;
+
+    setProcessingFile(true);
+
+    try {
+      // Compress image if it's an image file
+      const processedFile = file.type.startsWith("image/")
+        ? await compressImage(file)
+        : file;
+
       setFormData((prev) => ({
         ...prev,
-        [field]: file,
+        [field]: processedFile,
       }));
+
       if (errors[field]) {
         setErrors((prev) => ({
           ...prev,
           [field]: "",
         }));
       }
+    } catch (error) {
+      console.error("Error processing file:", error);
+      setErrors((prev) => ({
+        ...prev,
+        [field]: "Error processing file. Please try again.",
+      }));
+    } finally {
+      setProcessingFile(false);
+    }
+  };
+
+  // Improved handler for multiple files
+  const handleMultipleFileChange = async (files) => {
+    if (!files || files.length === 0) return;
+
+    setProcessingFile(true);
+
+    try {
+      const processedFiles = [];
+
+      for (const file of files) {
+        // Compress each image file individually
+        const processedFile = file.type.startsWith("image/")
+          ? await compressImage(file)
+          : file;
+
+        processedFiles.push(processedFile);
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        otherDocuments: [...prev.otherDocuments, ...processedFiles],
+      }));
+    } catch (error) {
+      console.error("Error processing files:", error);
+      setErrors((prev) => ({
+        ...prev,
+        otherDocuments: "Error processing files. Please try again.",
+      }));
+    } finally {
+      setProcessingFile(false);
     }
   };
 
@@ -222,17 +286,15 @@ function CreateJob() {
     setDragActive(isDragging);
   };
 
-  const handleDrop = (e) => {
+  // Improved drop handler with file compression
+  const handleDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
 
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      setFormData((prev) => ({
-        ...prev,
-        otherDocuments: [...prev.otherDocuments, ...files],
-      }));
+      await handleMultipleFileChange(files);
     }
   };
 
@@ -244,69 +306,104 @@ function CreateJob() {
     }));
   };
 
-  // Form submission
+  // Enhanced form submission with better error handling and retry logic
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      setIsSubmitting(true);
-      try {
-        const formDataToSend = new FormData();
-        formDataToSend.append("serviceType", formData.serviceType);
-        formDataToSend.append("assignedPerson", formData.assignedPerson);
-        formDataToSend.append("jobDetails", formData.jobDetails);
-        formDataToSend.append(
-          "specialDescription",
-          formData.specialDescription
-        );
-        formDataToSend.append("clientName", formData.clientName);
-        formDataToSend.append("gmail", formData.gmail);
-        formDataToSend.append("startingPoint", formData.startingPoint);
+    if (!validateForm()) return;
 
-        if (formData.documentPassport) {
-          formDataToSend.append("documentPassport", formData.documentPassport);
+    setIsSubmitting(true);
+    setUploadProgress(0);
+    setSubmissionError("");
+
+    try {
+      const formDataToSend = new FormData();
+
+      // Add text fields
+      formDataToSend.append("serviceType", formData.serviceType);
+      formDataToSend.append("assignedPerson", formData.assignedPerson);
+      formDataToSend.append("jobDetails", formData.jobDetails);
+      formDataToSend.append(
+        "specialDescription",
+        formData.specialDescription || ""
+      );
+      formDataToSend.append("clientName", formData.clientName);
+      formDataToSend.append("gmail", formData.gmail);
+      formDataToSend.append("startingPoint", formData.startingPoint);
+
+      // Add files with validation
+      if (formData.documentPassport) {
+        formDataToSend.append("documentPassport", formData.documentPassport);
+      }
+
+      if (formData.documentID) {
+        formDataToSend.append("documentID", formData.documentID);
+      } else {
+        throw new Error("ID document is required");
+      }
+
+      // Add other documents
+      formData.otherDocuments.forEach((file) => {
+        formDataToSend.append("otherDocuments", file);
+      });
+
+      // Calculate total upload size for debugging
+      let totalUploadSize = 0;
+      for (const pair of formDataToSend.entries()) {
+        if (pair[1] instanceof File) {
+          totalUploadSize += pair[1].size;
         }
-        if (formData.documentID) {
-          formDataToSend.append("documentID", formData.documentID);
-        }
-        formData.otherDocuments.forEach((file) => {
-          formDataToSend.append("otherDocuments", file);
-        });
+      }
+      console.log(
+        `Total upload size: ${(totalUploadSize / (1024 * 1024)).toFixed(2)} MB`
+      );
 
-        const response = await axiosInstance.post("/jobs", formDataToSend, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-          // Add timeout to prevent hanging requests
-          timeout: 60000,
-        });
+      // Upload with progress monitoring
+      const response = await fileUploadInstance.post("/jobs", formDataToSend, {
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          setUploadProgress(percentCompleted);
+        },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-        console.log("Job created:", response.data);
-        // Navigate to admin jobs page to see the job
-        navigate("/admin/jobs");
-      } catch (error) {
+      console.log("Job created successfully:", response.data);
+      // Navigate to admin jobs page to see the job
+      navigate("/admin/jobs");
+    } catch (error) {
       console.error("Error creating job:", error);
-      
-      // Better error handling
-      let errorMessage = "An error occurred when creating the job";
-      
+
+      let errorMessage = "An error occurred when creating the job.";
+
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
+        // The request was made and the server responded with an error status
         if (error.response.status === 413) {
-          errorMessage = "Files are too large. Please upload smaller files (max 50MB total).";
+          errorMessage =
+            "Files are too large. Please upload smaller files or compress images further.";
         } else if (error.response.data && error.response.data.message) {
           errorMessage = error.response.data.message;
+        } else {
+          errorMessage = `Server error: ${error.response.status}`;
         }
+      } else if (error.message && error.message.includes("Network Error")) {
+        errorMessage =
+          "Cannot connect to the server. Please check your internet connection or contact support for CORS issues.";
       } else if (error.request) {
         // The request was made but no response was received
-        errorMessage = "No response from server. Please check your connection.";
+        errorMessage =
+          "No response from server. Please try again or contact support.";
+      } else {
+        // Something happened in setting up the request
+        errorMessage = error.message;
       }
-      
-      // Display error to user (you'll need to add a state for error messages)
-      setErrors(prev => ({ ...prev, submission: errorMessage }));
-      } finally {
-        setIsSubmitting(false);
-      }
+
+      setSubmissionError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -342,6 +439,23 @@ function CreateJob() {
                 </p>
               </div>
             </div>
+
+            {/* Submission Error Message */}
+            {submissionError && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+                <div className="flex items-start">
+                  <ExclamationCircleIcon className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">
+                      Error Creating Job
+                    </h3>
+                    <p className="mt-1 text-sm text-red-700">
+                      {submissionError}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Existing Client Auto-Approval Notice */}
             {existingClient && (
@@ -428,7 +542,7 @@ function CreateJob() {
                       <p className="text-sm text-blue-700">
                         ID document is required, while passport document is
                         optional. You can upload other supporting documents if
-                        needed.
+                        needed. Large images will be automatically compressed.
                       </p>
                     </div>
                   </div>
@@ -450,37 +564,52 @@ function CreateJob() {
                         className="hidden"
                         id="passport-upload"
                         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        disabled={processingFile || isSubmitting}
                       />
                       <label
                         htmlFor="passport-upload"
                         className={`flex items-center justify-center w-full px-4 py-4 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
-                          formData.documentPassport
+                          processingFile
+                            ? "border-yellow-300 bg-yellow-50"
+                            : formData.documentPassport
                             ? "border-green-500 bg-green-50 hover:bg-green-100"
                             : errors.documentPassport
                             ? "border-red-300 bg-red-50 hover:bg-red-100"
                             : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                        } ${
+                          processingFile || isSubmitting
+                            ? "cursor-not-allowed opacity-70"
+                            : ""
                         }`}
                       >
                         <div className="flex items-center space-x-2">
-                          <CloudArrowUpIcon
-                            className={`h-6 w-6 ${
-                              formData.documentPassport
-                                ? "text-green-500"
-                                : errors.documentPassport
-                                ? "text-red-500"
-                                : "text-gray-400"
-                            }`}
-                          />
+                          {processingFile ? (
+                            <ArrowPathIcon className="h-5 w-5 text-yellow-500 animate-spin" />
+                          ) : (
+                            <CloudArrowUpIcon
+                              className={`h-6 w-6 ${
+                                formData.documentPassport
+                                  ? "text-green-500"
+                                  : errors.documentPassport
+                                  ? "text-red-500"
+                                  : "text-gray-400"
+                              }`}
+                            />
+                          )}
                           <span
                             className={`text-sm font-medium ${
-                              formData.documentPassport
+                              processingFile
+                                ? "text-yellow-700"
+                                : formData.documentPassport
                                 ? "text-green-700"
                                 : errors.documentPassport
                                 ? "text-red-700"
                                 : "text-gray-600"
                             }`}
                           >
-                            {formData.documentPassport
+                            {processingFile
+                              ? "Processing file..."
+                              : formData.documentPassport
                               ? formData.documentPassport.name
                               : "Click to upload passport document (optional)"}
                           </span>
@@ -507,37 +636,52 @@ function CreateJob() {
                         className="hidden"
                         id="id-upload"
                         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        disabled={processingFile || isSubmitting}
                       />
                       <label
                         htmlFor="id-upload"
                         className={`flex items-center justify-center w-full px-4 py-4 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
-                          formData.documentID
+                          processingFile
+                            ? "border-yellow-300 bg-yellow-50"
+                            : formData.documentID
                             ? "border-green-500 bg-green-50 hover:bg-green-100"
                             : errors.documentID
                             ? "border-red-300 bg-red-50 hover:bg-red-100"
                             : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                        } ${
+                          processingFile || isSubmitting
+                            ? "cursor-not-allowed opacity-70"
+                            : ""
                         }`}
                       >
                         <div className="flex items-center space-x-2">
-                          <CloudArrowUpIcon
-                            className={`h-6 w-6 ${
-                              formData.documentID
-                                ? "text-green-500"
-                                : errors.documentID
-                                ? "text-red-500"
-                                : "text-gray-400"
-                            }`}
-                          />
+                          {processingFile ? (
+                            <ArrowPathIcon className="h-5 w-5 text-yellow-500 animate-spin" />
+                          ) : (
+                            <CloudArrowUpIcon
+                              className={`h-6 w-6 ${
+                                formData.documentID
+                                  ? "text-green-500"
+                                  : errors.documentID
+                                  ? "text-red-500"
+                                  : "text-gray-400"
+                              }`}
+                            />
+                          )}
                           <span
                             className={`text-sm font-medium ${
-                              formData.documentID
+                              processingFile
+                                ? "text-yellow-700"
+                                : formData.documentID
                                 ? "text-green-700"
                                 : errors.documentID
                                 ? "text-red-700"
                                 : "text-gray-600"
                             }`}
                           >
-                            {formData.documentID
+                            {processingFile
+                              ? "Processing file..."
+                              : formData.documentID
                               ? formData.documentID.name
                               : "Click to upload ID document (required)"}
                           </span>
@@ -559,53 +703,81 @@ function CreateJob() {
                     </label>
                     <div
                       className={`border-2 border-dashed rounded-xl p-8 transition-all duration-200 ${
-                        dragActive
+                        processingFile
+                          ? "border-yellow-300 bg-yellow-50"
+                          : dragActive
                           ? "border-blue-500 bg-blue-50 shadow-lg"
                           : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                      } ${
+                        processingFile || isSubmitting
+                          ? "cursor-not-allowed opacity-70"
+                          : ""
                       }`}
-                      onDragEnter={(e) => handleDrag(e, true)}
-                      onDragLeave={(e) => handleDrag(e, false)}
-                      onDragOver={(e) => handleDrag(e, true)}
-                      onDrop={handleDrop}
+                      onDragEnter={(e) =>
+                        !processingFile && !isSubmitting && handleDrag(e, true)
+                      }
+                      onDragLeave={(e) =>
+                        !processingFile && !isSubmitting && handleDrag(e, false)
+                      }
+                      onDragOver={(e) =>
+                        !processingFile && !isSubmitting && handleDrag(e, true)
+                      }
+                      onDrop={(e) =>
+                        !processingFile && !isSubmitting && handleDrop(e)
+                      }
                     >
                       <div className="text-center">
-                        <CloudArrowUpIcon className="mx-auto h-12 w-12 text-blue-500" />
-                        <p className="mt-3 text-sm text-gray-600">
-                          <span className="font-semibold">
-                            Drag and drop files here
-                          </span>
-                          , or{" "}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              document.getElementById("other-docs").click()
-                            }
-                            className="text-blue-600 hover:text-blue-500 font-semibold"
-                          >
-                            browse
-                          </button>
-                        </p>
-                        <p className="mt-1 text-xs text-gray-500">
-                          Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG
-                        </p>
+                        {processingFile ? (
+                          <div className="flex flex-col items-center">
+                            <ArrowPathIcon className="h-12 w-12 text-yellow-500 animate-spin" />
+                            <p className="mt-3 text-sm text-yellow-700">
+                              Processing files...
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <CloudArrowUpIcon className="mx-auto h-12 w-12 text-blue-500" />
+                            <p className="mt-3 text-sm text-gray-600">
+                              <span className="font-semibold">
+                                Drag and drop files here
+                              </span>
+                              , or{" "}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  !processingFile &&
+                                  !isSubmitting &&
+                                  document.getElementById("other-docs").click()
+                                }
+                                className="text-blue-600 hover:text-blue-500 font-semibold"
+                                disabled={processingFile || isSubmitting}
+                              >
+                                browse
+                              </button>
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG
+                            </p>
+                          </>
+                        )}
                         <input
                           type="file"
                           id="other-docs"
                           multiple
                           className="hidden"
                           onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              otherDocuments: [
-                                ...prev.otherDocuments,
-                                ...Array.from(e.target.files),
-                              ],
-                            }))
+                            handleMultipleFileChange(Array.from(e.target.files))
                           }
                           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          disabled={processingFile || isSubmitting}
                         />
                       </div>
                     </div>
+                    {errors.otherDocuments && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {errors.otherDocuments}
+                      </p>
+                    )}
                     {formData.otherDocuments.length > 0 && (
                       <div className="mt-4 space-y-2">
                         {formData.otherDocuments.map((doc, index) => (
@@ -618,13 +790,15 @@ function CreateJob() {
                                 <DocumentIcon className="h-5 w-5 text-gray-600" />
                               </div>
                               <span className="text-sm font-medium text-gray-700">
-                                {doc.name}
+                                {doc.name} (
+                                {(doc.size / 1024 / 1024).toFixed(2)} MB)
                               </span>
                             </div>
                             <button
                               type="button"
                               onClick={() => removeOtherDocument(index)}
                               className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors duration-200"
+                              disabled={isSubmitting}
                             >
                               <XMarkIcon className="h-5 w-5" />
                             </button>
@@ -661,6 +835,7 @@ function CreateJob() {
                         className={`block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
                           errors.assignedPerson ? "border-red-300" : ""
                         }`}
+                        disabled={isSubmitting}
                       >
                         <option value="">Select an assigned person</option>
                         {operationManagers.map((manager) => (
@@ -723,6 +898,7 @@ function CreateJob() {
                         errors.jobDetails ? "border-red-300" : ""
                       }`}
                       placeholder="Enter detailed job requirements and specifications..."
+                      disabled={isSubmitting}
                     />
                     {errors.jobDetails && (
                       <p className="mt-1 text-sm text-red-600">
@@ -744,6 +920,7 @@ function CreateJob() {
                       rows={3}
                       className="block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Add any special instructions or additional information..."
+                      disabled={isSubmitting}
                     />
                   </div>
                 </div>
@@ -790,6 +967,7 @@ function CreateJob() {
                         }`}
                         placeholder="Enter client's full name"
                         readOnly={!!existingClient}
+                        disabled={isSubmitting}
                       />
                       {existingClient && (
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
@@ -828,6 +1006,7 @@ function CreateJob() {
                             : ""
                         }`}
                         placeholder="Enter client's email address"
+                        disabled={isSubmitting}
                       />
                       {checkingClient && (
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
@@ -877,6 +1056,7 @@ function CreateJob() {
                       }`}
                       placeholder="Enter the starting location"
                       readOnly={!!existingClient}
+                      disabled={isSubmitting}
                     />
                     {existingClient && (
                       <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
@@ -892,20 +1072,41 @@ function CreateJob() {
                 </div>
               </div>
 
+              {/* Upload Progress */}
+              {uploadProgress > 0 && uploadProgress < 100 && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Upload Progress
+                  </label>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className="bg-blue-600 h-2.5 rounded-full"
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500 text-right">
+                    {uploadProgress}%
+                  </p>
+                </div>
+              )}
+
               {/* Form Actions */}
               <div className="flex justify-end space-x-4 pt-6">
                 <button
                   type="button"
                   onClick={() => navigate(-1)}
                   className="px-6 py-3 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors duration-200"
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || processingFile}
                   className={`px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-sm font-semibold transition-all duration-200 ${
-                    isSubmitting ? "opacity-80 cursor-not-allowed" : ""
+                    isSubmitting || processingFile
+                      ? "opacity-80 cursor-not-allowed"
+                      : ""
                   }`}
                 >
                   <span className="flex items-center space-x-2">
