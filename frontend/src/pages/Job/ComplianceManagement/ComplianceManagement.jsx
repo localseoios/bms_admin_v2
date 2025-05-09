@@ -229,8 +229,8 @@ function ComplianceManagement() {
       setFileDetails(null);
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      alert("File size exceeds the 10MB limit. Please select a smaller file.");
+    if (file.size > 0 * 1024 * 1024) {
+      alert("File size exceeds the 100MB limit. Please select a smaller file.");
       return;
     }
     setRejectionFile(file);

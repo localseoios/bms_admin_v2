@@ -276,13 +276,34 @@ function CreateJob() {
           headers: {
             "Content-Type": "multipart/form-data",
           },
+          // Add timeout to prevent hanging requests
+          timeout: 60000,
         });
 
         console.log("Job created:", response.data);
         // Navigate to admin jobs page to see the job
         navigate("/admin/jobs");
       } catch (error) {
-        console.error("Error creating job:", error);
+      console.error("Error creating job:", error);
+      
+      // Better error handling
+      let errorMessage = "An error occurred when creating the job";
+      
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        if (error.response.status === 413) {
+          errorMessage = "Files are too large. Please upload smaller files (max 50MB total).";
+        } else if (error.response.data && error.response.data.message) {
+          errorMessage = error.response.data.message;
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        errorMessage = "No response from server. Please check your connection.";
+      }
+      
+      // Display error to user (you'll need to add a state for error messages)
+      setErrors(prev => ({ ...prev, submission: errorMessage }));
       } finally {
         setIsSubmitting(false);
       }

@@ -39,10 +39,27 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 app.use(cookieParser());
 
-// Enhanced CORS settings for file uploads
+app.use((req, res, next) => {
+  console.log("Request origin:", req.headers.origin);
+  next();
+});
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://testapp.newoon.com"],
+    origin: function (origin, callback) {
+      const allowedOrigins = [
+        "http://localhost:5173",
+        "https://testapp.newoon.com",
+      ];
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        console.log("Rejected origin:", origin);
+        return callback(null, false);
+      }
+      console.log("Accepted origin:", origin);
+      return callback(null, true);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
@@ -55,7 +72,6 @@ app.use(
     exposedHeaders: ["Content-Disposition"],
   })
 );
-
 // Configure static folder for temp uploads with proper headers
 app.use(
   "/temp-uploads",

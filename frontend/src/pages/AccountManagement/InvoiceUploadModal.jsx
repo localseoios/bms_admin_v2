@@ -88,9 +88,9 @@ const InvoiceUploadModal = ({
         return;
       }
 
-      // Check file size (5MB limit)
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        setError("File is too large. Maximum size is 5MB.");
+      // Check file size (50MB limit)
+      if (selectedFile.size > 50 * 1024 * 1024) {
+        setError("File is too large. Maximum size is 50MB.");
         setFile(null);
         return;
       }

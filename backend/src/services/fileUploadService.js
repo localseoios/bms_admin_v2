@@ -126,7 +126,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB size limit
+    fileSize: 100 * 1024 * 1024, // 10MB size limit
   },
 });
 
@@ -134,7 +134,7 @@ const largeFileUpload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 25 * 1024 * 1024, // 25MB size limit for CEO documents
+    fileSize: 250 * 1024 * 1024, // 25MB size limit for CEO documents
   },
 });
 
