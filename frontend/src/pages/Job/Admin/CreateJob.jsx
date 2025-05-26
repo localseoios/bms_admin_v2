@@ -192,7 +192,7 @@ function CreateJob() {
     if (!formData.serviceType)
       newErrors.serviceType = "Service type is required";
     // Passport is optional, so we don't validate it
-    if (!formData.documentID) newErrors.documentID = "ID document is required";
+    // if (!formData.documentID) newErrors.documentID = "ID document is required";
     if (!formData.assignedPerson)
       newErrors.assignedPerson = "Assigned person is required";
     if (!formData.jobDetails) newErrors.jobDetails = "Job details are required";
@@ -337,8 +337,6 @@ function CreateJob() {
 
       if (formData.documentID) {
         formDataToSend.append("documentID", formData.documentID);
-      } else {
-        throw new Error("ID document is required");
       }
 
       // Add other documents
@@ -527,10 +525,10 @@ function CreateJob() {
                     <DocumentIcon className="h-5 w-5 text-indigo-700" />
                   </div>
                   <h2 className="text-lg font-semibold text-gray-900">
-                    Required Documents
+                    Documents
                   </h2>
                   <span className="text-xs text-gray-500">
-                    (* indicates required)
+                    (All documents are optional)
                   </span>
                 </div>
 
@@ -540,9 +538,9 @@ function CreateJob() {
                     <InformationCircleIcon className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
                     <div className="ml-3">
                       <p className="text-sm text-blue-700">
-                        ID document is required, while passport document is
-                        optional. You can upload other supporting documents if
-                        needed. Large images will be automatically compressed.
+                        Both passport and ID documents are optional. You can
+                        upload other supporting documents if needed. Large
+                        images will be automatically compressed.
                       </p>
                     </div>
                   </div>
@@ -627,7 +625,7 @@ function CreateJob() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       ID Document{" "}
-                      <span className="text-red-500 text-xs">*</span>
+                      <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
                     <div className="flex items-center">
                       <input
@@ -683,7 +681,7 @@ function CreateJob() {
                               ? "Processing file..."
                               : formData.documentID
                               ? formData.documentID.name
-                              : "Click to upload ID document (required)"}
+                              : "Click to upload ID document (optional)"}
                           </span>
                         </div>
                       </label>

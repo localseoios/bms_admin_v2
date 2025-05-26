@@ -14,7 +14,7 @@ const jobSchema = new mongoose.Schema(
     },
     serviceType: { type: String, required: true },
     documentPassport: { type: String, required: false },
-    documentID: { type: String, required: true },
+    documentID: { type: String, required: false },
     otherDocuments: [{ type: String }],
     assignedPerson: {
       type: mongoose.Schema.Types.ObjectId,

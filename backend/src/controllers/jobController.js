@@ -54,12 +54,6 @@ const createJob = async (req, res) => {
         .json({ message: "Please provide a valid email address" });
     }
 
-    if (!req.files["documentID"]) {
-      return res
-        .status(400)
-        .json({ message: "Required documents are missing" });
-    }
-
     // Check if client exists, create if not - using the email as the identifier
     let client = await Client.findOne({ gmail }); // Despite the field name, this will store any email
     const clientExists = !!client; // Flag to track if this is an existing client
@@ -75,10 +69,10 @@ const createJob = async (req, res) => {
       : { url: null }; // Set a default if not provided
 
     // Leave the ID document handling as is since it's required
-    const documentIDUrl = await safeCloudinaryUpload(
-      req.files["documentID"][0].path
-    );
-
+const documentIDUrl = req.files["documentID"]
+  ? await safeCloudinaryUpload(req.files["documentID"][0].path)
+  : { url: null };
+  
     // Other documents handling remains the same
     const otherDocumentsUrls = req.files["otherDocuments"]
       ? await Promise.all(
