@@ -1,4 +1,4 @@
-// routes/jobRoutes.js
+// routes/jobRoutes.js - FIXED IMPORT ISSUE
 const express = require("express");
 const router = express.Router();
 const {
@@ -17,17 +17,24 @@ const {
   cancelJob,
   getAssignedJobs,
   getJobDetails,
-} = require("../controllers/jobController");
+  updateJob, // ← FIXED: Import from the same controller
+  checkJobNumber, // ← FIXED: Import from the same controller
+} = require("../controllers/jobController"); // ← All functions from the same file
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
+// REMOVED THE PROBLEMATIC IMPORT:
+// const { checkJobNumber, updateJob } = require("../../../../bms_admin_v2/backend/src/controllers/jobController");
+
+// Ensure temp directory exists
+const tempDir = path.join(__dirname, "../temp-uploads");
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const tempDir = path.join(__dirname, "../temp-uploads");
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
     cb(null, tempDir);
   },
   filename: function (req, file, cb) {
@@ -43,13 +50,16 @@ const fileFilter = (req, file, cb) => {
   if (
     file.mimetype === "image/jpeg" ||
     file.mimetype === "image/png" ||
-    file.mimetype === "application/pdf"
+    file.mimetype === "application/pdf" ||
+    file.mimetype === "application/msword" ||
+    file.mimetype ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     cb(null, true);
   } else {
     cb(
       new Error(
-        "Unsupported file format. Only JPEG, PNG, and PDF are allowed."
+        "Unsupported file format. Only JPEG, PNG, PDF, DOC and DOCX are allowed."
       ),
       false
     );
@@ -59,26 +69,28 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+    files: 12, // Max 12 files per request
+  },
 });
 
-// Existing routes
-router.post(
-  "/",
-  protect,
-  adminOnly,
-  upload.fields([
-    { name: "documentPassport", maxCount: 1 },
-    { name: "documentID", maxCount: 1 },
-    { name: "otherDocuments", maxCount: 10 },
-  ]),
-  createJob
-);
+// Log request info for debugging
+router.use((req, res, next) => {
+  console.log(`Job route accessed: ${req.method} ${req.url}`);
+  next();
+});
 
-router.get("/", protect, checkPermission("complianceManagement"), getAllJobs);
+// ===== SPECIFIC ROUTES FIRST =====
+
+// Check job number availability route - MUST come before parameterized routes
+router.get("/check-job-number/:jobNumber", protect, adminOnly, checkJobNumber);
+
+// Get all jobs routes
 router.get("/get-all-admin", protect, adminOnly, getAllJobsAdmin);
+router.get("/", protect, checkPermission("complianceManagement"), getAllJobs);
 
-// New route for assigned jobs
+// Get assigned jobs
 router.get(
   "/assigned",
   protect,
@@ -86,16 +98,64 @@ router.get(
   getAssignedJobs
 );
 
-// New route for specific job details (accessible by admin, compliance, and assigned person)
-router.get(
-  "/:id",
+// ===== CREATE JOB ROUTE =====
+router.post(
+  "/",
   protect,
-  checkPermission("operationManagement"),
-  getJobDetails
+  adminOnly,
+  (req, res, next) => {
+    console.log("Processing job create request");
+    upload.fields([
+      { name: "documentPassport", maxCount: 1 },
+      { name: "documentID", maxCount: 1 },
+      { name: "otherDocuments", maxCount: 10 },
+    ])(req, res, (err) => {
+      if (err) {
+        console.error("Upload error:", err.message);
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({
+            message: "File too large",
+            error: "Maximum file size is 50MB",
+          });
+        }
+        return res.status(400).json({
+          message: "File upload error",
+          error: err.message,
+        });
+      }
+      next();
+    });
+  },
+  createJob
 );
 
+// ===== UPDATE JOB ROUTE - SIMPLIFIED AND FIXED =====
+router.put(
+  "/:id/update",
+  protect,
+  adminOnly,
+  (req, res, next) => {
+    console.log("=== UPDATE ROUTE HIT ===");
+    console.log("Processing job update request for ID:", req.params.id);
+    next();
+  },
+  upload.fields([
+    { name: "documentPassport", maxCount: 1 },
+    { name: "documentID", maxCount: 1 },
+    { name: "otherDocuments", maxCount: 10 },
+  ]),
+  (req, res, next) => {
+    console.log("=== AFTER MULTER ===");
+    console.log("Files received:", req.files ? Object.keys(req.files) : "none");
+    console.log("Body keys:", Object.keys(req.body));
+    next();
+  },
+  updateJob
+);
+
+// ===== OTHER PARAMETERIZED ROUTES =====
+
 // Job status management routes
-// Update the approve job route to use multer for file uploads
 router.put(
   "/:id/approve",
   protect,
@@ -103,6 +163,7 @@ router.put(
   upload.single("approvalDocument"),
   approveJob
 );
+
 router.put(
   "/:id/reject",
   protect,
@@ -110,6 +171,7 @@ router.put(
   upload.single("rejectionDocument"),
   rejectJob
 );
+
 router.put(
   "/:id/resubmit",
   protect,
@@ -122,20 +184,20 @@ router.put(
   resubmitJob
 );
 
-// New route for job cancellation
-router.put(
-  "/:id/cancel",
-  protect,
-  adminOnly, // Only admins can cancel jobs
-  cancelJob
-);
+// Job cancellation route
+router.put("/:id/cancel", protect, adminOnly, cancelJob);
 
 // Job timeline route
 router.get("/:id/timeline", protect, getJobTimeline);
 
+// ===== GENERAL PARAMETERIZED ROUTES (LAST) =====
 
-
-
-
+// Get specific job details - MUST BE LAST among parameterized routes
+router.get(
+  "/:id",
+  protect,
+  checkPermission("operationManagement"),
+  getJobDetails
+);
 
 module.exports = router;

@@ -10,10 +10,10 @@ const jobRoutes = require("./src/routes/jobRoutes");
 const path = require("path");
 const fs = require("fs");
 const notificationRoutes = require("./src/routes/notificationRoutes");
-const operationRoutes = require("./src/routes/operationRoutes"); // New operation routes
+const operationRoutes = require("./src/routes/operationRoutes");
 const kycRoutes = require("./src/routes/kycRoutes");
 const errorLoggingMiddleware = require("./src/middleware/errorLoggingMiddleware");
-const braRoutes = require("./src/routes/braRoutes"); // New BRA routes
+const braRoutes = require("./src/routes/braRoutes");
 const monthlyPaymentRoutes = require("./src/routes/monthlyPaymentRoutes");
 const serviceRoutes = require("./src/routes/serviceRoutes");
 
@@ -27,20 +27,12 @@ if (!fs.existsSync(tempUploadsDir)) {
 dotenv.config();
 const app = express();
 
-// Debug middleware - logs request information for troubleshooting
+// SIMPLIFIED Debug middleware - only log essential info
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  console.log("Content-Length:", req.headers["content-length"]);
-  console.log("Content-Type:", req.headers["content-type"]);
-  console.log("Origin:", req.headers["origin"]);
-
-  // Track response for debugging
-  const originalSend = res.send;
-  res.send = function (...args) {
-    console.log(`Response status: ${res.statusCode}`);
-    return originalSend.apply(res, args);
-  };
-
+  // Only log for API routes to reduce noise
+  if (req.url.startsWith("/api/")) {
+    console.log(`${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -54,7 +46,6 @@ app.options("*", function (req, res) {
 
   if (allowedOrigins.includes(origin)) {
     res.header("Access-Control-Allow-Origin", origin);
-    console.log(`Setting preflight CORS headers for: ${origin}`);
   }
 
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -76,7 +67,6 @@ app.use(function (req, res, next) {
 
   if (origin && allowedOrigins.includes(origin)) {
     res.header("Access-Control-Allow-Origin", origin);
-    console.log(`Setting regular CORS headers for: ${origin}`);
   }
 
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -115,7 +105,6 @@ app.use(
         console.log("Rejected origin:", origin);
         return callback(null, false);
       }
-      console.log("Accepted origin in cors middleware:", origin);
       return callback(null, true);
     },
     credentials: true,
@@ -154,9 +143,7 @@ app.get("/files/:filename", (req, res) => {
     req.params.filename
   );
 
-  // Check if file exists
   if (fs.existsSync(filePath)) {
-    // Set content type based on file extension
     const ext = path.extname(filePath).toLowerCase();
     const contentTypeMap = {
       ".pdf": "application/pdf",
@@ -170,8 +157,6 @@ app.get("/files/:filename", (req, res) => {
 
     const contentType = contentTypeMap[ext] || "application/octet-stream";
     res.set("Content-Type", contentType);
-
-    // Send the file
     res.sendFile(filePath);
   } else {
     console.log(`File not found: ${filePath}`);
@@ -179,24 +164,60 @@ app.get("/files/:filename", (req, res) => {
   }
 });
 
-// API Routes
+// ====== CRITICAL: ADD JOB ROUTE DEBUGGING ======
+// Debug middleware SPECIFICALLY for job routes
+app.use("/api/jobs", (req, res, next) => {
+  console.log("=== JOB ROUTE DEBUG ===");
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  console.log("Original URL:", req.originalUrl);
+  console.log("Path:", req.path);
+  console.log("Content-Type:", req.get("Content-Type"));
+  console.log("======================");
+  next();
+});
+
+// ====== API ROUTES ======
 app.use("/api/auth", require("./src/routes/authRoute"));
 app.use("/api/users", require("./src/routes/userRoute"));
 app.use("/api/roles", require("./src/routes/roleRoute"));
+
+// CRITICAL: Job routes registration with debugging
+console.log("=== REGISTERING JOB ROUTES ===");
 app.use("/api/jobs", jobRoutes);
+console.log("Job routes registered at /api/jobs");
+console.log("Available job routes should include:");
+console.log("  PUT /api/jobs/:id/update");
+console.log("  GET /api/jobs/get-all-admin");
+console.log("  POST /api/jobs");
+console.log("===============================");
+
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/clients", require("./src/routes/clientRoutes"));
-app.use("/api/operations", operationRoutes); // New operation routes
+app.use("/api/operations", operationRoutes);
 app.use("/api/kyc", kycRoutes);
-app.use("/api/bra", braRoutes); // New BRA routes added here
+app.use("/api/bra", braRoutes);
 app.use("/api/monthlypayment", monthlyPaymentRoutes);
 app.use("/api/account", require("./src/routes/accountManagementRoutes"));
 app.use("/api/services", serviceRoutes);
 
+// Add a catch-all route AFTER all your API routes to debug 404s
+app.all("/api/*", (req, res) => {
+  console.log("=== 404 API ROUTE DEBUG ===");
+  console.log("Unmatched route:", req.method, req.originalUrl);
+  console.log("This means the route was not found in any registered router");
+  console.log("========================");
+  res.status(404).json({
+    message: "API route not found",
+    method: req.method,
+    url: req.originalUrl,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Add specific handler for multer errors
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    // A Multer error occurred when uploading
     console.error("Multer upload error:", err);
 
     if (err.code === "LIMIT_FILE_SIZE") {
@@ -212,7 +233,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // For other errors, pass to the generic error handler
   next(err);
 });
 
@@ -241,16 +261,20 @@ mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    connectTimeoutMS: 30000, // 30 seconds MongoDB connection timeout
-    socketTimeoutMS: 45000, // 45 seconds MongoDB operation timeout
+    connectTimeoutMS: 30000,
+    socketTimeoutMS: 45000,
   })
   .then(() => {
     console.log("MongoDB connected successfully");
     const server = app.listen(PORT, () => {
       console.log(`Server Running on port ${PORT}`);
+      console.log("=== SERVER STARTED ===");
+      console.log("Available endpoints:");
+      console.log(`  http://localhost:${PORT}/api/jobs - Job routes`);
+      console.log(`  http://localhost:${PORT}/api/jobs/test - Test route`);
+      console.log("=====================");
     });
 
-    // Set timeout for the server
-    server.timeout = 120000; // 2 minutes
+    server.timeout = 120000;
   })
   .catch((err) => console.log(err));

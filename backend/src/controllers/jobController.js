@@ -403,6 +403,9 @@ const getKycStatus = asyncHandler(async (req, res) => {
 // Similarly, update other functions that handle KYC-related statuses
 
 
+
+
+
 // Update the getAllJobsAdmin function
 const getAllJobsAdmin = asyncHandler(async (req, res) => {
   try {
@@ -855,6 +858,210 @@ const getAssignedJobs = asyncHandler(async (req, res) => {
   }
 });
 
+const updateJob = asyncHandler(async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      res.status(404);
+      throw new Error("Job not found");
+    }
+
+    const {
+      jobNumber,
+      serviceType,
+      assignedPerson,
+      jobDetails,
+      specialDescription,
+      clientName,
+      gmail,
+      startingPoint,
+    } = req.body;
+
+    // Check if job number is being changed and if it already exists
+    if (jobNumber && jobNumber !== job.jobNumber) {
+      const jobNumberExists = await checkJobNumberExists(jobNumber);
+      if (jobNumberExists) {
+        return res.status(400).json({
+          message: "Job number already exists. Please use a unique job number.",
+        });
+      }
+
+      // Validate job number format
+      const jobNumberRegex = /^[A-Za-z0-9-]+$/;
+      if (!jobNumberRegex.test(jobNumber)) {
+        return res.status(400).json({
+          message: "Job number must contain only letters, numbers, and hyphens",
+        });
+      }
+    }
+
+    // Validate email format if provided
+    if (
+      gmail &&
+      !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(gmail)
+    ) {
+      return res.status(400).json({
+        message: "Please provide a valid email address",
+      });
+    }
+
+    // Handle document updates
+    let updatedDocuments = {
+      documentPassport: job.documentPassport,
+      documentID: job.documentID,
+      otherDocuments: job.otherDocuments || [],
+    };
+
+    // Update passport document if provided
+    if (req.files && req.files["documentPassport"]) {
+      const uploadResult = await safeCloudinaryUpload(
+        req.files["documentPassport"][0].path
+      );
+      if (uploadResult.success) {
+        updatedDocuments.documentPassport = uploadResult.url;
+        // Clean up temporary file
+        fs.unlink(req.files["documentPassport"][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
+    }
+
+    // Update ID document if provided
+    if (req.files && req.files["documentID"]) {
+      const uploadResult = await safeCloudinaryUpload(
+        req.files["documentID"][0].path
+      );
+      if (uploadResult.success) {
+        updatedDocuments.documentID = uploadResult.url;
+        // Clean up temporary file
+        fs.unlink(req.files["documentID"][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
+    }
+
+    // Handle other documents - can replace or add to existing
+    if (req.files && req.files["otherDocuments"]) {
+      const uploadPromises = req.files["otherDocuments"].map(async (file) => {
+        const result = await safeCloudinaryUpload(file.path);
+        // Clean up temporary file
+        fs.unlink(file.path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+        return result.url;
+      });
+
+      const newDocuments = await Promise.all(uploadPromises);
+
+      // Option 1: Replace all other documents
+      if (req.body.replaceOtherDocuments === "true") {
+        updatedDocuments.otherDocuments = newDocuments;
+      } else {
+        // Option 2: Add to existing documents
+        updatedDocuments.otherDocuments = [
+          ...(job.otherDocuments || []),
+          ...newDocuments,
+        ];
+      }
+    }
+
+    // Update job fields
+    const updateFields = {
+      ...(jobNumber && { jobNumber }),
+      ...(serviceType && { serviceType }),
+      ...(assignedPerson && { assignedPerson }),
+      ...(jobDetails && { jobDetails }),
+      ...(specialDescription !== undefined && { specialDescription }),
+      ...(clientName && { clientName }),
+      ...(gmail && { gmail }),
+      ...(startingPoint && { startingPoint }),
+      ...updatedDocuments,
+    };
+
+    // Update the job
+    const updatedJob = await Job.findByIdAndUpdate(
+      req.params.id,
+      updateFields,
+      { new: true, runValidators: true }
+    )
+      .populate("clientId", "name gmail startingPoint")
+      .populate("assignedPerson", "name email")
+      .populate("createdBy", "name email");
+
+    // Add timeline entry for job update
+    updatedJob.timeline.push({
+      status: "updated",
+      description: `Job details updated by ${req.user.name}`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+
+    await updatedJob.save();
+
+    // Create notifications for job update
+    try {
+      // Notify the updating admin
+      await notificationService.createNotification(
+        {
+          title: "Job Updated Successfully",
+          description: `You have successfully updated the ${updatedJob.serviceType} job (${updatedJob.jobNumber}) for ${updatedJob.clientName}.`,
+          type: "job",
+          relatedTo: { model: "Job", id: updatedJob._id },
+        },
+        { _id: req.user._id }
+      );
+
+      // Notify other admins
+      await notificationService.createNotification(
+        {
+          title: "Job Updated",
+          description: `The ${updatedJob.serviceType} job (${updatedJob.jobNumber}) for ${updatedJob.clientName} has been updated by ${req.user.name}.`,
+          type: "job",
+          relatedTo: { model: "Job", id: updatedJob._id },
+        },
+        { "role.name": "admin" }
+      );
+
+      // Notify assigned person if assignment changed
+      if (assignedPerson && assignedPerson !== job.assignedPerson.toString()) {
+        await notificationService.createNotification(
+          {
+            title: "Job Assignment Updated",
+            description: `You have been assigned to an updated ${updatedJob.serviceType} job (${updatedJob.jobNumber}) for ${updatedJob.clientName}.`,
+            type: "job",
+            subType: "assignment",
+            relatedTo: { model: "Job", id: updatedJob._id },
+          },
+          assignedPerson
+        );
+      }
+    } catch (notificationError) {
+      console.error("Error creating notification:", notificationError);
+      // Continue even if notification fails
+    }
+
+    res.status(200).json(updatedJob);
+  } catch (error) {
+    console.error("Error updating job:", error);
+
+    // Handle unique constraint error
+    if (
+      error.code === 11000 &&
+      error.keyPattern &&
+      error.keyPattern.jobNumber
+    ) {
+      return res.status(400).json({
+        message: "Job number already exists. Please use a unique job number.",
+      });
+    }
+
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = {
   createJob,
   checkJobNumber,
@@ -867,4 +1074,5 @@ module.exports = {
   cancelJob,
   getAssignedJobs,
   getJobDetails,
+  updateJob,
 };

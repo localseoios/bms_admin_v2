@@ -18,6 +18,11 @@ import {
   NoSymbolIcon,
   BellAlertIcon,
   HashtagIcon,
+  PencilIcon, // Add edit icon
+  UserIcon,
+  EnvelopeIcon,
+  MapPinIcon,
+  BuildingOfficeIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment } from "react";
@@ -160,6 +165,7 @@ function AdminJobs() {
   const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false); // New edit modal state
   const [selectedJob, setSelectedJob] = useState(null);
 
   // State for resubmission form
@@ -185,6 +191,48 @@ function AdminJobs() {
   const [selectedDocumentType, setSelectedDocumentType] = useState(
     DOCUMENT_TYPES.OTHER
   );
+
+  // New state for edit form
+  const [editFormData, setEditFormData] = useState({
+    jobNumber: "",
+    serviceType: "",
+    assignedPerson: "",
+    jobDetails: "",
+    specialDescription: "",
+    clientName: "",
+    gmail: "",
+    startingPoint: "",
+  });
+
+  const [editDocuments, setEditDocuments] = useState({
+    documentPassport: null,
+    documentID: null,
+    otherDocuments: [],
+  });
+
+  const [editErrors, setEditErrors] = useState({});
+  const [operationManagers, setOperationManagers] = useState([]);
+  const [services, setServices] = useState([]);
+
+  // Fetch operation managers and services for the edit form
+  useEffect(() => {
+    const fetchEditFormData = async () => {
+      try {
+        const [managersResponse, servicesResponse] = await Promise.all([
+          axiosInstance.get("/users/operation-managers"),
+          axiosInstance.get("/services"),
+        ]);
+        setOperationManagers(managersResponse.data);
+        setServices(
+          servicesResponse.data.filter((service) => service.status === "active")
+        );
+      } catch (error) {
+        console.error("Error fetching edit form data:", error);
+      }
+    };
+
+    fetchEditFormData();
+  }, []);
 
   // Fetch jobs from the API when the component mounts
   useEffect(() => {
@@ -278,6 +326,28 @@ function AdminJobs() {
     setIsDetailModalOpen(true);
   };
 
+  const handleEditJob = (job) => {
+    setSelectedJob(job);
+    // Pre-populate the edit form with existing job data
+    setEditFormData({
+      jobNumber: job.jobNumber || "",
+      serviceType: job.serviceType || "",
+      assignedPerson: job.assignedPerson?._id || job.assignedPerson || "",
+      jobDetails: job.jobDetails || "",
+      specialDescription: job.specialDescription || "",
+      clientName: job.clientName || "",
+      gmail: job.gmail || "",
+      startingPoint: job.startingPoint || "",
+    });
+    setEditDocuments({
+      documentPassport: null,
+      documentID: null,
+      otherDocuments: [],
+    });
+    setEditErrors({});
+    setIsEditModalOpen(true);
+  };
+
   const handleResubmitJob = (job) => {
     setSelectedJob(job);
     setIsResubmitModalOpen(true);
@@ -305,6 +375,163 @@ function AdminJobs() {
       others: [],
     });
     setSelectedDocumentType(DOCUMENT_TYPES.OTHER);
+  };
+
+  // Handle edit form input changes
+  const handleEditInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    // Clear error for this field
+    if (editErrors[name]) {
+      setEditErrors((prev) => ({
+        ...prev,
+        [name]: "",
+      }));
+    }
+  };
+
+  // Handle edit form file changes
+  const handleEditFileChange = (e, field) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setEditDocuments((prev) => ({
+      ...prev,
+      [field]: file,
+    }));
+
+    // Clear error for this field
+    if (editErrors[field]) {
+      setEditErrors((prev) => ({
+        ...prev,
+        [field]: "",
+      }));
+    }
+  };
+
+  // Handle edit form multiple file changes
+  const handleEditMultipleFileChange = (files) => {
+    if (!files || files.length === 0) return;
+
+    setEditDocuments((prev) => ({
+      ...prev,
+      otherDocuments: [...prev.otherDocuments, ...Array.from(files)],
+    }));
+  };
+
+  // Remove document from edit form
+  const removeEditDocument = (field, index = null) => {
+    if (field === "otherDocuments" && index !== null) {
+      setEditDocuments((prev) => ({
+        ...prev,
+        otherDocuments: prev.otherDocuments.filter((_, i) => i !== index),
+      }));
+    } else {
+      setEditDocuments((prev) => ({
+        ...prev,
+        [field]: null,
+      }));
+    }
+  };
+
+  // Validate edit form
+  const validateEditForm = () => {
+    const newErrors = {};
+
+    if (!editFormData.jobNumber) {
+      newErrors.jobNumber = "Job number is required";
+    }
+    if (!editFormData.serviceType) {
+      newErrors.serviceType = "Service type is required";
+    }
+    if (!editFormData.assignedPerson) {
+      newErrors.assignedPerson = "Assigned person is required";
+    }
+    if (!editFormData.jobDetails) {
+      newErrors.jobDetails = "Job details are required";
+    }
+    if (!editFormData.clientName) {
+      newErrors.clientName = "Client name is required";
+    }
+    if (!editFormData.gmail) {
+      newErrors.gmail = "Email is required";
+    } else if (
+      !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(editFormData.gmail)
+    ) {
+      newErrors.gmail = "Invalid email format";
+    }
+    if (!editFormData.startingPoint) {
+      newErrors.startingPoint = "Starting point is required";
+    }
+
+    setEditErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Submit edit form
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateEditForm()) return;
+
+    setIsSubmitting(true);
+
+    try {
+      const formData = new FormData();
+
+      // Add text fields
+      Object.keys(editFormData).forEach((key) => {
+        formData.append(key, editFormData[key]);
+      });
+
+      // Add documents
+      if (editDocuments.documentPassport) {
+        formData.append("documentPassport", editDocuments.documentPassport);
+      }
+      if (editDocuments.documentID) {
+        formData.append("documentID", editDocuments.documentID);
+      }
+      editDocuments.otherDocuments.forEach((file) => {
+        formData.append("otherDocuments", file);
+      });
+
+      const response = await axiosInstance.put(
+        `/jobs/${selectedJob._id}/update`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      // Update job in the state
+      setJobs((prevJobs) =>
+        prevJobs.map((job) =>
+          job._id === selectedJob._id ? response.data : job
+        )
+      );
+
+      setIsEditModalOpen(false);
+      showNotification(
+        "Job Updated",
+        `Job ${editFormData.jobNumber} has been updated successfully.`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Error updating job:", error);
+      showNotification(
+        "Update Failed",
+        error.response?.data?.message ||
+          "Failed to update job. Please try again.",
+        "error"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handlers for file uploads in resubmit modal
@@ -939,6 +1166,17 @@ function AdminJobs() {
                               <EyeIcon className="h-5 w-5" />
                             </motion.button>
 
+                            {/* Edit button - NEW */}
+                            <motion.button
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => handleEditJob(job)}
+                              className="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors duration-200"
+                              title="Edit Job"
+                            >
+                              <PencilIcon className="h-5 w-5" />
+                            </motion.button>
+
                             {/* Only show resubmit button if job status is rejected */}
                             {job.status === "rejected" && (
                               <motion.button
@@ -984,6 +1222,467 @@ function AdminJobs() {
             </table>
           </div>
         </div>
+
+        {/* Edit Job Modal - NEW */}
+        <Transition appear show={isEditModalOpen} as={Fragment}>
+          <Dialog
+            as="div"
+            className="fixed inset-0 z-50 overflow-y-auto"
+            onClose={() => setIsEditModalOpen(false)}
+          >
+            <div className="min-h-screen px-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0"
+                enterTo="opacity-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100"
+                leaveTo="opacity-0"
+              >
+                <Dialog.Overlay className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
+              </Transition.Child>
+
+              <span
+                className="inline-block h-screen align-middle"
+                aria-hidden="true"
+              >
+                ​
+              </span>
+
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <div className="inline-block w-full max-w-4xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl max-h-[90vh] overflow-y-auto">
+                  {selectedJob && (
+                    <>
+                      <Dialog.Title
+                        as="h3"
+                        className="text-lg font-medium leading-6 text-gray-900 flex items-center space-x-2 mb-6"
+                      >
+                        <PencilIcon className="h-6 w-6 text-blue-600" />
+                        <span>Edit Job</span>
+                        {selectedJob.jobNumber && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <HashtagIcon className="h-3 w-3 mr-1" />
+                            {selectedJob.jobNumber}
+                          </span>
+                        )}
+                      </Dialog.Title>
+
+                      <form onSubmit={handleEditSubmit} className="space-y-6">
+                        {/* Job Number and Service Type */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Job Number <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <HashtagIcon className="h-5 w-5 text-gray-400" />
+                              </div>
+                              <input
+                                type="text"
+                                name="jobNumber"
+                                value={editFormData.jobNumber}
+                                onChange={handleEditInputChange}
+                                className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                                  editErrors.jobNumber ? "border-red-300" : ""
+                                }`}
+                                placeholder="Enter job number"
+                              />
+                            </div>
+                            {editErrors.jobNumber && (
+                              <p className="mt-1 text-sm text-red-600">
+                                {editErrors.jobNumber}
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Service Type{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              name="serviceType"
+                              value={editFormData.serviceType}
+                              onChange={handleEditInputChange}
+                              className={`block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                                editErrors.serviceType ? "border-red-300" : ""
+                              }`}
+                            >
+                              <option value="">Select service type</option>
+                              {services.map((service) => (
+                                <option key={service._id} value={service.name}>
+                                  {service.name}
+                                </option>
+                              ))}
+                            </select>
+                            {editErrors.serviceType && (
+                              <p className="mt-1 text-sm text-red-600">
+                                {editErrors.serviceType}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Assigned Person */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Assigned Person{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            name="assignedPerson"
+                            value={editFormData.assignedPerson}
+                            onChange={handleEditInputChange}
+                            className={`block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                              editErrors.assignedPerson ? "border-red-300" : ""
+                            }`}
+                          >
+                            <option value="">Select assigned person</option>
+                            {operationManagers.map((manager) => (
+                              <option key={manager._id} value={manager._id}>
+                                {manager.name}
+                              </option>
+                            ))}
+                          </select>
+                          {editErrors.assignedPerson && (
+                            <p className="mt-1 text-sm text-red-600">
+                              {editErrors.assignedPerson}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Job Details */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Job Details <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            name="jobDetails"
+                            value={editFormData.jobDetails}
+                            onChange={handleEditInputChange}
+                            rows={4}
+                            className={`block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                              editErrors.jobDetails ? "border-red-300" : ""
+                            }`}
+                            placeholder="Enter job details"
+                          />
+                          {editErrors.jobDetails && (
+                            <p className="mt-1 text-sm text-red-600">
+                              {editErrors.jobDetails}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Special Description */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Special Description
+                          </label>
+                          <textarea
+                            name="specialDescription"
+                            value={editFormData.specialDescription}
+                            onChange={handleEditInputChange}
+                            rows={3}
+                            className="block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Enter special description (optional)"
+                          />
+                        </div>
+
+                        {/* Client Information */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Client Name{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <UserIcon className="h-5 w-5 text-gray-400" />
+                              </div>
+                              <input
+                                type="text"
+                                name="clientName"
+                                value={editFormData.clientName}
+                                onChange={handleEditInputChange}
+                                className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                                  editErrors.clientName ? "border-red-300" : ""
+                                }`}
+                                placeholder="Enter client name"
+                              />
+                            </div>
+                            {editErrors.clientName && (
+                              <p className="mt-1 text-sm text-red-600">
+                                {editErrors.clientName}
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Email <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <EnvelopeIcon className="h-5 w-5 text-gray-400" />
+                              </div>
+                              <input
+                                type="email"
+                                name="gmail"
+                                value={editFormData.gmail}
+                                onChange={handleEditInputChange}
+                                className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                                  editErrors.gmail ? "border-red-300" : ""
+                                }`}
+                                placeholder="Enter email"
+                              />
+                            </div>
+                            {editErrors.gmail && (
+                              <p className="mt-1 text-sm text-red-600">
+                                {editErrors.gmail}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Starting Point */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Starting Point{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                              <MapPinIcon className="h-5 w-5 text-gray-400" />
+                            </div>
+                            <input
+                              type="text"
+                              name="startingPoint"
+                              value={editFormData.startingPoint}
+                              onChange={handleEditInputChange}
+                              className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                                editErrors.startingPoint ? "border-red-300" : ""
+                              }`}
+                              placeholder="Enter starting point"
+                            />
+                          </div>
+                          {editErrors.startingPoint && (
+                            <p className="mt-1 text-sm text-red-600">
+                              {editErrors.startingPoint}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Document Upload Section */}
+                        <div className="border-t pt-6">
+                          <h4 className="text-lg font-medium text-gray-900 mb-4">
+                            Update Documents (Optional)
+                          </h4>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Passport Document */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Passport Document
+                              </label>
+                              <input
+                                type="file"
+                                onChange={(e) =>
+                                  handleEditFileChange(e, "documentPassport")
+                                }
+                                className="hidden"
+                                id="edit-passport-upload"
+                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              />
+                              <label
+                                htmlFor="edit-passport-upload"
+                                className="flex items-center justify-center w-full px-4 py-4 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <CloudArrowUpIcon className="h-6 w-6 text-gray-400" />
+                                  <span className="text-sm text-gray-600">
+                                    {editDocuments.documentPassport
+                                      ? editDocuments.documentPassport.name
+                                      : "Upload new passport document"}
+                                  </span>
+                                </div>
+                              </label>
+                              {editDocuments.documentPassport && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeEditDocument("documentPassport")
+                                  }
+                                  className="mt-2 text-sm text-red-600 hover:text-red-700"
+                                >
+                                  Remove file
+                                </button>
+                              )}
+                            </div>
+
+                            {/* ID Document */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                ID Document
+                              </label>
+                              <input
+                                type="file"
+                                onChange={(e) =>
+                                  handleEditFileChange(e, "documentID")
+                                }
+                                className="hidden"
+                                id="edit-id-upload"
+                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              />
+                              <label
+                                htmlFor="edit-id-upload"
+                                className="flex items-center justify-center w-full px-4 py-4 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <CloudArrowUpIcon className="h-6 w-6 text-gray-400" />
+                                  <span className="text-sm text-gray-600">
+                                    {editDocuments.documentID
+                                      ? editDocuments.documentID.name
+                                      : "Upload new ID document"}
+                                  </span>
+                                </div>
+                              </label>
+                              {editDocuments.documentID && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeEditDocument("documentID")
+                                  }
+                                  className="mt-2 text-sm text-red-600 hover:text-red-700"
+                                >
+                                  Remove file
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Other Documents */}
+                          <div className="mt-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Other Documents
+                            </label>
+                            <input
+                              type="file"
+                              multiple
+                              onChange={(e) =>
+                                handleEditMultipleFileChange(e.target.files)
+                              }
+                              className="hidden"
+                              id="edit-other-docs"
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            />
+                            <label
+                              htmlFor="edit-other-docs"
+                              className="flex items-center justify-center w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                            >
+                              <div className="text-center">
+                                <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
+                                <p className="mt-3 text-sm text-gray-600">
+                                  <span className="font-semibold">
+                                    Click to upload
+                                  </span>{" "}
+                                  additional documents
+                                </p>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  PDF, DOC, DOCX, JPG, PNG up to 50MB each
+                                </p>
+                              </div>
+                            </label>
+
+                            {editDocuments.otherDocuments.length > 0 && (
+                              <div className="mt-4 space-y-2">
+                                {editDocuments.otherDocuments.map(
+                                  (doc, index) => (
+                                    <div
+                                      key={index}
+                                      className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200"
+                                    >
+                                      <div className="flex items-center space-x-3">
+                                        <DocumentIcon className="h-5 w-5 text-gray-600" />
+                                        <span className="text-sm font-medium text-gray-700">
+                                          {doc.name} (
+                                          {(doc.size / 1024 / 1024).toFixed(2)}{" "}
+                                          MB)
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          removeEditDocument(
+                                            "otherDocuments",
+                                            index
+                                          )
+                                        }
+                                        className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors duration-200"
+                                      >
+                                        <XMarkIcon className="h-5 w-5" />
+                                      </button>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Form Actions */}
+                        <div className="flex justify-end space-x-3 pt-6 border-t">
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            type="button"
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                            onClick={() => setIsEditModalOpen(false)}
+                            disabled={isSubmitting}
+                          >
+                            Cancel
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            type="submit"
+                            className={`px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-200 flex items-center ${
+                              isSubmitting
+                                ? "opacity-70 cursor-not-allowed"
+                                : ""
+                            }`}
+                            disabled={isSubmitting}
+                          >
+                            {isSubmitting ? (
+                              <>
+                                <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                                Updating...
+                              </>
+                            ) : (
+                              <>
+                                <CheckIcon className="h-4 w-4 mr-2" />
+                                Update Job
+                              </>
+                            )}
+                          </motion.button>
+                        </div>
+                      </form>
+                    </>
+                  )}
+                </div>
+              </Transition.Child>
+            </div>
+          </Dialog>
+        </Transition>
 
         {/* Job Details Modal */}
         <Transition appear show={isDetailModalOpen} as={Fragment}>
@@ -1262,6 +1961,21 @@ function AdminJobs() {
                       </div>
 
                       <div className="mt-6 flex justify-end space-x-3">
+                        {/* Edit button in details modal */}
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          type="button"
+                          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+                          onClick={() => {
+                            setIsDetailModalOpen(false);
+                            handleEditJob(selectedJob);
+                          }}
+                        >
+                          <PencilIcon className="h-4 w-4 mr-2 inline" />
+                          Edit Job
+                        </motion.button>
+
                         {selectedJob.status === "rejected" && (
                           <motion.button
                             whileHover={{ scale: 1.02 }}

@@ -37,7 +37,6 @@ function App() {
             <Route path="compliance" element={<ComplianceManagement />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="dashboard" element={<Dashboard />} />
-
             <Route path="reports" element={<div>Reports (Coming Soon)</div>} />
             <Route
               path="documents"
