@@ -24,9 +24,16 @@ const safeCloudinaryUpload = async (filePath, options = {}) => {
   }
 };
 
+// Helper function to check if job number exists
+const checkJobNumberExists = async (jobNumber) => {
+  const existingJob = await Job.findOne({ jobNumber });
+  return !!existingJob;
+};
+
 const createJob = async (req, res) => {
   try {
     const {
+      jobNumber, // New field
       serviceType,
       assignedPerson,
       jobDetails,
@@ -36,7 +43,9 @@ const createJob = async (req, res) => {
       startingPoint,
     } = req.body;
 
+    // Validate required fields including jobNumber
     if (
+      !jobNumber ||
       !serviceType ||
       !assignedPerson ||
       !jobDetails ||
@@ -44,7 +53,24 @@ const createJob = async (req, res) => {
       !gmail ||
       !startingPoint
     ) {
-      return res.status(400).json({ message: "Missing required text fields" });
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Validate job number format (you can customize this regex as needed)
+    // Example: JOB-2024-001, or any alphanumeric format
+    const jobNumberRegex = /^[A-Za-z0-9-]+$/;
+    if (!jobNumberRegex.test(jobNumber)) {
+      return res.status(400).json({
+        message: "Job number must contain only letters, numbers, and hyphens",
+      });
+    }
+
+    // Check if job number already exists
+    const jobNumberExists = await checkJobNumberExists(jobNumber);
+    if (jobNumberExists) {
+      return res.status(400).json({
+        message: "Job number already exists. Please use a unique job number.",
+      });
     }
 
     // Updated validation to check for valid email format instead of just gmail
@@ -69,10 +95,10 @@ const createJob = async (req, res) => {
       : { url: null }; // Set a default if not provided
 
     // Leave the ID document handling as is since it's required
-const documentIDUrl = req.files["documentID"]
-  ? await safeCloudinaryUpload(req.files["documentID"][0].path)
-  : { url: null };
-  
+    const documentIDUrl = req.files["documentID"]
+      ? await safeCloudinaryUpload(req.files["documentID"][0].path)
+      : { url: null };
+
     // Other documents handling remains the same
     const otherDocumentsUrls = req.files["otherDocuments"]
       ? await Promise.all(
@@ -81,11 +107,13 @@ const documentIDUrl = req.files["documentID"]
           )
         )
       : [];
+
     // Set initial status based on whether client exists
     // If client exists, auto-approve the job (status = "approved")
     const initialStatus = clientExists ? "approved" : "pending";
 
     const job = new Job({
+      jobNumber, // Add the job number
       clientId: client._id,
       serviceType,
       documentPassport: documentPassportUrl.url,
@@ -104,7 +132,7 @@ const documentIDUrl = req.files["documentID"]
       timeline: [
         {
           status: "created",
-          description: "Job created",
+          description: `Job created with number: ${jobNumber}`,
           timestamp: new Date(),
           updatedBy: req.user._id,
         },
@@ -125,11 +153,33 @@ const documentIDUrl = req.files["documentID"]
 
     const savedJob = await job.save();
 
+    // Clean up temporary files
+    if (req.files) {
+      const filePaths = [];
+      if (req.files["documentPassport"]) {
+        filePaths.push(req.files["documentPassport"][0].path);
+      }
+      if (req.files["documentID"]) {
+        filePaths.push(req.files["documentID"][0].path);
+      }
+      if (req.files["otherDocuments"]) {
+        req.files["otherDocuments"].forEach((file) =>
+          filePaths.push(file.path)
+        );
+      }
+
+      filePaths.forEach((filePath) => {
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      });
+    }
+
     // Standard notifications for all jobs
     await notificationService.createNotification(
       {
         title: "New Job Created",
-        description: `A new ${serviceType} job has been created for ${clientName}.`,
+        description: `A new ${serviceType} job (${jobNumber}) has been created for ${clientName}.`,
         type: "job",
         relatedTo: { model: "Job", id: savedJob._id },
       },
@@ -139,7 +189,7 @@ const documentIDUrl = req.files["documentID"]
     await notificationService.createNotification(
       {
         title: "New Job Created by Admin",
-        description: `Admin ${req.user.name} created a new ${serviceType} job for ${clientName}.`,
+        description: `Admin ${req.user.name} created a new ${serviceType} job (${jobNumber}) for ${clientName}.`,
         type: "job",
         relatedTo: { model: "Job", id: savedJob._id },
       },
@@ -149,7 +199,7 @@ const documentIDUrl = req.files["documentID"]
     await notificationService.createNotification(
       {
         title: "Job Created Successfully",
-        description: `You have successfully created a ${serviceType} job for ${clientName}.`,
+        description: `You have successfully created a ${serviceType} job (${jobNumber}) for ${clientName}.`,
         type: "job",
         relatedTo: { model: "Job", id: savedJob._id },
       },
@@ -160,7 +210,7 @@ const documentIDUrl = req.files["documentID"]
     await notificationService.createNotification(
       {
         title: "New Job Assigned",
-        description: `You have been assigned to a new ${serviceType} job for ${clientName}.`,
+        description: `You have been assigned to a new ${serviceType} job (${jobNumber}) for ${clientName}.`,
         type: "job",
         subType: "assignment",
         relatedTo: { model: "Job", id: savedJob._id },
@@ -174,7 +224,7 @@ const documentIDUrl = req.files["documentID"]
       await notificationService.createNotification(
         {
           title: "Job Auto-Approved",
-          description: `The ${serviceType} job for ${clientName} was automatically approved (existing client).`,
+          description: `The ${serviceType} job (${jobNumber}) for ${clientName} was automatically approved (existing client).`,
           type: "job",
           relatedTo: { model: "Job", id: savedJob._id },
         },
@@ -185,7 +235,7 @@ const documentIDUrl = req.files["documentID"]
       await notificationService.createNotification(
         {
           title: "Job Ready for Processing",
-          description: `A ${serviceType} job for ${clientName} has been auto-approved and is ready for processing.`,
+          description: `A ${serviceType} job (${jobNumber}) for ${clientName} has been auto-approved and is ready for processing.`,
           type: "job",
           subType: "approval",
           relatedTo: { model: "Job", id: savedJob._id },
@@ -197,11 +247,40 @@ const documentIDUrl = req.files["documentID"]
     res.status(201).json(savedJob);
   } catch (error) {
     console.error("Error creating job:", error.message);
+
+    // Handle unique constraint error specifically
+    if (
+      error.code === 11000 &&
+      error.keyPattern &&
+      error.keyPattern.jobNumber
+    ) {
+      return res.status(400).json({
+        message: "Job number already exists. Please use a unique job number.",
+      });
+    }
+
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });
   }
 };
+
+// Add a new endpoint to check job number availability
+const checkJobNumber = asyncHandler(async (req, res) => {
+  const { jobNumber } = req.params;
+
+  if (!jobNumber) {
+    return res.status(400).json({ message: "Job number is required" });
+  }
+
+  const exists = await checkJobNumberExists(jobNumber);
+
+  res.status(200).json({
+    available: !exists,
+    message: exists ? "Job number already in use" : "Job number is available",
+  });
+});
+
 
 // Get single job details with validation for assigned person
 const getJobDetails = asyncHandler(async (req, res) => {
@@ -778,6 +857,7 @@ const getAssignedJobs = asyncHandler(async (req, res) => {
 
 module.exports = {
   createJob,
+  checkJobNumber,
   getAllJobs,
   getAllJobsAdmin,
   approveJob,

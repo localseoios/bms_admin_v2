@@ -17,11 +17,12 @@ import {
   PhotoIcon,
   NoSymbolIcon,
   BellAlertIcon,
+  HashtagIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment } from "react";
-import axiosInstance from "../../../utils/axios"; // Adjust the path based on your project structure
-import { Toaster, toast } from "react-hot-toast"; // Import the toast library
+import axiosInstance from "../../../utils/axios";
+import { Toaster, toast } from "react-hot-toast";
 
 // Filter options for job status
 const filters = [
@@ -38,6 +39,7 @@ const sortOptions = [
   { id: "oldest", name: "Oldest First" },
   { id: "client", name: "Client Name" },
   { id: "service", name: "Service Type" },
+  { id: "jobNumber", name: "Job Number" },
 ];
 
 // Service types for display/reference
@@ -234,10 +236,12 @@ function AdminJobs() {
       if (selectedFilter !== "all" && job.status !== selectedFilter)
         return false;
 
-      // Filter by search query
+      // Filter by search query - UPDATED to include jobNumber
       if (searchQuery) {
         const searchLower = searchQuery.toLowerCase();
         return (
+          (job.jobNumber &&
+            job.jobNumber.toLowerCase().includes(searchLower)) ||
           (job._id && job._id.toLowerCase().includes(searchLower)) ||
           (job.clientName &&
             job.clientName.toLowerCase().includes(searchLower)) ||
@@ -261,6 +265,8 @@ function AdminJobs() {
           return (a.clientName || "").localeCompare(b.clientName || "");
         case "service":
           return (a.serviceType || "").localeCompare(b.serviceType || "");
+        case "jobNumber":
+          return (a.jobNumber || "").localeCompare(b.jobNumber || "");
         default:
           return new Date(b.createdAt) - new Date(a.createdAt);
       }
@@ -431,7 +437,9 @@ function AdminJobs() {
       // Show notification for job cancellation
       showNotification(
         "Job Cancelled",
-        `${selectedJob.serviceType} job for ${selectedJob.clientName} has been cancelled successfully.`,
+        `${selectedJob.serviceType} job (${
+          selectedJob.jobNumber || selectedJob._id
+        }) for ${selectedJob.clientName} has been cancelled successfully.`,
         "info"
       );
     } catch (error) {
@@ -514,7 +522,9 @@ function AdminJobs() {
       // Show notification for job resubmission
       showNotification(
         "Job Resubmitted",
-        `${selectedJob.serviceType} job for ${selectedJob.clientName} has been resubmitted successfully.`,
+        `${selectedJob.serviceType} job (${
+          selectedJob.jobNumber || selectedJob._id
+        }) for ${selectedJob.clientName} has been resubmitted successfully.`,
         "success"
       );
     } catch (error) {
@@ -545,7 +555,9 @@ function AdminJobs() {
       // Show notification for job deletion
       showNotification(
         "Job Deleted",
-        `${selectedJob.serviceType} job for ${selectedJob.clientName} has been deleted successfully.`,
+        `${selectedJob.serviceType} job (${
+          selectedJob.jobNumber || selectedJob._id
+        }) for ${selectedJob.clientName} has been deleted successfully.`,
         "info"
       );
     } catch (error) {
@@ -593,8 +605,9 @@ function AdminJobs() {
   };
 
   const exportData = () => {
-    // Convert jobs data to CSV format
+    // Convert jobs data to CSV format - UPDATED to include jobNumber
     const headers = [
+      "Job Number",
       "Job ID",
       "Service Type",
       "Client Name",
@@ -607,6 +620,7 @@ function AdminJobs() {
 
     const rows = filteredJobs.map((job) =>
       [
+        job.jobNumber || "N/A",
         job._id,
         job.serviceType || "N/A",
         job.clientName || "N/A",
@@ -735,7 +749,7 @@ function AdminJobs() {
                   <input
                     type="text"
                     className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
-                    placeholder="Search by Job ID, Client, Service Type, Email..."
+                    placeholder="Search by Job Number, Job ID, Client, Service Type, Email..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -859,8 +873,20 @@ function AdminJobs() {
                         className="hover:bg-gray-50 transition-colors duration-150"
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {job._id}
+                          {/* UPDATED: Show jobNumber prominently with _id as secondary */}
+                          <div className="flex items-center space-x-2">
+                            {job.jobNumber && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                <HashtagIcon className="h-3 w-3 mr-1" />
+                                {job.jobNumber}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm font-medium text-gray-900 mt-1">
+                            {job.jobNumber || job._id}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {job.jobNumber ? `ID: ${job._id}` : "No Job Number"}
                           </div>
                           <div className="text-xs text-gray-500">
                             {job.startingPoint || "No starting point"}
@@ -1000,10 +1026,25 @@ function AdminJobs() {
                     <>
                       <Dialog.Title
                         as="h3"
-                        className="text-lg font-medium leading-6 text-gray-900"
+                        className="text-lg font-medium leading-6 text-gray-900 flex items-center space-x-2"
                       >
-                        Job Details - {selectedJob._id}
+                        <span>Job Details</span>
+                        {selectedJob.jobNumber && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <HashtagIcon className="h-3 w-3 mr-1" />
+                            {selectedJob.jobNumber}
+                          </span>
+                        )}
                       </Dialog.Title>
+
+                      {/* Show both job number and ID if available */}
+                      <div className="mt-2 text-sm text-gray-600">
+                        {selectedJob.jobNumber && (
+                          <p>Job Number: {selectedJob.jobNumber}</p>
+                        )}
+                        <p>Job ID: {selectedJob._id}</p>
+                      </div>
+
                       <div className="mt-6 space-y-6">
                         <div className="grid grid-cols-2 gap-6">
                           <div className="bg-gray-50 p-4 rounded-xl">
@@ -1309,9 +1350,15 @@ function AdminJobs() {
                 <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl">
                   <Dialog.Title
                     as="h3"
-                    className="text-lg font-medium leading-6 text-gray-900 mb-4"
+                    className="text-lg font-medium leading-6 text-gray-900 mb-4 flex items-center space-x-2"
                   >
-                    Resubmit Job
+                    <span>Resubmit Job</span>
+                    {selectedJob?.jobNumber && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <HashtagIcon className="h-3 w-3 mr-1" />
+                        {selectedJob.jobNumber}
+                      </span>
+                    )}
                   </Dialog.Title>
 
                   {selectedJob &&
@@ -1657,6 +1704,12 @@ function AdminJobs() {
                     >
                       Cancel Job
                     </Dialog.Title>
+                    {selectedJob?.jobNumber && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <HashtagIcon className="h-3 w-3 mr-1" />
+                        {selectedJob.jobNumber}
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-4">
@@ -1771,6 +1824,12 @@ function AdminJobs() {
                     >
                       Delete Job
                     </Dialog.Title>
+                    {selectedJob?.jobNumber && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <HashtagIcon className="h-3 w-3 mr-1" />
+                        {selectedJob.jobNumber}
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-4">

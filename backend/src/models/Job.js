@@ -2,6 +2,13 @@ const mongoose = require("mongoose");
 
 const jobSchema = new mongoose.Schema(
   {
+    // Add unique job number field
+    jobNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -90,5 +97,8 @@ const jobSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Add compound index for better query performance
+jobSchema.index({ jobNumber: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Job", jobSchema);

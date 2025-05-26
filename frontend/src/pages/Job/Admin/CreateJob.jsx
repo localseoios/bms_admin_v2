@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axiosInstance, { fileUploadInstance } from "../../../utils/axios";
-import { compressImage } from "../../../utils/imageCompression"; // Import the compression utility
+import { compressImage } from "../../../utils/imageCompression";
 import {
   DocumentIcon,
   UserIcon,
@@ -17,6 +17,7 @@ import {
   CheckIcon,
   InformationCircleIcon,
   ExclamationCircleIcon,
+  HashtagIcon,
 } from "@heroicons/react/24/outline";
 
 function CreateJob() {
@@ -33,8 +34,16 @@ function CreateJob() {
   const [existingClient, setExistingClient] = useState(null);
   const [checkingClient, setCheckingClient] = useState(false);
 
+  // New state for job number availability checking
+  const [jobNumberStatus, setJobNumberStatus] = useState({
+    checking: false,
+    available: null,
+    message: "",
+  });
+
   // State for form data
   const [formData, setFormData] = useState({
+    jobNumber: "", // Add job number field
     serviceType: "",
     documentPassport: null,
     documentID: null,
@@ -95,6 +104,38 @@ function CreateJob() {
     fetchServices();
   }, []);
 
+  // Function to check job number availability
+  const checkJobNumberAvailability = async (jobNumber) => {
+    if (!jobNumber || jobNumber.length < 3) {
+      setJobNumberStatus({
+        checking: false,
+        available: null,
+        message: "",
+      });
+      return;
+    }
+
+    setJobNumberStatus((prev) => ({ ...prev, checking: true }));
+
+    try {
+      const response = await axiosInstance.get(
+        `/jobs/check-job-number/${encodeURIComponent(jobNumber)}`
+      );
+      setJobNumberStatus({
+        checking: false,
+        available: response.data.available,
+        message: response.data.message,
+      });
+    } catch (error) {
+      console.error("Error checking job number:", error);
+      setJobNumberStatus({
+        checking: false,
+        available: false,
+        message: "Error checking job number availability",
+      });
+    }
+  };
+
   // Modified function to check if a client with the given email exists
   const checkExistingClient = async (email) => {
     if (!email || !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email)) {
@@ -131,7 +172,7 @@ function CreateJob() {
     }
   };
 
-  // Debounce function for email checks
+  // Debounce function for checks
   const debounce = (func, delay) => {
     let timeoutId;
     return (...args) => {
@@ -142,10 +183,11 @@ function CreateJob() {
     };
   };
 
-  // Create debounced version of the client check
+  // Create debounced versions
   const debouncedCheckClient = debounce(checkExistingClient, 500);
+  const debouncedCheckJobNumber = debounce(checkJobNumberAvailability, 500);
 
-  // Handle text input changes with updated email checks
+  // Handle text input changes with updated checks
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -174,6 +216,11 @@ function CreateJob() {
     } else if (name === "gmail") {
       setExistingClient(null);
     }
+
+    // Check job number availability when job number changes
+    if (name === "jobNumber") {
+      debouncedCheckJobNumber(value);
+    }
   };
 
   // Handle email field blur for immediate checking
@@ -186,13 +233,29 @@ function CreateJob() {
     }
   };
 
+  // Handle job number field blur
+  const handleJobNumberBlur = () => {
+    if (formData.jobNumber && formData.jobNumber.length >= 3) {
+      checkJobNumberAvailability(formData.jobNumber);
+    }
+  };
+
   // Validate Form
   const validateForm = () => {
     const newErrors = {};
+
+    // Job number validation
+    if (!formData.jobNumber) {
+      newErrors.jobNumber = "Job number is required";
+    } else if (!/^[A-Za-z0-9-]+$/.test(formData.jobNumber)) {
+      newErrors.jobNumber =
+        "Job number must contain only letters, numbers, and hyphens";
+    } else if (jobNumberStatus.available === false) {
+      newErrors.jobNumber = "This job number is already in use";
+    }
+
     if (!formData.serviceType)
       newErrors.serviceType = "Service type is required";
-    // Passport is optional, so we don't validate it
-    // if (!formData.documentID) newErrors.documentID = "ID document is required";
     if (!formData.assignedPerson)
       newErrors.assignedPerson = "Assigned person is required";
     if (!formData.jobDetails) newErrors.jobDetails = "Job details are required";
@@ -318,7 +381,8 @@ function CreateJob() {
     try {
       const formDataToSend = new FormData();
 
-      // Add text fields
+      // Add text fields including job number
+      formDataToSend.append("jobNumber", formData.jobNumber);
       formDataToSend.append("serviceType", formData.serviceType);
       formDataToSend.append("assignedPerson", formData.assignedPerson);
       formDataToSend.append("jobDetails", formData.jobDetails);
@@ -474,6 +538,85 @@ function CreateJob() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-8">
+              {/* Job Number Section - NEW */}
+              <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="p-2 bg-purple-100 rounded-xl">
+                    <HashtagIcon className="h-5 w-5 text-purple-700" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Job Identification
+                  </h2>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Job Number <span className="text-red-500 text-xs">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <HashtagIcon className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      name="jobNumber"
+                      value={formData.jobNumber}
+                      onChange={handleInputChange}
+                      onBlur={handleJobNumberBlur}
+                      className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                        errors.jobNumber
+                          ? "border-red-300"
+                          : jobNumberStatus.available === true
+                          ? "border-green-300 bg-green-50"
+                          : jobNumberStatus.available === false
+                          ? "border-red-300 bg-red-50"
+                          : ""
+                      }`}
+                      placeholder="Enter unique job number (e.g., JOB-2024-001)"
+                      disabled={isSubmitting}
+                    />
+                    {jobNumberStatus.checking && (
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />
+                      </div>
+                    )}
+                    {!jobNumberStatus.checking &&
+                      jobNumberStatus.available === true && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <CheckIcon className="h-5 w-5 text-green-500" />
+                        </div>
+                      )}
+                    {!jobNumberStatus.checking &&
+                      jobNumberStatus.available === false && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
+                        </div>
+                      )}
+                  </div>
+                  {errors.jobNumber && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.jobNumber}
+                    </p>
+                  )}
+                  {!errors.jobNumber && jobNumberStatus.message && (
+                    <p
+                      className={`mt-1 text-sm ${
+                        jobNumberStatus.available === true
+                          ? "text-green-600"
+                          : jobNumberStatus.available === false
+                          ? "text-red-600"
+                          : "text-gray-600"
+                      }`}
+                    >
+                      {jobNumberStatus.message}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-gray-500">
+                    Use letters, numbers, and hyphens only. Example:
+                    JOB-2024-001, PROJECT-ABC-123
+                  </p>
+                </div>
+              </div>
+
               {/* Service Type Section */}
               <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <div className="flex items-center space-x-3 mb-4">
@@ -1100,9 +1243,15 @@ function CreateJob() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || processingFile}
+                  disabled={
+                    isSubmitting ||
+                    processingFile ||
+                    jobNumberStatus.available === false
+                  }
                   className={`px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-sm font-semibold transition-all duration-200 ${
-                    isSubmitting || processingFile
+                    isSubmitting ||
+                    processingFile ||
+                    jobNumberStatus.available === false
                       ? "opacity-80 cursor-not-allowed"
                       : ""
                   }`}
