@@ -398,9 +398,9 @@ const MonthlyPaymentForm = ({ jobId, jobType, onClose, onSuccess }) => {
                         disabled={loading}
                       >
                         <option value="">Select (optional)</option>
-                        <option value="Option 1">Option 1</option>
-                        <option value="Option 2">Option 2</option>
-                        <option value="Option 3">Option 3</option>
+                        <option value="Option 1">Reimbursement</option>
+                        <option value="Option 2">Our Fee</option>
+                        <option value="Option 3">Other</option>
                       </select>
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap text-sm">

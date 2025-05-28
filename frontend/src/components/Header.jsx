@@ -21,11 +21,11 @@ function Header() {
     const fetchUser = async () => {
       try {
         const response = await axiosInstance.get("/users/me");
-        setUser(response.data); 
+        setUser(response.data);
         localStorage.setItem("user", JSON.stringify(response.data));
       } catch (error) {
         setUser(null);
-        localStorage.removeItem("user"); 
+        localStorage.removeItem("user");
       } finally {
         setLoading(false);
       }
@@ -81,15 +81,16 @@ function Header() {
       <div className="h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo Section */}
         <div className="flex items-center">
-          <Link to="/" className="flex items-center space-x-3">
-            <div className="bg-gradient-to-r from-blue-700 to-blue-500 rounded-xl p-2.5 shadow-lg shadow-blue-500/20">
-              <h1 className="text-2xl font-bold text-white tracking-tight">
-                N
-              </h1>
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-700 to-blue-500 bg-clip-text text-transparent tracking-tight">
-              NEWOON
-            </h1>
+          <Link to="/" className="flex items-center">
+            <img
+              src="/Company%20Logo.png"
+              alt="Company Logo"
+              className="h-16 w-auto max-w-none"
+              onError={(e) => {
+                console.log("Logo failed to load");
+                e.target.style.display = "none";
+              }}
+            />
           </Link>
         </div>
 
