@@ -1564,9 +1564,12 @@ const completeOperation = asyncHandler(async (req, res) => {
 
 // Fix for createPreApprovedJob function in operationController.js
 
+// Fixed createPreApprovedJob function in operationController.js
+
 const createPreApprovedJob = asyncHandler(async (req, res) => {
   try {
     const {
+      jobNumber, // Add job number field
       serviceType,
       assignedPerson,
       jobDetails,
@@ -1583,10 +1586,13 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       sefs, // Array of SEF details
       // KYC documents info
       kycDocumentInfo, // Array of descriptions and dates for uploaded files
+      // BRA documents info
+      braDocumentInfo, // Array of descriptions and dates for uploaded files
     } = req.body;
 
-    // Validate required fields
+    // Validate required fields (including job number)
     if (
+      !jobNumber ||
       !serviceType ||
       !assignedPerson ||
       !jobDetails ||
@@ -1597,28 +1603,37 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       return res.status(400).json({ message: "Missing required job fields" });
     }
 
-    // Replace it with this general email validation:
+    // Validate job number format
+    if (!/^[A-Za-z0-9-]+$/.test(jobNumber)) {
+      return res.status(400).json({
+        message: "Job number must contain only letters, numbers, and hyphens",
+      });
+    }
+
+    // Check if job number already exists
+    const existingJob = await Job.findOne({ jobNumber });
+    if (existingJob) {
+      return res.status(400).json({
+        message: "Job number already exists. Please use a unique job number.",
+      });
+    }
+
+    // Validate email format
     if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(gmail)) {
       return res
         .status(400)
         .json({ message: "Please provide a valid email address" });
     }
 
-    // Check for required documents
-    if (!req.files["documentPassport"] || !req.files["documentID"]) {
-      return res
-        .status(400)
-        .json({
-          message: "Required job documents (passport and ID) are missing",
-        });
-    }
+    // NOTE: Passport and ID documents are now OPTIONAL
+    // No validation required for these documents
 
     // Start a MongoDB transaction
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      console.log("Creating pre-approved job for:", clientName);
+      console.log("Creating pre-approved job for:", clientName, "with job number:", jobNumber);
 
       // 1. Check if client exists, create if not
       let client = await Client.findOne({ gmail });
@@ -1634,16 +1649,33 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         console.log("Using existing client:", client._id);
       }
 
-      // 2. Upload job documents
-      const documentPassportUrl = await safeCloudinaryUpload(
-        req.files["documentPassport"][0].path,
-        { folder: `clients/${gmail}/passport` }
-      );
+      // 2. Upload job documents (now optional)
+      let documentPassportUrl = { url: null };
+      let documentIDUrl = { url: null };
 
-      const documentIDUrl = await safeCloudinaryUpload(
-        req.files["documentID"][0].path,
-        { folder: `clients/${gmail}/id` }
-      );
+      // Only upload passport document if provided
+      if (req.files["documentPassport"] && req.files["documentPassport"][0]) {
+        documentPassportUrl = await safeCloudinaryUpload(
+          req.files["documentPassport"][0].path,
+          { folder: `clients/${gmail}/passport` }
+        );
+        // Clean up temporary file
+        fs.unlink(req.files["documentPassport"][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
+
+      // Only upload ID document if provided
+      if (req.files["documentID"] && req.files["documentID"][0]) {
+        documentIDUrl = await safeCloudinaryUpload(
+          req.files["documentID"][0].path,
+          { folder: `clients/${gmail}/id` }
+        );
+        // Clean up temporary file
+        fs.unlink(req.files["documentID"][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
 
       const otherDocumentsUrls = req.files["otherDocuments"]
         ? await Promise.all(
@@ -1655,19 +1687,7 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           )
         : [];
 
-      // Clean up temporary files
-      if (req.files["documentPassport"]) {
-        fs.unlink(req.files["documentPassport"][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
-      }
-
-      if (req.files["documentID"]) {
-        fs.unlink(req.files["documentID"][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
-      }
-
+      // Clean up temporary files for other documents
       if (req.files["otherDocuments"]) {
         req.files["otherDocuments"].forEach((file) => {
           fs.unlink(file.path, (err) => {
@@ -1676,13 +1696,14 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         });
       }
 
-      // 3. Create job with fully completed status
+      // 3. Create job with fully completed status (including job number)
       const currentTime = new Date();
       const job = new Job({
+        jobNumber, // Add job number to job creation
         clientId: client._id,
         serviceType,
-        documentPassport: documentPassportUrl.url,
-        documentID: documentIDUrl.url,
+        documentPassport: documentPassportUrl.url, // Can be null if not provided
+        documentID: documentIDUrl.url, // Can be null if not provided
         otherDocuments: otherDocumentsUrls.map((result) => result.url),
         assignedPerson,
         jobDetails,
@@ -1691,12 +1712,12 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         gmail,
         startingPoint,
         status: "fully_completed_bra", // Set as fully completed
-        createdBy: req.user._id, // Add this line to track who created the job
+        createdBy: req.user._id,
         // Create a complete timeline with timestamps at 1-second intervals
         timeline: [
           {
             status: "created",
-            description: "Job created by Operation Management",
+            description: `Job created by Operation Management with number: ${jobNumber}`,
             timestamp: new Date(currentTime.getTime()),
             updatedBy: req.user._id,
           },
@@ -1770,20 +1791,24 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       });
 
       const savedJob = await job.save({ session });
-      console.log("Created job:", savedJob._id);
+      console.log("Created job:", savedJob._id, "with job number:", savedJob.jobNumber);
 
       // 4. Create company details if provided
       if (companyDetails) {
+        const parsedCompanyDetails = typeof companyDetails === 'string' 
+          ? JSON.parse(companyDetails) 
+          : companyDetails;
+
         const newCompanyDetails = new CompanyDetails({
           jobId: savedJob._id,
-          companyName: companyDetails.companyName || clientName,
-          qfcNo: companyDetails.qfcNo || "",
-          registeredAddress: companyDetails.registeredAddress || "",
-          incorporationDate: companyDetails.incorporationDate || null,
-          serviceType: companyDetails.serviceType || serviceType,
-          mainPurpose: companyDetails.mainPurpose || "",
-          expiryDate: companyDetails.expiryDate || null,
-          kycActiveStatus: companyDetails.kycActiveStatus || "yes",
+          companyName: parsedCompanyDetails.companyName || clientName,
+          qfcNo: parsedCompanyDetails.qfcNo || "",
+          registeredAddress: parsedCompanyDetails.registeredAddress || "",
+          incorporationDate: parsedCompanyDetails.incorporationDate || null,
+          serviceType: parsedCompanyDetails.serviceType || serviceType,
+          mainPurpose: parsedCompanyDetails.mainPurpose || "",
+          expiryDate: parsedCompanyDetails.expiryDate || null,
+          kycActiveStatus: parsedCompanyDetails.kycActiveStatus || "yes",
           updatedBy: req.user._id,
         });
 
@@ -1795,7 +1820,16 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
               req.files["engagementLetters"][0].path,
               { folder: `clients/${gmail}/company/engagement_letters` }
             );
-            newCompanyDetails.engagementLetters = uploadResult.url;
+            
+            // Store as array format for consistency
+            newCompanyDetails.engagementLetters = [{
+              fileUrl: uploadResult.url,
+              fileName: req.files["engagementLetters"][0].originalname || 'Engagement Letter',
+              uploadedAt: new Date(),
+              uploadedBy: req.user._id,
+              description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`
+            }];
+            
             fs.unlink(req.files["engagementLetters"][0].path, (err) => {
               if (err) console.error("Error deleting temp file:", err);
             });
@@ -1875,19 +1909,19 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         }
 
         // Set expiry dates if provided
-        if (companyDetails.companyComputerCardExpiry) {
+        if (parsedCompanyDetails.companyComputerCardExpiry) {
           newCompanyDetails.companyComputerCardExpiry =
-            companyDetails.companyComputerCardExpiry;
+            parsedCompanyDetails.companyComputerCardExpiry;
         }
-        if (companyDetails.taxCardExpiry) {
-          newCompanyDetails.taxCardExpiry = companyDetails.taxCardExpiry;
+        if (parsedCompanyDetails.taxCardExpiry) {
+          newCompanyDetails.taxCardExpiry = parsedCompanyDetails.taxCardExpiry;
         }
-        if (companyDetails.crExtractExpiry) {
-          newCompanyDetails.crExtractExpiry = companyDetails.crExtractExpiry;
+        if (parsedCompanyDetails.crExtractExpiry) {
+          newCompanyDetails.crExtractExpiry = parsedCompanyDetails.crExtractExpiry;
         }
-        if (companyDetails.scopeOfLicenseExpiry) {
+        if (parsedCompanyDetails.scopeOfLicenseExpiry) {
           newCompanyDetails.scopeOfLicenseExpiry =
-            companyDetails.scopeOfLicenseExpiry;
+            parsedCompanyDetails.scopeOfLicenseExpiry;
         }
 
         await newCompanyDetails.save({ session });
@@ -1897,7 +1931,8 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       // 5. Create person details (directors, shareholders, etc.)
       // Process directors
       if (directors && Array.isArray(directors) && directors.length > 0) {
-        for (const director of directors) {
+        const parsedDirectors = typeof directors === 'string' ? JSON.parse(directors) : directors;
+        for (const director of parsedDirectors) {
           await createPersonDetails(
             savedJob._id,
             "director",
@@ -1908,16 +1943,13 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
             session
           );
         }
-        console.log(`Created ${directors.length} director records`);
+        console.log(`Created ${parsedDirectors.length} director records`);
       }
 
       // Process shareholders
-      if (
-        shareholders &&
-        Array.isArray(shareholders) &&
-        shareholders.length > 0
-      ) {
-        for (const shareholder of shareholders) {
+      if (shareholders && Array.isArray(shareholders) && shareholders.length > 0) {
+        const parsedShareholders = typeof shareholders === 'string' ? JSON.parse(shareholders) : shareholders;
+        for (const shareholder of parsedShareholders) {
           await createPersonDetails(
             savedJob._id,
             "shareholder",
@@ -1928,12 +1960,13 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
             session
           );
         }
-        console.log(`Created ${shareholders.length} shareholder records`);
+        console.log(`Created ${parsedShareholders.length} shareholder records`);
       }
 
       // Process secretaries
       if (secretaries && Array.isArray(secretaries) && secretaries.length > 0) {
-        for (const secretary of secretaries) {
+        const parsedSecretaries = typeof secretaries === 'string' ? JSON.parse(secretaries) : secretaries;
+        for (const secretary of parsedSecretaries) {
           await createPersonDetails(
             savedJob._id,
             "secretary",
@@ -1944,12 +1977,13 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
             session
           );
         }
-        console.log(`Created ${secretaries.length} secretary records`);
+        console.log(`Created ${parsedSecretaries.length} secretary records`);
       }
 
       // Process SEFs
       if (sefs && Array.isArray(sefs) && sefs.length > 0) {
-        for (const sef of sefs) {
+        const parsedSefs = typeof sefs === 'string' ? JSON.parse(sefs) : sefs;
+        for (const sef of parsedSefs) {
           await createPersonDetails(
             savedJob._id,
             "sef",
@@ -1960,7 +1994,7 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
             session
           );
         }
-        console.log(`Created ${sefs.length} SEF records`);
+        console.log(`Created ${parsedSefs.length} SEF records`);
       }
 
       // 6. Create KYC documents collection
@@ -1973,6 +2007,10 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           `Processing ${req.files["kycDocuments"].length} KYC documents`
         );
 
+        const parsedKycDocumentInfo = typeof kycDocumentInfo === 'string' 
+          ? JSON.parse(kycDocumentInfo) 
+          : kycDocumentInfo;
+
         // Upload all KYC documents and store results
         for (let i = 0; i < req.files["kycDocuments"].length; i++) {
           const file = req.files["kycDocuments"][i];
@@ -1983,12 +2021,12 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           kycDocuments.push({
             file: uploadResult.url,
             description:
-              kycDocumentInfo && kycDocumentInfo[i]
-                ? kycDocumentInfo[i].description
+              parsedKycDocumentInfo && parsedKycDocumentInfo[i]
+                ? parsedKycDocumentInfo[i].description
                 : `KYC Document ${i + 1}`,
             date:
-              kycDocumentInfo && kycDocumentInfo[i]
-                ? kycDocumentInfo[i].date
+              parsedKycDocumentInfo && parsedKycDocumentInfo[i]
+                ? parsedKycDocumentInfo[i].date
                 : new Date(),
           });
 
@@ -2157,7 +2195,7 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       await notificationService.createNotification(
         {
           title: "New Pre-Approved Job Created",
-          description: `A new pre-approved ${serviceType} job has been created for ${clientName} by Operation Management.`,
+          description: `A new pre-approved ${serviceType} job (${jobNumber}) has been created for ${clientName} by Operation Management.`,
           type: "job",
           relatedTo: { model: "Job", id: savedJob._id },
         },
@@ -2168,12 +2206,23 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       await notificationService.createNotification(
         {
           title: "New Job Assigned",
-          description: `You have been assigned to a pre-approved ${serviceType} job for ${clientName}.`,
+          description: `You have been assigned to a pre-approved ${serviceType} job (${jobNumber}) for ${clientName}.`,
           type: "job",
           subType: "assignment",
           relatedTo: { model: "Job", id: savedJob._id },
         },
         assignedPerson
+      );
+
+      // Notify admins
+      await notificationService.createNotification(
+        {
+          title: "Pre-Approved Job Created",
+          description: `Pre-approved job ${jobNumber} for ${clientName} has been created by ${req.user.name}.`,
+          type: "job",
+          relatedTo: { model: "Job", id: savedJob._id },
+        },
+        { "role.name": "admin" }
       );
 
       // Commit transaction
@@ -2205,7 +2254,7 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
   }
 });
 
-// Helper to create person details
+// Helper to create person details (updated to handle document indexing properly)
 const createPersonDetails = async (jobId, personType, personData, userId, files, gmail, session) => {
   // Validate personData
   if (!personData || !personData.name) {
@@ -2235,7 +2284,7 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
     const fieldPrefix = personType.toLowerCase();
 
     // Visa Copy
-    if (files[`${fieldPrefix}VisaCopy`]) {
+    if (files[`${fieldPrefix}VisaCopy`] && files[`${fieldPrefix}VisaCopy`].length > 0) {
       const uploadResult = await safeCloudinaryUpload(
         files[`${fieldPrefix}VisaCopy`][0].path,
         { folder: `clients/${gmail}/people/${personType}/visa` }
@@ -2247,7 +2296,7 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
     }
 
     // QID Document
-    if (files[`${fieldPrefix}QidDoc`]) {
+    if (files[`${fieldPrefix}QidDoc`] && files[`${fieldPrefix}QidDoc`].length > 0) {
       const uploadResult = await safeCloudinaryUpload(
         files[`${fieldPrefix}QidDoc`][0].path,
         { folder: `clients/${gmail}/people/${personType}/qid` }
@@ -2259,7 +2308,7 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
     }
 
     // National Address Document
-    if (files[`${fieldPrefix}NationalAddressDoc`]) {
+    if (files[`${fieldPrefix}NationalAddressDoc`] && files[`${fieldPrefix}NationalAddressDoc`].length > 0) {
       const uploadResult = await safeCloudinaryUpload(
         files[`${fieldPrefix}NationalAddressDoc`][0].path,
         { folder: `clients/${gmail}/people/${personType}/national_address` }
@@ -2271,7 +2320,7 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
     }
 
     // Passport Document
-    if (files[`${fieldPrefix}PassportDoc`]) {
+    if (files[`${fieldPrefix}PassportDoc`] && files[`${fieldPrefix}PassportDoc`].length > 0) {
       const uploadResult = await safeCloudinaryUpload(
         files[`${fieldPrefix}PassportDoc`][0].path,
         { folder: `clients/${gmail}/people/${personType}/passport` }
@@ -2283,7 +2332,7 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
     }
 
     // CV
-    if (files[`${fieldPrefix}Cv`]) {
+    if (files[`${fieldPrefix}Cv`] && files[`${fieldPrefix}Cv`].length > 0) {
       const uploadResult = await safeCloudinaryUpload(
         files[`${fieldPrefix}Cv`][0].path,
         { folder: `clients/${gmail}/people/${personType}/cv` }
@@ -2298,6 +2347,7 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
   await newPerson.save({ session });
   return newPerson;
 };
+
 
 // Get field history for a person detail
 const getPersonFieldHistory = asyncHandler(async (req, res) => {

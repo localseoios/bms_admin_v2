@@ -14,6 +14,9 @@ import {
   TrashIcon,
   PaperClipIcon,
   ArrowLeftIcon,
+  HashtagIcon,
+  CheckIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 
@@ -23,6 +26,14 @@ const CreatePreApprovedJob = () => {
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [services, setServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
+
+  // New state for job number availability checking
+  const [jobNumberStatus, setJobNumberStatus] = useState({
+    checking: false,
+    available: null,
+    message: "",
+  });
+
   const [files, setFiles] = useState({
     documentPassport: null,
     documentID: null,
@@ -40,6 +51,9 @@ const CreatePreApprovedJob = () => {
 
   // Form state
   const [formData, setFormData] = useState({
+    // Add job number field
+    jobNumber: "",
+
     // Basic job info
     serviceType: "",
     assignedPerson: "",
@@ -116,6 +130,52 @@ const CreatePreApprovedJob = () => {
   const [secretaryDocs, setSecretaryDocs] = useState([]);
   const [sefDocs, setSefDocs] = useState([]);
 
+  // Function to check job number availability
+  const checkJobNumberAvailability = async (jobNumber) => {
+    if (!jobNumber || jobNumber.length < 3) {
+      setJobNumberStatus({
+        checking: false,
+        available: null,
+        message: "",
+      });
+      return;
+    }
+
+    setJobNumberStatus((prev) => ({ ...prev, checking: true }));
+
+    try {
+      const response = await axiosInstance.get(
+        `/jobs/check-job-number/${encodeURIComponent(jobNumber)}`
+      );
+      setJobNumberStatus({
+        checking: false,
+        available: response.data.available,
+        message: response.data.message,
+      });
+    } catch (error) {
+      console.error("Error checking job number:", error);
+      setJobNumberStatus({
+        checking: false,
+        available: false,
+        message: "Error checking job number availability",
+      });
+    }
+  };
+
+  // Debounce function for job number checking
+  const debounce = (func, delay) => {
+    let timeoutId;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        func(...args);
+      }, delay);
+    };
+  };
+
+  // Create debounced version
+  const debouncedCheckJobNumber = debounce(checkJobNumberAvailability, 500);
+
   // Fetch assignable users for the dropdown
   useEffect(() => {
     const fetchUsers = async () => {
@@ -156,6 +216,11 @@ const CreatePreApprovedJob = () => {
   // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    // Check job number availability when job number changes
+    if (name === "jobNumber") {
+      debouncedCheckJobNumber(value);
+    }
 
     // Handle nested fields with dot notation (e.g., "companyDetails.companyName")
     if (name.includes(".")) {
@@ -203,6 +268,13 @@ const CreatePreApprovedJob = () => {
           },
         }));
       }
+    }
+  };
+
+  // Handle job number field blur
+  const handleJobNumberBlur = () => {
+    if (formData.jobNumber && formData.jobNumber.length >= 3) {
+      checkJobNumberAvailability(formData.jobNumber);
     }
   };
 
@@ -431,15 +503,16 @@ const CreatePreApprovedJob = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-      console.log("Starting form submission...");
-      console.log("Email being submitted:", formData.gmail);
+    console.log("Starting form submission...");
+    console.log("Email being submitted:", formData.gmail);
 
     try {
       setLoading(true);
-      console.log("About to validate email format");
+      console.log("About to validate required fields");
 
-      // Validate required fields
+      // Validate required fields (removed passport and ID document validation)
       if (
+        !formData.jobNumber ||
         !formData.serviceType ||
         !formData.assignedPerson ||
         !formData.jobDetails ||
@@ -452,23 +525,23 @@ const CreatePreApprovedJob = () => {
         return;
       }
 
-      if (!files.documentPassport || !files.documentID) {
-        toast.error("Passport and ID documents are required");
+      // Validate job number format
+      if (!/^[A-Za-z0-9-]+$/.test(formData.jobNumber)) {
+        toast.error(
+          "Job number must contain only letters, numbers, and hyphens"
+        );
         setLoading(false);
         return;
       }
 
-      // Replace the Gmail-specific validation code in the handleSubmit function
-      // Find this code:
-      // if (!formData.gmail.endsWith("@gmail.com")) {
-      //   toast.error(
-      //     "Email must be a valid Gmail address (ending with @gmail.com)"
-      //   );
-      //   setLoading(false);
-      //   return;
-      // }
+      // Check if job number is available
+      if (jobNumberStatus.available === false) {
+        toast.error("This job number is already in use");
+        setLoading(false);
+        return;
+      }
 
-      // Replace it with this more general email validation:
+      // Validate email format
       if (
         !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(formData.gmail)
       ) {
@@ -477,22 +550,13 @@ const CreatePreApprovedJob = () => {
         return;
       }
 
-      // Test and log the email validation result
-      const emailIsValid =
-        /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(formData.gmail);
-      console.log("Email validation result:", emailIsValid);
-
-      if (!emailIsValid) {
-        console.log("Email validation failed");
-        toast.error("Please provide a valid email address");
-        setLoading(false);
-        return;
-      }
-
-      console.log("Email validation passed, continuing submission");
+      console.log("Validation passed, continuing submission");
 
       // Create FormData for file uploads
       const formDataToSend = new FormData();
+
+      // Add job number
+      formDataToSend.append("jobNumber", formData.jobNumber);
 
       // Add basic job info
       formDataToSend.append("serviceType", formData.serviceType);
@@ -533,9 +597,13 @@ const CreatePreApprovedJob = () => {
         JSON.stringify(formData.braDocumentInfo)
       );
 
-      // Add required job documents
-      formDataToSend.append("documentPassport", files.documentPassport);
-      formDataToSend.append("documentID", files.documentID);
+      // Add optional job documents (now optional)
+      if (files.documentPassport) {
+        formDataToSend.append("documentPassport", files.documentPassport);
+      }
+      if (files.documentID) {
+        formDataToSend.append("documentID", files.documentID);
+      }
 
       // Add other job documents
       if (files.otherDocuments.length > 0) {
@@ -739,6 +807,76 @@ const CreatePreApprovedJob = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Job Number Section */}
+          <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100">
+            <div className="flex items-center mb-6">
+              <HashtagIcon className="h-6 w-6 text-purple-600 mr-2" />
+              <h2 className="text-xl font-semibold text-gray-900">
+                Job Identification
+              </h2>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Job Number <span className="text-red-500">*</span>
+              </label>
+              <div className="relative mt-1">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <HashtagIcon className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  name="jobNumber"
+                  value={formData.jobNumber}
+                  onChange={handleChange}
+                  onBlur={handleJobNumberBlur}
+                  className={`block w-full pl-10 pr-10 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                    jobNumberStatus.available === true
+                      ? "border-green-300 bg-green-50"
+                      : jobNumberStatus.available === false
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-300"
+                  }`}
+                  placeholder="Enter unique job number (e.g., JOB-2024-001)"
+                  required
+                />
+                {jobNumberStatus.checking && (
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />
+                  </div>
+                )}
+                {!jobNumberStatus.checking &&
+                  jobNumberStatus.available === true && (
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                      <CheckIcon className="h-5 w-5 text-green-500" />
+                    </div>
+                  )}
+                {!jobNumberStatus.checking &&
+                  jobNumberStatus.available === false && (
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                      <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
+                    </div>
+                  )}
+              </div>
+              {jobNumberStatus.message && (
+                <p
+                  className={`mt-1 text-sm ${
+                    jobNumberStatus.available === true
+                      ? "text-green-600"
+                      : jobNumberStatus.available === false
+                      ? "text-red-600"
+                      : "text-gray-600"
+                  }`}
+                >
+                  {jobNumberStatus.message}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                Use letters, numbers, and hyphens only. Example: JOB-2024-001,
+                PROJECT-ABC-123
+              </p>
+            </div>
+          </div>
+
           {/* Basic Job Information */}
           <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100">
             <div className="flex items-center mb-6">
@@ -875,7 +1013,8 @@ const CreatePreApprovedJob = () => {
             <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Passport Document <span className="text-red-500">*</span>
+                  Passport Document{" "}
+                  <span className="text-gray-500">(Optional)</span>
                 </label>
                 <input
                   type="file"
@@ -888,7 +1027,6 @@ const CreatePreApprovedJob = () => {
                     })
                   }
                   className="mt-1 block w-full px-3 py-2"
-                  required={!files.documentPassport}
                 />
                 {files.documentPassport && (
                   <div className="mt-2 flex items-center text-sm text-gray-500">
@@ -902,7 +1040,7 @@ const CreatePreApprovedJob = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  ID Document <span className="text-red-500">*</span>
+                  ID Document <span className="text-gray-500">(Optional)</span>
                 </label>
                 <input
                   type="file"
@@ -915,7 +1053,6 @@ const CreatePreApprovedJob = () => {
                     })
                   }
                   className="mt-1 block w-full px-3 py-2"
-                  required={!files.documentID}
                 />
                 {files.documentID && (
                   <div className="mt-2 flex items-center text-sm text-gray-500">
@@ -968,6 +1105,7 @@ const CreatePreApprovedJob = () => {
             </div>
           </div>
 
+          {/* Rest of the form sections remain the same - Company Details, Directors, etc. */}
           {/* Company Details */}
           <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100">
             <div className="flex items-center mb-6">
@@ -2041,11 +2179,11 @@ const CreatePreApprovedJob = () => {
           <div className="flex justify-end">
             <motion.button
               type="submit"
-              disabled={loading}
+              disabled={loading || jobNumberStatus.available === false}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               className={`inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white ${
-                loading
+                loading || jobNumberStatus.available === false
                   ? "bg-blue-400 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               }`}
