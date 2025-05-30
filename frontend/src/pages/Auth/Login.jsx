@@ -44,22 +44,25 @@ function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
-        {/* Logo Section */}
-        <div className="flex justify-center mb-8">
-          <div className="flex items-center space-x-3">
-            <div className="bg-gradient-to-r from-blue-700 to-blue-500 rounded-xl p-2.5 shadow-lg shadow-blue-500/20">
-              <h1 className="text-2xl font-bold text-white tracking-tight">
-                N
-              </h1>
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-700 to-blue-500 bg-clip-text text-transparent tracking-tight">
-              NEWOON
-            </h1>
-          </div>
-        </div>
-
         {/* Login Form */}
         <div className="bg-white shadow-2xl rounded-2xl px-6 py-8 sm:px-10">
+          {/* Company Logo */}
+          <div className="mb-6 text-center">
+            <div className="flex justify-center mb-4">
+              <img
+                src="/Company Logo.png"
+                alt="Company Logo"
+                className="h-16 w-auto object-contain"
+                onError={(e) => {
+                  // Fallback if the logo fails to load
+                  e.target.style.display = "none";
+                  // You can also try alternative paths if needed
+                  // e.target.src = "/vite.svg";
+                }}
+              />
+            </div>
+          </div>
+
           <div className="mb-8 text-center">
             <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
             <p className="mt-2 text-sm text-gray-600">
