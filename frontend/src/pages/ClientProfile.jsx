@@ -38,6 +38,8 @@ import {
   ArrowDownTrayIcon,
   // BRA Management icon
   ClipboardIcon,
+  DocumentArrowDownIcon,
+  FolderOpenIcon,
 } from "@heroicons/react/24/outline";
 import MonthlyPaymentForm from "./MonthlyPaymentForm/MonthlyPaymentForm";
 import EnhancedMonthlyPaymentHistory from "./MonthlyPaymentForm/EnhancedMonthlyPaymentHistory";
@@ -77,6 +79,11 @@ function ClientProfile() {
   const [isAddNewMonthOpen, setIsAddNewMonthOpen] = useState({});
   const [activePaymentTabs, setActivePaymentTabs] = useState({});
 
+  // ADD THESE STATE VARIABLES (after existing state declarations)
+  const [engagementLetters, setEngagementLetters] = useState([]);
+  const [loadingEngagementLetters, setLoadingEngagementLetters] =
+    useState(false);
+
   // Add this function to your ClientProfile component
   const setActivePaymentTab = (jobId, tabName) => {
     setActivePaymentTabs((prev) => ({
@@ -102,6 +109,30 @@ function ClientProfile() {
     };
     fetchClientData();
   }, [gmail]);
+
+  // ADD THIS useEffect HOOK (after existing useEffect hooks)
+  useEffect(() => {
+    const fetchEngagementLetters = async () => {
+      if (!client?.gmail) return;
+
+      try {
+        setLoadingEngagementLetters(true);
+        const response = await axiosInstance.get(
+          `/operations/clients/${client.gmail}/engagement-letters`
+        );
+        setEngagementLetters(response.data);
+      } catch (error) {
+        console.error("Error fetching engagement letters:", error);
+        setEngagementLetters([]);
+      } finally {
+        setLoadingEngagementLetters(false);
+      }
+    };
+
+    if (client?.gmail) {
+      fetchEngagementLetters();
+    }
+  }, [client?.gmail]);
 
   // Fetch timeline data when a service is expanded
   useEffect(() => {
@@ -129,6 +160,153 @@ function ClientProfile() {
       setLoadingTimelines((prev) => ({ ...prev, [jobId]: false }));
     }
   };
+
+  // Add this component for rendering the engagement letters section
+  const renderEngagementLettersSection = () => (
+    <motion.div
+      initial={{ y: 20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.5, delay: 0.15 }}
+      className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 overflow-hidden hover:shadow-2xl transition-all duration-500"
+    >
+      <div className="px-8 py-10">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center ring-4 ring-emerald-100 shadow-lg mr-4"
+            >
+              <FolderOpenIcon className="h-6 w-6 text-white" />
+            </motion.div>
+            <div>
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                Engagement Letters
+              </h2>
+              <p className="text-sm text-gray-500">
+                All engagement letters for this client
+              </p>
+            </div>
+          </div>
+          {engagementLetters.length > 0 && (
+            <div className="bg-emerald-50 px-3 py-1 rounded-full">
+              <span className="text-sm font-medium text-emerald-700">
+                {engagementLetters.length}{" "}
+                {engagementLetters.length === 1 ? "letter" : "letters"}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {loadingEngagementLetters ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-emerald-500 mx-auto"></div>
+            <p className="mt-3 text-sm text-gray-500">
+              Loading engagement letters...
+            </p>
+          </div>
+        ) : engagementLetters.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {engagementLetters.map((letter, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.1 }}
+                className="group bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 border border-gray-200 overflow-hidden"
+              >
+                <div className="p-5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center">
+                      <div className="bg-emerald-100 rounded-lg p-2 mr-3 group-hover:bg-emerald-200 transition-colors">
+                        <DocumentTextIcon className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-medium text-gray-900 truncate group-hover:text-emerald-700 transition-colors">
+                          {letter.fileName || "Engagement Letter"}
+                        </h3>
+                        {letter.jobNumber && (
+                          <p className="text-xs text-gray-500">
+                            Job: {letter.jobNumber}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    {letter.serviceType && (
+                      <div className="flex items-center text-xs text-gray-600">
+                        <BriefcaseIcon className="h-3 w-3 mr-1" />
+                        <span>{letter.serviceType}</span>
+                      </div>
+                    )}
+
+                    {letter.uploadedAt && (
+                      <div className="flex items-center text-xs text-gray-600">
+                        <CalendarIcon className="h-3 w-3 mr-1" />
+                        <span>
+                          {new Date(letter.uploadedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            }
+                          )}
+                        </span>
+                      </div>
+                    )}
+
+                    {letter.description && (
+                      <p className="text-xs text-gray-500 line-clamp-2">
+                        {letter.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <a
+                      href={letter.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-emerald-600 hover:text-white hover:bg-emerald-600 bg-emerald-50 rounded-lg shadow-sm border border-emerald-200 hover:shadow-md transition-all duration-200 group-hover:scale-105"
+                    >
+                      <DocumentArrowDownIcon className="h-3 w-3 mr-1" />
+                      View Letter
+                    </a>
+
+                    {letter.jobId && (
+                      <button
+                        onClick={() => navigate(`/job/${letter.jobId}`)}
+                        className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50 rounded-lg transition-all duration-200"
+                      >
+                        <EyeIcon className="h-3 w-3 mr-1" />
+                        View Job
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-gray-50/50 rounded-xl border border-gray-200">
+            <div className="mx-auto h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <FolderOpenIcon className="h-7 w-7 text-gray-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-500 mb-2">
+              No Engagement Letters Found
+            </h3>
+            <p className="text-sm text-gray-400 max-w-md mx-auto">
+              No engagement letters have been uploaded for this client yet.
+              Engagement letters will appear here once they are uploaded through
+              job management.
+            </p>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
 
   // KYC status fetch function
   const fetchKycStatus = async (jobId) => {
@@ -1239,7 +1417,7 @@ function ClientProfile() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Engagement Letters */}
-              {company.engagementLetters && (
+              {/* {company.engagementLetters && (
                 <a
                   href={company.engagementLetters}
                   target="_blank"
@@ -1264,7 +1442,7 @@ function ClientProfile() {
                     </div>
                   </div>
                 </a>
-              )}
+              )} */}
 
               {/* Company Computer Card */}
               {company.companyComputerCard && (
@@ -2099,6 +2277,7 @@ function ClientProfile() {
             </motion.div>
           </div>
         </motion.div>
+        {renderEngagementLettersSection()}
 
         {/* Services Section */}
         <motion.div

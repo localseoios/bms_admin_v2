@@ -16,6 +16,7 @@ const {
   createPreApprovedJob,
   getPersonFieldHistory,
   getEngagementLetters,
+  getClientEngagementLetters,
 } = require("../controllers/operationController");
 
 // Import job controller functions for job number checking
@@ -270,6 +271,14 @@ router.get(
   protect,
   checkPermission("operationManagement"),
   getPersonFieldHistory
+);
+
+// Add this route with other routes
+router.get(
+  "/clients/:gmail/engagement-letters",
+  protect,
+  checkPermission("operationManagement"),
+  getClientEngagementLetters
 );
 
 module.exports = router;

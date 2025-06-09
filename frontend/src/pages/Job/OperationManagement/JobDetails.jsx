@@ -26,12 +26,15 @@ import {
   ChevronUpIcon,
   ChevronDownIcon,
   PlusIcon,
+  DocumentArrowDownIcon, // Add this line
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 import {
   TextInputWithHistory,
   DateInputWithHistory,
 } from "./PersonDetailsHistory";
+import * as XLSX from "xlsx";
+
 
 
 function JobDetails() {
@@ -95,6 +98,288 @@ function JobDetails() {
     certificateOfIncorporate: null,
     kycActiveStatus: "yes",
   });
+
+  // Add this function to your JobDetails component
+  const exportToExcel = async () => {
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: "Preparing Excel export...",
+      });
+
+      // Prepare company data
+      const companyData = {
+        "Job ID": job._id,
+        "Company Name": companyDetails.companyName || "",
+        "QFC Number": companyDetails.qfcNo || "",
+        "Registered Address": companyDetails.registeredAddress || "",
+        "Incorporation Date": companyDetails.incorporationDate || "",
+        "Service Type": companyDetails.serviceType || "",
+        "Main Purpose": companyDetails.mainPurpose || "",
+        "Expiry Date": companyDetails.expiryDate || "",
+        "Client Name": job.clientName || "",
+        "Client Email": job.gmail || "",
+        "Job Status": job.status || "",
+        "Starting Point": job.startingPoint || "",
+        "Created At": new Date(job.createdAt).toLocaleDateString(),
+        "KYC Active Status": companyDetails.kycActiveStatus || "",
+      };
+
+      // Create workbook
+      const workbook = XLSX.utils.book_new();
+
+      // Sheet 1: Company Overview
+      const companySheet = XLSX.utils.json_to_sheet([companyData]);
+      XLSX.utils.book_append_sheet(workbook, companySheet, "Company Overview");
+
+      // Sheet 2: Directors
+      if (directorDetails && directorDetails.length > 0) {
+        const directorsData = directorDetails.map((director, index) => ({
+          Entry: index + 1,
+          Name: director.name || "",
+          Nationality: director.nationality || "",
+          "QID Number": director.qidNo || "",
+          "QID Expiry": director.qidExpiry || "",
+          "National Address": director.nationalAddress || "",
+          "National Address Expiry": director.nationalAddressExpiry || "",
+          "Passport Number": director.passportNo || "",
+          "Passport Expiry": director.passportExpiry || "",
+          "Mobile Number": director.mobileNo || "",
+          Email: director.email || "",
+          "Has Visa Copy": director.visaCopy ? "Yes" : "No",
+          "Has QID Document": director.qidDoc ? "Yes" : "No",
+          "Has National Address Doc": director.nationalAddressDoc
+            ? "Yes"
+            : "No",
+          "Has Passport Document": director.passportDoc ? "Yes" : "No",
+          "Has CV": director.cv ? "Yes" : "No",
+        }));
+        const directorsSheet = XLSX.utils.json_to_sheet(directorsData);
+        XLSX.utils.book_append_sheet(workbook, directorsSheet, "Directors");
+      }
+
+      // Sheet 3: Shareholders
+      if (shareholderDetails && shareholderDetails.length > 0) {
+        const shareholdersData = shareholderDetails.map(
+          (shareholder, index) => ({
+            Entry: index + 1,
+            Name: shareholder.name || "",
+            Nationality: shareholder.nationality || "",
+            "QID Number": shareholder.qidNo || "",
+            "QID Expiry": shareholder.qidExpiry || "",
+            "National Address": shareholder.nationalAddress || "",
+            "National Address Expiry": shareholder.nationalAddressExpiry || "",
+            "Passport Number": shareholder.passportNo || "",
+            "Passport Expiry": shareholder.passportExpiry || "",
+            "Mobile Number": shareholder.mobileNo || "",
+            Email: shareholder.email || "",
+            "Has Visa Copy": shareholder.visaCopy ? "Yes" : "No",
+            "Has QID Document": shareholder.qidDoc ? "Yes" : "No",
+            "Has National Address Doc": shareholder.nationalAddressDoc
+              ? "Yes"
+              : "No",
+            "Has Passport Document": shareholder.passportDoc ? "Yes" : "No",
+            "Has CV": shareholder.cv ? "Yes" : "No",
+          })
+        );
+        const shareholdersSheet = XLSX.utils.json_to_sheet(shareholdersData);
+        XLSX.utils.book_append_sheet(
+          workbook,
+          shareholdersSheet,
+          "Shareholders"
+        );
+      }
+
+      // Sheet 4: Secretaries
+      if (secretaryDetails && secretaryDetails.length > 0) {
+        const secretariesData = secretaryDetails.map((secretary, index) => ({
+          Entry: index + 1,
+          Name: secretary.name || "",
+          Nationality: secretary.nationality || "",
+          "QID Number": secretary.qidNo || "",
+          "QID Expiry": secretary.qidExpiry || "",
+          "National Address": secretary.nationalAddress || "",
+          "National Address Expiry": secretary.nationalAddressExpiry || "",
+          "Passport Number": secretary.passportNo || "",
+          "Passport Expiry": secretary.passportExpiry || "",
+          "Mobile Number": secretary.mobileNo || "",
+          Email: secretary.email || "",
+          "Has Visa Copy": secretary.visaCopy ? "Yes" : "No",
+          "Has QID Document": secretary.qidDoc ? "Yes" : "No",
+          "Has National Address Doc": secretary.nationalAddressDoc
+            ? "Yes"
+            : "No",
+          "Has Passport Document": secretary.passportDoc ? "Yes" : "No",
+          "Has CV": secretary.cv ? "Yes" : "No",
+        }));
+        const secretariesSheet = XLSX.utils.json_to_sheet(secretariesData);
+        XLSX.utils.book_append_sheet(workbook, secretariesSheet, "Secretaries");
+      }
+
+      // Sheet 5: SEF Details
+      if (sefDetails && sefDetails.length > 0) {
+        const sefData = sefDetails.map((sef, index) => ({
+          Entry: index + 1,
+          Name: sef.name || "",
+          Nationality: sef.nationality || "",
+          "QID Number": sef.qidNo || "",
+          "QID Expiry": sef.qidExpiry || "",
+          "National Address": sef.nationalAddress || "",
+          "National Address Expiry": sef.nationalAddressExpiry || "",
+          "Passport Number": sef.passportNo || "",
+          "Passport Expiry": sef.passportExpiry || "",
+          "Mobile Number": sef.mobileNo || "",
+          Email: sef.email || "",
+          "Has Visa Copy": sef.visaCopy ? "Yes" : "No",
+          "Has QID Document": sef.qidDoc ? "Yes" : "No",
+          "Has National Address Doc": sef.nationalAddressDoc ? "Yes" : "No",
+          "Has Passport Document": sef.passportDoc ? "Yes" : "No",
+          "Has CV": sef.cv ? "Yes" : "No",
+        }));
+        const sefSheet = XLSX.utils.json_to_sheet(sefData);
+        XLSX.utils.book_append_sheet(workbook, sefSheet, "SEF Details");
+      }
+
+      // Sheet 6: Document Status
+      const documentsData = [
+        {
+          "Company Computer Card": companyDetails.companyComputerCard
+            ? "Available"
+            : "Not Available",
+          "Company Computer Card Expiry":
+            companyDetails.companyComputerCardExpiry || "",
+          "Tax Card": companyDetails.taxCard ? "Available" : "Not Available",
+          "Tax Card Expiry": companyDetails.taxCardExpiry || "",
+          "CR Extract": companyDetails.crExtract
+            ? "Available"
+            : "Not Available",
+          "CR Extract Expiry": companyDetails.crExtractExpiry || "",
+          "Scope of License": companyDetails.scopeOfLicense
+            ? "Available"
+            : "Not Available",
+          "Scope of License Expiry": companyDetails.scopeOfLicenseExpiry || "",
+          "Article of Associate": companyDetails.articleOfAssociate
+            ? "Available"
+            : "Not Available",
+          "Certificate of Incorporate": companyDetails.certificateOfIncorporate
+            ? "Available"
+            : "Not Available",
+          "Engagement Letters":
+            Array.isArray(companyDetails.engagementLetters) &&
+            companyDetails.engagementLetters.length > 0
+              ? `${companyDetails.engagementLetters.length} letters`
+              : "Not Available",
+        },
+      ];
+      const documentsSheet = XLSX.utils.json_to_sheet(documentsData);
+      XLSX.utils.book_append_sheet(
+        workbook,
+        documentsSheet,
+        "Documents Status"
+      );
+
+      // Sheet 7: Timeline (if available)
+      if (timeline && timeline.length > 0) {
+        const timelineData = timeline.map((event, index) => ({
+          Entry: index + 1,
+          Status: event.status || "",
+          Description: event.description || "",
+          Timestamp: new Date(event.timestamp).toLocaleString(),
+          "Updated By": event.updatedBy?.name || "System",
+        }));
+        const timelineSheet = XLSX.utils.json_to_sheet(timelineData);
+        XLSX.utils.book_append_sheet(workbook, timelineSheet, "Timeline");
+      }
+
+      // Generate filename with timestamp
+      const timestamp = new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/:/g, "-");
+      const filename = `Company_Data_${
+        companyDetails.companyName || job._id
+      }_${timestamp}.xlsx`;
+
+      // Write and download the file
+      XLSX.writeFile(workbook, filename);
+
+      setActionMessage({
+        type: "success",
+        message: "Excel file exported successfully!",
+      });
+
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      setActionMessage({
+        type: "error",
+        message: "Failed to export Excel file. Please try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Enhanced export function for multiple companies (if you need to export multiple jobs)
+  const exportMultipleCompaniesExcel = async (jobsList) => {
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: "Preparing multi-company Excel export...",
+      });
+
+      // Create workbook
+      const workbook = XLSX.utils.book_new();
+
+      // Sheet 1: Companies Summary
+      const companiesSummary = jobsList.map((job, index) => ({
+        "S.No": index + 1,
+        "Job ID": job._id,
+        "Company Name": job.companyName || "",
+        "QFC Number": job.qfcNo || "",
+        "Service Type": job.serviceType || "",
+        "Client Name": job.clientName || "",
+        "Client Email": job.gmail || "",
+        Status: job.status || "",
+        "Created Date": new Date(job.createdAt).toLocaleDateString(),
+        "Starting Point": job.startingPoint || "",
+      }));
+      const summarySheet = XLSX.utils.json_to_sheet(companiesSummary);
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Companies Summary");
+
+      // You can add more detailed sheets here for all companies
+      // This would require fetching detailed data for each job
+
+      const timestamp = new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/:/g, "-");
+      const filename = `Companies_Export_${timestamp}.xlsx`;
+
+      XLSX.writeFile(workbook, filename);
+
+      setActionMessage({
+        type: "success",
+        message: "Multi-company Excel file exported successfully!",
+      });
+
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } catch (error) {
+      console.error("Error exporting multiple companies to Excel:", error);
+      setActionMessage({
+        type: "error",
+        message: "Failed to export Excel file. Please try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Person details states
   const [directorDetails, setDirectorDetails] = useState([
@@ -3801,6 +4086,15 @@ function JobDetails() {
               {getStatusIcon(job.status)}
               <span className="ml-2 capitalize">{job.status}</span>
             </span>
+            {/* Add Export Button */}
+            <button
+              onClick={exportToExcel}
+              disabled={submitting}
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+            >
+              <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+              Export Excel
+            </button>
           </div>
         </motion.div>
 
@@ -4197,6 +4491,67 @@ function JobDetails() {
                 </div>
               </motion.div>
             )}
+
+            {/* Export Data Section */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
+            >
+              <div className="px-6 py-8">
+                <h2 className="text-xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100 flex items-center">
+                  <DocumentArrowDownIcon className="h-5 w-5 text-indigo-600 mr-2" />
+                  Export Data
+                </h2>
+                <div className="space-y-4">
+                  <button
+                    onClick={exportToExcel}
+                    disabled={submitting}
+                    className={`w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-lg hover:from-green-700 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium flex items-center justify-center ${
+                      submitting ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
+                  >
+                    {submitting ? (
+                      <>
+                        <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="h-5 w-5 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        Export to Excel
+                      </>
+                    )}
+                  </button>
+
+                  <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+                    <p className="font-medium mb-1">Export includes:</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                      <li>Company overview and details</li>
+                      <li>Director information</li>
+                      <li>Shareholder details</li>
+                      <li>Secretary information</li>
+                      <li>SEF details</li>
+                      <li>Document status</li>
+                      <li>Job timeline</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           </div>
 
           <div className="space-y-8">
@@ -4240,286 +4595,310 @@ function JobDetails() {
 
             {/* Engagement Letter Component */}
             {!["cancelled"].includes(job.status) && (
-<motion.div
-  initial={{ opacity: 0, x: 20 }}
-  animate={{ opacity: 1, x: 0 }}
-  transition={{ duration: 0.5, delay: 0.2 }}
-  className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
->
-  <div className="px-6 py-8">
-    <h2 className="text-xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100 flex items-center">
-      <DocumentCheckIcon className="h-5 w-5 text-indigo-600 mr-2" />
-      Engagement Letters
-      {companyDetails?.engagementLetters?.length > 0 && job?.status === "pending" && 
-       job?.timeline?.some((event) => event.description?.includes("auto-populated")) && (
-        <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
-          Auto-populated
-        </span>
-      )}
-    </h2>
-
-    {/* Info box for auto-populated letters */}
-    {companyDetails?.engagementLetters?.length > 0 &&
-      job?.status === "pending" &&
-      job?.timeline?.some((event) =>
-        event.description?.includes("auto-populated")
-      ) && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-          <div className="flex">
-            <InformationCircleIcon className="h-6 w-6 text-blue-600 mr-2" />
-            <div>
-              <h3 className="text-sm font-medium text-blue-800">
-                Engagement Letter Auto-Populated
-              </h3>
-              <p className="mt-1 text-sm text-blue-700">
-                This engagement letter was automatically found
-                from another job for the same client. All jobs for
-                the same client use the same engagement letter.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-    {Array.isArray(companyDetails?.engagementLetters) && companyDetails.engagementLetters.length > 0 ? (
-      <div className="space-y-4">
-        <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-          <div className="flex items-center space-x-3">
-            <CheckCircleIcon className="h-6 w-6 text-green-600" />
-            <span className="font-medium text-green-800">
-              {companyDetails.engagementLetters.length} {companyDetails.engagementLetters.length === 1 ? 'letter' : 'letters'} uploaded
-            </span>
-          </div>
-        </div>
-
-        {companyDetails.engagementLetters.map((letter, index) => (
-          <div key={index} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex items-center space-x-3">
-              <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
-              <div>
-                <span className="text-sm font-medium text-gray-900">
-                  {letter.fileName || `Engagement Letter ${index + 1}`}
-                </span>
-                {letter.description && (
-                  <p className="text-xs text-gray-500">{letter.description}</p>
-                )}
-                {letter.uploadedAt && (
-                  <p className="text-xs text-gray-400">
-                    {new Date(letter.uploadedAt).toLocaleString()}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <a
-              href={letter.fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-white rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-            >
-              View Document
-            </a>
-          </div>
-        ))}
-
-        {/* Add button to upload additional engagement letters */}
-        <div className="mt-4">
-          <label className="cursor-pointer flex items-center justify-center px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200">
-            <PlusIcon className="h-4 w-4 mr-1" />
-            Upload Additional Letters
-            <input
-              type="file"
-              className="sr-only"
-              onChange={handleFileChange}
-              multiple
-              accept=".pdf,.doc,.docx"
-            />
-          </label>
-        </div>
-
-        {/* Show newly selected files if any */}
-        {engagementLetters.length > 0 && (
-          <div className="mt-4 space-y-3">
-            <div className="text-sm font-medium text-gray-700 mb-2">
-              Additional files to upload:
-            </div>
-            {engagementLetters.map((letter, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border border-gray-200"
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
               >
-                <div className="flex items-center space-x-3">
-                  <DocumentTextIcon className="h-5 w-5 text-blue-600" />
-                  <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                    {letter.name}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {(letter.size / 1024).toFixed(1)}KB
-                  </span>
+                <div className="px-6 py-8">
+                  <h2 className="text-xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100 flex items-center">
+                    <DocumentCheckIcon className="h-5 w-5 text-indigo-600 mr-2" />
+                    Engagement Letters
+                    {companyDetails?.engagementLetters?.length > 0 &&
+                      job?.status === "pending" &&
+                      job?.timeline?.some((event) =>
+                        event.description?.includes("auto-populated")
+                      ) && (
+                        <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                          Auto-populated
+                        </span>
+                      )}
+                  </h2>
+
+                  {/* Info box for auto-populated letters */}
+                  {companyDetails?.engagementLetters?.length > 0 &&
+                    job?.status === "pending" &&
+                    job?.timeline?.some((event) =>
+                      event.description?.includes("auto-populated")
+                    ) && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div className="flex">
+                          <InformationCircleIcon className="h-6 w-6 text-blue-600 mr-2" />
+                          <div>
+                            <h3 className="text-sm font-medium text-blue-800">
+                              Engagement Letter Auto-Populated
+                            </h3>
+                            <p className="mt-1 text-sm text-blue-700">
+                              This engagement letter was automatically found
+                              from another job for the same client. All jobs for
+                              the same client use the same engagement letter.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  {Array.isArray(companyDetails?.engagementLetters) &&
+                  companyDetails.engagementLetters.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                        <div className="flex items-center space-x-3">
+                          <CheckCircleIcon className="h-6 w-6 text-green-600" />
+                          <span className="font-medium text-green-800">
+                            {companyDetails.engagementLetters.length}{" "}
+                            {companyDetails.engagementLetters.length === 1
+                              ? "letter"
+                              : "letters"}{" "}
+                            uploaded
+                          </span>
+                        </div>
+                      </div>
+
+                      {companyDetails.engagementLetters.map((letter, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
+                            <div>
+                              <span className="text-sm font-medium text-gray-900">
+                                {letter.fileName ||
+                                  `Engagement Letter ${index + 1}`}
+                              </span>
+                              {letter.description && (
+                                <p className="text-xs text-gray-500">
+                                  {letter.description}
+                                </p>
+                              )}
+                              {letter.uploadedAt && (
+                                <p className="text-xs text-gray-400">
+                                  {new Date(letter.uploadedAt).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <a
+                            href={letter.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-white rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                          >
+                            View Document
+                          </a>
+                        </div>
+                      ))}
+
+                      {/* Add button to upload additional engagement letters */}
+                      <div className="mt-4">
+                        <label className="cursor-pointer flex items-center justify-center px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200">
+                          <PlusIcon className="h-4 w-4 mr-1" />
+                          Upload Additional Letters
+                          <input
+                            type="file"
+                            className="sr-only"
+                            onChange={handleFileChange}
+                            multiple
+                            accept=".pdf,.doc,.docx"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Show newly selected files if any */}
+                      {engagementLetters.length > 0 && (
+                        <div className="mt-4 space-y-3">
+                          <div className="text-sm font-medium text-gray-700 mb-2">
+                            Additional files to upload:
+                          </div>
+                          {engagementLetters.map((letter, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border border-gray-200"
+                            >
+                              <div className="flex items-center space-x-3">
+                                <DocumentTextIcon className="h-5 w-5 text-blue-600" />
+                                <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                                  {letter.name}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {(letter.size / 1024).toFixed(1)}KB
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => removeEngagementLetter(index)}
+                                className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+                              >
+                                <XMarkIcon className="h-5 w-5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          {/* Upload button for additional letters */}
+                          <div className="mt-6 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={handleUploadEngagementLetters}
+                              disabled={submitting}
+                              className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
+                                submitting
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            >
+                              {submitting ? (
+                                <>
+                                  <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                                  Uploading...
+                                </>
+                              ) : (
+                                `Upload ${engagementLetters.length} ${
+                                  engagementLetters.length > 1
+                                    ? "Letters"
+                                    : "Letter"
+                                }`
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      className={`border-2 border-dashed rounded-xl p-6 transition-all duration-200 ${
+                        isDragging
+                          ? "border-indigo-500 bg-indigo-50"
+                          : engagementLetters.length > 0
+                          ? "border-green-500 bg-green-50"
+                          : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
+                      }`}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleEngagementLetterDrop}
+                    >
+                      {engagementLetters.length > 0 ? (
+                        <div className="space-y-3">
+                          <div className="text-sm font-medium text-gray-700 mb-2">
+                            Selected files:
+                          </div>
+                          {engagementLetters.map((letter, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm"
+                            >
+                              <div className="flex items-center space-x-3">
+                                <DocumentTextIcon className="h-5 w-5 text-green-600" />
+                                <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                                  {letter.name}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {(letter.size / 1024).toFixed(1)}KB
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => removeEngagementLetter(index)}
+                                className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+                              >
+                                <XMarkIcon className="h-5 w-5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          <div className="mt-4 flex items-center justify-center">
+                            <label className="cursor-pointer flex items-center px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
+                              <PlusIcon className="h-4 w-4 mr-1" />
+                              Add More Files
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={handleFileChange}
+                                multiple
+                                accept=".pdf,.doc,.docx"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="mt-6 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={handleUploadEngagementLetters}
+                              disabled={submitting}
+                              className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
+                                submitting
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            >
+                              {submitting ? (
+                                <>
+                                  <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                                  Uploading...
+                                </>
+                              ) : (
+                                `Upload ${engagementLetters.length} ${
+                                  engagementLetters.length > 1
+                                    ? "Letters"
+                                    : "Letter"
+                                }`
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <CloudArrowUpIcon className="mx-auto h-14 w-14 text-gray-400" />
+                          <div className="mt-4">
+                            <label className="block text-sm font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer transition-colors">
+                              <span>Upload files</span>
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={handleFileChange}
+                                multiple
+                                accept=".pdf,.doc,.docx"
+                              />
+                            </label>
+                            <p className="mt-1 text-xs text-gray-500">
+                              or drag and drop
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              PDF, DOC up to 10MB (multiple files allowed)
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Information about shared engagement letters */}
+                  <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <p className="text-xs text-gray-600 flex items-start">
+                      <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
+                      <span>
+                        All engagement letters uploaded here will be
+                        automatically shared with all jobs for this client.
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* Upload button for new letters */}
+                  {engagementLetters.length > 0 && !submitting && (
+                    <div className="mt-6 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleUploadEngagementLetters}
+                        className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium"
+                      >
+                        Upload{" "}
+                        {engagementLetters.length > 1
+                          ? `${engagementLetters.length} Letters`
+                          : "Letter"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={() => removeEngagementLetter(index)}
-                  className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-            ))}
-            
-            {/* Upload button for additional letters */}
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={handleUploadEngagementLetters}
-                disabled={submitting}
-                className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
-                  submitting ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-              >
-                {submitting ? (
-                  <>
-                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                    Uploading...
-                  </>
-                ) : (
-                  `Upload ${engagementLetters.length} ${
-                    engagementLetters.length > 1 ? "Letters" : "Letter"
-                  }`
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-      </div>
-    ) : (
-      <div
-        className={`border-2 border-dashed rounded-xl p-6 transition-all duration-200 ${
-          isDragging
-            ? "border-indigo-500 bg-indigo-50"
-            : engagementLetters.length > 0
-            ? "border-green-500 bg-green-50"
-            : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-        }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleEngagementLetterDrop}
-      >
-        {engagementLetters.length > 0 ? (
-          <div className="space-y-3">
-            <div className="text-sm font-medium text-gray-700 mb-2">
-              Selected files:
-            </div>
-            {engagementLetters.map((letter, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm"
-              >
-                <div className="flex items-center space-x-3">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600" />
-                  <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                    {letter.name}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {(letter.size / 1024).toFixed(1)}KB
-                  </span>
-                </div>
-                <button
-                  onClick={() => removeEngagementLetter(index)}
-                  className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-            ))}
-
-            <div className="mt-4 flex items-center justify-center">
-              <label className="cursor-pointer flex items-center px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
-                <PlusIcon className="h-4 w-4 mr-1" />
-                Add More Files
-                <input
-                  type="file"
-                  className="sr-only"
-                  onChange={handleFileChange}
-                  multiple
-                  accept=".pdf,.doc,.docx"
-                />
-              </label>
-            </div>
-            
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={handleUploadEngagementLetters}
-                disabled={submitting}
-                className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
-                  submitting ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-              >
-                {submitting ? (
-                  <>
-                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                    Uploading...
-                  </>
-                ) : (
-                  `Upload ${engagementLetters.length} ${
-                    engagementLetters.length > 1 ? "Letters" : "Letter"
-                  }`
-                )}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-4">
-            <CloudArrowUpIcon className="mx-auto h-14 w-14 text-gray-400" />
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer transition-colors">
-                <span>Upload files</span>
-                <input
-                  type="file"
-                  className="sr-only"
-                  onChange={handleFileChange}
-                  multiple
-                  accept=".pdf,.doc,.docx"
-                />
-              </label>
-              <p className="mt-1 text-xs text-gray-500">
-                or drag and drop
-              </p>
-              <p className="text-xs text-gray-500">
-                PDF, DOC up to 10MB (multiple files allowed)
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    )}
-
-    {/* Information about shared engagement letters */}
-    <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-      <p className="text-xs text-gray-600 flex items-start">
-        <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
-        <span>
-          All engagement letters uploaded here will be
-          automatically shared with all jobs for this client.
-        </span>
-      </p>
-    </div>
-
-    {/* Upload button for new letters */}
-    {engagementLetters.length > 0 && !submitting && (
-      <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          onClick={handleUploadEngagementLetters}
-          className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium"
-        >
-          Upload {engagementLetters.length > 1 ? `${engagementLetters.length} Letters` : 'Letter'}
-        </button>
-      </div>
-    )}
-  </div>
-</motion.div>
+              </motion.div>
             )}
 
             {/* Complete Operation Info Message - Only shown for approved jobs without engagement letter */}

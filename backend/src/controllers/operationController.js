@@ -2426,6 +2426,80 @@ const getUserName = async (userId) => {
   }
 };
 
+// Get all engagement letters for a client by Gmail
+const getClientEngagementLetters = asyncHandler(async (req, res) => {
+  const { gmail } = req.params;
+
+  try {
+    // Find the client by Gmail
+    const client = await Client.findOne({ gmail });
+    if (!client) {
+      return res.status(404).json({ message: "Client not found" });
+    }
+
+    // Find all jobs for this client
+    const clientJobs = await Job.find({ clientId: client._id });
+    if (!clientJobs || clientJobs.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // Get all job IDs for this client
+    const jobIds = clientJobs.map(job => job._id);
+
+    // Find all company details with engagement letters for these jobs
+    const companyDetailsWithLetters = await CompanyDetails.find({
+      jobId: { $in: jobIds },
+      engagementLetters: { $exists: true, $ne: null }
+    }).populate('jobId', 'serviceType clientName jobNumber createdAt');
+
+    // Collect all engagement letters with job context
+    let allEngagementLetters = [];
+
+    for (const companyDetail of companyDetailsWithLetters) {
+      if (Array.isArray(companyDetail.engagementLetters)) {
+        // Handle array format (new format)
+        companyDetail.engagementLetters.forEach(letter => {
+          allEngagementLetters.push({
+            ...letter.toObject(),
+            jobId: companyDetail.jobId._id,
+            jobNumber: companyDetail.jobId.jobNumber,
+            serviceType: companyDetail.jobId.serviceType,
+            clientName: companyDetail.jobId.clientName,
+            jobCreatedAt: companyDetail.jobId.createdAt
+          });
+        });
+      } else if (companyDetail.engagementLetters) {
+        // Handle string format (legacy format)
+        allEngagementLetters.push({
+          fileUrl: companyDetail.engagementLetters,
+          fileName: 'Engagement Letter',
+          uploadedAt: companyDetail.updatedAt,
+          uploadedBy: companyDetail.updatedBy,
+          description: 'Legacy engagement letter',
+          jobId: companyDetail.jobId._id,
+          jobNumber: companyDetail.jobId.jobNumber,
+          serviceType: companyDetail.jobId.serviceType,
+          clientName: companyDetail.jobId.clientName,
+          jobCreatedAt: companyDetail.jobId.createdAt
+        });
+      }
+    }
+
+    // Remove duplicates based on fileUrl and sort by upload date
+    const uniqueLetters = allEngagementLetters.filter((letter, index, self) =>
+      index === self.findIndex(l => l.fileUrl === letter.fileUrl)
+    ).sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+
+    res.status(200).json(uniqueLetters);
+  } catch (error) {
+    console.error('Error fetching client engagement letters:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch engagement letters', 
+      error: error.message 
+    });
+  }
+});
+
 module.exports = {
   getCompanyDetails,
   updateCompanyDetails,
@@ -2440,4 +2514,5 @@ module.exports = {
   completeOperation,
   createPreApprovedJob,
   getPersonFieldHistory,
+  getClientEngagementLetters,
 };
