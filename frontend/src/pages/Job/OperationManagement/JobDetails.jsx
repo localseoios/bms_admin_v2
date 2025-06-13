@@ -70,6 +70,9 @@ function JobDetails() {
   const [editingCompanyDetails, setEditingCompanyDetails] = useState(false);
   const [originalCompanyDetails, setOriginalCompanyDetails] = useState(null);
 
+  // Add state for multiple CR Extract files
+  const [crExtractFiles, setCrExtractFiles] = useState([]);
+
   // KYC state
   const [kycDetails, setKycDetails] = useState({
     activeStatus: "yes",
@@ -321,6 +324,32 @@ function JobDetails() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Add function to handle CR Extract file changes
+  const handleCrExtractFileChange = (files) => {
+    const fileArray = Array.from(files);
+    // Limit to 2 files maximum
+    const limitedFiles = fileArray.slice(0, 2);
+    setCrExtractFiles(limitedFiles);
+  };
+
+  // Add function to remove CR Extract file
+  const removeCrExtractFile = (index) => {
+    setCrExtractFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Update the company file handlers to handle CR Extract properly
+  const handleCompanyFileChange = (field, file) => {
+    if (field === "crExtract") {
+      // Handle CR Extract separately since it supports multiple files
+      return;
+    }
+
+    setCompanyDetails((prev) => ({
+      ...prev,
+      [field]: file,
+    }));
   };
 
   // Enhanced export function for multiple companies (if you need to export multiple jobs)
@@ -853,6 +882,7 @@ function JobDetails() {
   };
 
   // Company details form submission
+  // In the handleSaveCompanyDetails function, update the FormData handling for crExtract:
   const handleSaveCompanyDetails = async () => {
     try {
       setSubmitting(true);
@@ -868,8 +898,6 @@ function JobDetails() {
       formData.append("mainPurpose", companyDetails.mainPurpose);
       formData.append("expiryDate", companyDetails.expiryDate);
       formData.append("kycActiveStatus", companyDetails.kycActiveStatus);
-
-      // By default, we want to sync changes across jobs
       formData.append("syncAcrossJobs", "true");
 
       // Add expiry dates
@@ -897,7 +925,6 @@ function JobDetails() {
         "engagementLetters",
         "companyComputerCard",
         "taxCard",
-        "crExtract",
         "scopeOfLicense",
         "articleOfAssociate",
         "certificateOfIncorporate",
@@ -909,13 +936,20 @@ function JobDetails() {
         }
       });
 
+      // Handle multiple CR Extract files
+      if (crExtractFiles.length > 0) {
+        crExtractFiles.forEach((file) => {
+          formData.append("crExtract", file);
+        });
+      }
+
       // Send the update
       const response = await axiosInstance.put(
         `/operations/jobs/${jobId}/company-details`,
         formData
       );
 
-      // Check if there was synchronization
+      // Success handling...
       let successMessage = "Company details saved successfully";
       if (
         response.data &&
@@ -930,7 +964,15 @@ function JobDetails() {
         message: successMessage,
       });
 
-      // Exit edit mode after successful save
+      // Clear the CR Extract files after successful save
+      setCrExtractFiles([]);
+
+      // Refresh company details to get updated data
+      const updatedResponse = await axiosInstance.get(
+        `/operations/jobs/${jobId}/company-details`
+      );
+      setCompanyDetails(updatedResponse.data);
+
       setEditingCompanyDetails(false);
 
       setTimeout(() => {
@@ -1006,12 +1048,12 @@ function JobDetails() {
   };
 
   // Company file handlers
-  const handleCompanyFileChange = (field, file) => {
-    setCompanyDetails((prev) => ({
-      ...prev,
-      [field]: file,
-    }));
-  };
+  // const handleCompanyFileChange = (field, file) => {
+  //   setCompanyDetails((prev) => ({
+  //     ...prev,
+  //     [field]: file,
+  //   }));
+  // };
 
   // Person details form handlers
   const handlePersonFileChange = (section, field, index, file) => {
@@ -3409,11 +3451,13 @@ function JobDetails() {
       <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700">
-            CR Extract
+            CR Extract (Max 2 files)
           </label>
           <div
             className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
-              companyDetails.crExtract
+              (Array.isArray(companyDetails.crExtract) &&
+                companyDetails.crExtract.length > 0) ||
+              crExtractFiles.length > 0
                 ? "border-green-500 bg-green-50"
                 : editingCompanyDetails
                 ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
@@ -3426,67 +3470,117 @@ function JobDetails() {
               e.preventDefault();
               e.stopPropagation();
               setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) handleCompanyFileChange("crExtract", file);
+              const files = Array.from(e.dataTransfer.files).slice(0, 2);
+              if (files.length > 0) {
+                setCrExtractFiles(files);
+              }
             }}
           >
-            {companyDetails.crExtract ? (
-              <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
-                    {companyDetails.crExtract instanceof File
-                      ? companyDetails.crExtract.name
-                      : "CR Extract Document"}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  {typeof companyDetails.crExtract === "string" && (
-                    <a
-                      href={companyDetails.crExtract}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+            {/* Show existing documents */}
+            {Array.isArray(companyDetails.crExtract) &&
+              companyDetails.crExtract.length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {companyDetails.crExtract.map((doc, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm"
                     >
-                      View
-                    </a>
-                  )}
-                  {editingCompanyDetails && (
-                    <button
-                      onClick={() => handleCompanyFileChange("crExtract", null)}
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  )}
+                      <div className="flex items-center">
+                        <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
+                        <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
+                          {doc.fileName || `CR Extract ${index + 1}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center">
+                        <a
+                          href={doc.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                        >
+                          View
+                        </a>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <span className="text-xs text-gray-500 block">
-                  (attached document)
-                </span>
-                {editingCompanyDetails ? (
-                  <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                    Upload
-                    <input
-                      type="file"
-                      className="sr-only"
-                      onChange={(e) =>
-                        handleCompanyFileChange(
-                          "crExtract",
-                          e.target.files?.[0]
-                        )
-                      }
-                    />
-                  </label>
-                ) : (
-                  <span className="text-xs text-gray-500">No document</span>
-                )}
+              )}
+
+            {/* Show newly selected files for upload */}
+            {crExtractFiles.length > 0 && (
+              <div className="space-y-2 mb-2">
+                {crExtractFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between bg-blue-50 p-2 rounded-lg shadow-sm border border-blue-200"
+                  >
+                    <div className="flex items-center">
+                      <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2" />
+                      <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
+                        {file.name}
+                      </span>
+                      <span className="text-xs text-blue-600 ml-1">(New)</span>
+                    </div>
+                    <div className="flex items-center">
+                      {editingCompanyDetails && (
+                        <button
+                          onClick={() => removeCrExtractFile(index)}
+                          className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                          title="Remove file"
+                        >
+                          <XMarkIcon className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
+
+            {/* Upload area */}
+            {editingCompanyDetails && crExtractFiles.length < 2 && (
+              <div className="text-center">
+                <span className="text-xs text-gray-500 block">
+                  {crExtractFiles.length === 0
+                    ? "(Upload 1-2 documents)"
+                    : "(Upload 1 more document)"}
+                </span>
+                <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                  Upload{" "}
+                  {crExtractFiles.length === 0
+                    ? "Documents"
+                    : "Another Document"}
+                  <input
+                    type="file"
+                    className="sr-only"
+                    multiple
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files);
+                      const remainingSlots = 2 - crExtractFiles.length;
+                      const filesToAdd = newFiles.slice(0, remainingSlots);
+                      setCrExtractFiles((prev) => [...prev, ...filesToAdd]);
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* Show message when not editing and no documents */}
+            {!editingCompanyDetails &&
+              (!Array.isArray(companyDetails.crExtract) ||
+                companyDetails.crExtract.length === 0) &&
+              crExtractFiles.length === 0 && (
+                <div className="text-center">
+                  <span className="text-xs text-gray-500">
+                    No documents uploaded
+                  </span>
+                </div>
+              )}
           </div>
         </div>
+
+        {/* Expiry date section remains the same */}
         <div className="col-span-3">
           <label className="block text-sm font-medium text-gray-700">
             Expiry Date

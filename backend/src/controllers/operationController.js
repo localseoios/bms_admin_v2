@@ -304,15 +304,37 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
       });
     }
 
-    // CR Extract
+    // UPDATE: Handle multiple CR Extract files (1-2 files)
     if (req.files["crExtract"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["crExtract"][0].path
-      );
-      companyDetails.crExtract = uploadResult.url;
-      fs.unlink(req.files["crExtract"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+      // Initialize crExtract as array if it doesn't exist
+      if (!Array.isArray(companyDetails.crExtract)) {
+        companyDetails.crExtract = [];
+      }
+
+      // Process each uploaded CR Extract file
+      for (const file of req.files["crExtract"]) {
+        const uploadResult = await safeCloudinaryUpload(file.path);
+
+        const crExtractDocument = {
+          fileUrl: uploadResult.url,
+          fileName: file.originalname || "CR Extract Document",
+          uploadedAt: new Date(),
+          uploadedBy: req.user._id,
+          description: `Uploaded on ${new Date().toLocaleDateString()}`,
+        };
+
+        companyDetails.crExtract.push(crExtractDocument);
+
+        // Clean up temporary file
+        fs.unlink(file.path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
+    }
+
+    // Update expiry dates
+    if (req.body.crExtractExpiry) {
+      companyDetails.crExtractExpiry = req.body.crExtractExpiry;
     }
 
     // Scope of License
@@ -1861,14 +1883,25 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
 
           // CR Extract
           if (req.files["crExtract"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["crExtract"][0].path,
-              { folder: `clients/${gmail}/company/cr_extract` }
-            );
-            newCompanyDetails.crExtract = uploadResult.url;
-            fs.unlink(req.files["crExtract"][0].path, (err) => {
-              if (err) console.error("Error deleting temp file:", err);
-            });
+            newCompanyDetails.crExtract = [];
+
+            for (const file of req.files["crExtract"]) {
+              const uploadResult = await safeCloudinaryUpload(file.path, {
+                folder: `clients/${gmail}/company/cr_extract`,
+              });
+
+              newCompanyDetails.crExtract.push({
+                fileUrl: uploadResult.url,
+                fileName: file.originalname || "CR Extract Document",
+                uploadedAt: new Date(),
+                uploadedBy: req.user._id,
+                description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
+              });
+
+              fs.unlink(file.path, (err) => {
+                if (err) console.error("Error deleting temp file:", err);
+              });
+            }
           }
 
           // Scope of License

@@ -31,8 +31,20 @@ const companyDetailsSchema = new mongoose.Schema(
     companyComputerCardExpiry: { type: Date },
     taxCard: { type: String }, // URL to document
     taxCardExpiry: { type: Date },
-    crExtract: { type: String }, // URL to document
+    crExtract: [
+      {
+        fileUrl: { type: String, required: true },
+        fileName: { type: String },
+        uploadedAt: { type: Date, default: Date.now },
+        uploadedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        description: { type: String },
+      },
+    ],
     crExtractExpiry: { type: Date },
+    
     scopeOfLicense: { type: String }, // URL to document
     scopeOfLicenseExpiry: { type: Date },
     articleOfAssociate: { type: String }, // URL to document

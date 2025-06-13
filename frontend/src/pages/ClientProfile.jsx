@@ -1140,6 +1140,8 @@ function ClientProfile() {
   };
 
   // Helper to render view-only company details with comprehensive implementation
+  // Update the renderViewOnlyCompanyDetails function to ensure CR Extract displays properly
+
   const renderViewOnlyCompanyDetails = (jobId) => {
     const company = companyDetails[jobId];
 
@@ -1209,6 +1211,14 @@ function ClientProfile() {
         </div>
       );
     }
+
+    // Debug logging for CR Extract (remove in production)
+    console.log("Company data for CR Extract debug:", {
+      jobId,
+      crExtract: company.crExtract,
+      crExtractExpiry: company.crExtractExpiry,
+      allCompanyFields: Object.keys(company),
+    });
 
     return (
       <motion.div
@@ -1416,34 +1426,6 @@ function ClientProfile() {
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Engagement Letters */}
-              {/* {company.engagementLetters && (
-                <a
-                  href={company.engagementLetters}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-blue-600"></div>
-                  <div className="p-5">
-                    <div className="flex items-start">
-                      <div className="bg-blue-100 rounded-lg p-3 flex-shrink-0">
-                        <DocumentTextIcon className="h-6 w-6 text-blue-600 group-hover:text-blue-700 transition-colors" />
-                      </div>
-                      <div className="ml-4">
-                        <h5 className="font-medium text-gray-900 group-hover:text-blue-700 transition-colors">
-                          Engagement Letters
-                        </h5>
-                        <p className="text-xs text-gray-500 mt-1 flex items-center">
-                          <EyeIcon className="h-3.5 w-3.5 mr-1" />
-                          View document
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </a>
-              )} */}
-
               {/* Company Computer Card */}
               {company.companyComputerCard && (
                 <a
@@ -1516,41 +1498,114 @@ function ClientProfile() {
                 </a>
               )}
 
-              {/* CR Extract */}
-              {company.crExtract && (
-                <a
-                  href={company.crExtract}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-purple-600"></div>
-                  <div className="p-5">
-                    <div className="flex items-start">
-                      <div className="bg-purple-100 rounded-lg p-3 flex-shrink-0">
-                        <DocumentTextIcon className="h-6 w-6 text-purple-600 group-hover:text-purple-700 transition-colors" />
-                      </div>
-                      <div className="ml-4">
-                        <div className="flex items-center">
-                          <h5 className="font-medium text-gray-900 group-hover:text-purple-700 transition-colors">
-                            CR Extract
-                          </h5>
-                          {company.crExtractExpiry &&
-                            getExpiryStatus(company.crExtractExpiry)}
+              {/* CR Extract - Enhanced with proper array handling */}
+              {Array.isArray(company.crExtract) && company.crExtract.length > 0
+                ? // Handle array format (new format)
+                  company.crExtract.map((doc, index) => (
+                    <a
+                      key={index}
+                      href={doc.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-purple-600"></div>
+                      <div className="p-5">
+                        <div className="flex items-start">
+                          <div className="bg-purple-100 rounded-lg p-3 flex-shrink-0">
+                            <DocumentTextIcon className="h-6 w-6 text-purple-600 group-hover:text-purple-700 transition-colors" />
+                          </div>
+                          <div className="ml-4">
+                            <div className="flex items-center">
+                              <h5 className="font-medium text-gray-900 group-hover:text-purple-700 transition-colors">
+                                {doc.fileName || `CR Extract ${index + 1}`}
+                              </h5>
+                              {company.crExtractExpiry &&
+                                getExpiryStatus(company.crExtractExpiry)}
+                            </div>
+                            {doc.description && (
+                              <p className="text-xs text-gray-600 mt-1">
+                                {doc.description}
+                              </p>
+                            )}
+                            {doc.uploadedAt && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Uploaded:{" "}
+                                {new Date(doc.uploadedAt).toLocaleDateString()}
+                              </p>
+                            )}
+                            {company.crExtractExpiry && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Expires:{" "}
+                                {new Date(
+                                  company.crExtractExpiry
+                                ).toLocaleDateString()}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1 flex items-center">
+                              <EyeIcon className="h-3.5 w-3.5 mr-1" />
+                              View CR Extract document
+                            </p>
+                          </div>
                         </div>
-                        {company.crExtractExpiry && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Expires:{" "}
-                            {new Date(
-                              company.crExtractExpiry
-                            ).toLocaleDateString()}
-                          </p>
-                        )}
                       </div>
-                    </div>
-                  </div>
-                </a>
-              )}
+                    </a>
+                  ))
+                : // Handle legacy single document format or string format
+                  (company.crExtract ||
+                    company.CRExtract ||
+                    company.cr_extract) && (
+                    <a
+                      href={
+                        company.crExtract ||
+                        company.CRExtract ||
+                        company.cr_extract
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-purple-600"></div>
+                      <div className="p-5">
+                        <div className="flex items-start">
+                          <div className="bg-purple-100 rounded-lg p-3 flex-shrink-0">
+                            <DocumentTextIcon className="h-6 w-6 text-purple-600 group-hover:text-purple-700 transition-colors" />
+                          </div>
+                          <div className="ml-4">
+                            <div className="flex items-center">
+                              <h5 className="font-medium text-gray-900 group-hover:text-purple-700 transition-colors">
+                                CR Extract
+                              </h5>
+                              {(company.crExtractExpiry ||
+                                company.CRExtractExpiry ||
+                                company.cr_extract_expiry) &&
+                                getExpiryStatus(
+                                  company.crExtractExpiry ||
+                                    company.CRExtractExpiry ||
+                                    company.cr_extract_expiry
+                                )}
+                            </div>
+                            {(company.crExtractExpiry ||
+                              company.CRExtractExpiry ||
+                              company.cr_extract_expiry) && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Expires:{" "}
+                                {new Date(
+                                  company.crExtractExpiry ||
+                                    company.CRExtractExpiry ||
+                                    company.cr_extract_expiry
+                                ).toLocaleDateString()}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1 flex items-center">
+                              <EyeIcon className="h-3.5 w-3.5 mr-1" />
+                              View CR Extract document
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                  )}
 
               {/* Scope of License */}
               {company.scopeOfLicense && (
@@ -1645,11 +1700,10 @@ function ClientProfile() {
               )}
             </div>
 
-            {/* No documents message */}
-            {!company.engagementLetters &&
-              !company.companyComputerCard &&
+            {/* No documents message - Updated to include all possible CR Extract field names */}
+            {!company.companyComputerCard &&
               !company.taxCard &&
-              !company.crExtract &&
+              !(company.crExtract || company.CRExtract || company.cr_extract) &&
               !company.scopeOfLicense &&
               !company.articleOfAssociate &&
               !company.certificateOfIncorporate && (
@@ -1661,6 +1715,30 @@ function ClientProfile() {
                 </div>
               )}
           </div>
+
+          {/* Debug Information (remove in production) */}
+          {/* {process.env.NODE_ENV === "development" && (
+            <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+              <h5 className="text-sm font-medium text-yellow-800 mb-2">
+                Debug Info (Development Only)
+              </h5>
+              <pre className="text-xs text-yellow-700 overflow-x-auto">
+                {JSON.stringify(
+                  {
+                    crExtract: company.crExtract,
+                    CRExtract: company.CRExtract,
+                    cr_extract: company.cr_extract,
+                    crExtractExpiry: company.crExtractExpiry,
+                    CRExtractExpiry: company.CRExtractExpiry,
+                    cr_extract_expiry: company.cr_extract_expiry,
+                    allFields: Object.keys(company),
+                  },
+                  null,
+                  2
+                )}
+              </pre>
+            </div>
+          )} */}
         </div>
       </motion.div>
     );

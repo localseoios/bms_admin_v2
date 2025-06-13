@@ -17,6 +17,8 @@ import {
   HashtagIcon,
   CheckIcon,
   ArrowPathIcon,
+  CloudArrowUpIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 
@@ -33,6 +35,9 @@ const CreatePreApprovedJob = () => {
     available: null,
     message: "",
   });
+
+  // Add state for CR Extract files
+  const [crExtractFiles, setCrExtractFiles] = useState([]);
 
   const [files, setFiles] = useState({
     documentPassport: null,
@@ -129,6 +134,18 @@ const CreatePreApprovedJob = () => {
   const [shareholderDocs, setShareholderDocs] = useState([]);
   const [secretaryDocs, setSecretaryDocs] = useState([]);
   const [sefDocs, setSefDocs] = useState([]);
+
+  // Add CR Extract helper functions
+  const handleCrExtractFileChange = (files) => {
+    const fileArray = Array.from(files);
+    // Limit to 2 files maximum
+    const limitedFiles = fileArray.slice(0, 2);
+    setCrExtractFiles(limitedFiles);
+  };
+
+  const removeCrExtractFile = (index) => {
+    setCrExtractFiles((prev) => prev.filter((_, i) => i !== index));
+  };
 
   // Function to check job number availability
   const checkJobNumberAvailability = async (jobNumber) => {
@@ -499,6 +516,21 @@ const CreatePreApprovedJob = () => {
     });
   };
 
+  // Drag and drop handlers
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
   // Create the job
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -618,7 +650,17 @@ const CreatePreApprovedJob = () => {
       if (files.companyComputerCard)
         formDataToSend.append("companyComputerCard", files.companyComputerCard);
       if (files.taxCard) formDataToSend.append("taxCard", files.taxCard);
-      if (files.crExtract) formDataToSend.append("crExtract", files.crExtract);
+
+      // Handle multiple CR Extract files
+      if (crExtractFiles.length > 0) {
+        crExtractFiles.forEach((file) => {
+          formDataToSend.append("crExtract", file);
+        });
+        console.log(
+          `Adding ${crExtractFiles.length} CR Extract files to form data`
+        );
+      }
+
       if (files.scopeOfLicense)
         formDataToSend.append("scopeOfLicense", files.scopeOfLicense);
       if (files.articleOfAssociate)
@@ -1105,7 +1147,6 @@ const CreatePreApprovedJob = () => {
             </div>
           </div>
 
-          {/* Rest of the form sections remain the same - Company Details, Directors, etc. */}
           {/* Company Details */}
           <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100">
             <div className="flex items-center mb-6">
@@ -1199,49 +1240,6 @@ const CreatePreApprovedJob = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Main Purpose
-                </label>
-                <input
-                  type="text"
-                  name="companyDetails.mainPurpose"
-                  value={formData.companyDetails.mainPurpose}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Expiry Date
-                </label>
-                <input
-                  type="date"
-                  name="companyDetails.expiryDate"
-                  value={formatDateForInput(formData.companyDetails.expiryDate)}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  KYC Active Status
-                </label>
-                <select
-                  name="companyDetails.kycActiveStatus"
-                  value={formData.companyDetails.kycActiveStatus}
-                  onChange={handleChange}
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
-                >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
                   Engagement Letters
                 </label>
                 <input
@@ -1268,40 +1266,12 @@ const CreatePreApprovedJob = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Company Computer Card
+                  Main Purpose
                 </label>
                 <input
-                  type="file"
-                  onChange={(e) =>
-                    handleFileChange({
-                      target: {
-                        name: "companyComputerCard",
-                        files: e.target.files,
-                      },
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2"
-                />
-                {files.companyComputerCard && (
-                  <div className="mt-2 flex items-center text-sm text-gray-500">
-                    <PaperClipIcon className="h-4 w-4 mr-1" />
-                    <span className="truncate">
-                      {files.companyComputerCard.name}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Computer Card Expiry
-                </label>
-                <input
-                  type="date"
-                  name="companyDetails.companyComputerCardExpiry"
-                  value={formatDateForInput(
-                    formData.companyDetails.companyComputerCardExpiry
-                  )}
+                  type="text"
+                  name="companyDetails.mainPurpose"
+                  value={formData.companyDetails.mainPurpose}
                   onChange={handleChange}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1309,173 +1279,355 @@ const CreatePreApprovedJob = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Tax Card
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) =>
-                    handleFileChange({
-                      target: {
-                        name: "taxCard",
-                        files: e.target.files,
-                      },
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2"
-                />
-                {files.taxCard && (
-                  <div className="mt-2 flex items-center text-sm text-gray-500">
-                    <PaperClipIcon className="h-4 w-4 mr-1" />
-                    <span className="truncate">{files.taxCard.name}</span>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Tax Card Expiry
+                  Expiry Date
                 </label>
                 <input
                   type="date"
-                  name="companyDetails.taxCardExpiry"
-                  value={formatDateForInput(
-                    formData.companyDetails.taxCardExpiry
-                  )}
+                  name="companyDetails.expiryDate"
+                  value={formatDateForInput(formData.companyDetails.expiryDate)}
                   onChange={handleChange}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  CR Extract
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) =>
-                    handleFileChange({
-                      target: {
-                        name: "crExtract",
-                        files: e.target.files,
-                      },
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2"
-                />
-                {files.crExtract && (
-                  <div className="mt-2 flex items-center text-sm text-gray-500">
-                    <PaperClipIcon className="h-4 w-4 mr-1" />
-                    <span className="truncate">{files.crExtract.name}</span>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  CR Extract Expiry
-                </label>
-                <input
-                  type="date"
-                  name="companyDetails.crExtractExpiry"
-                  value={formatDateForInput(
-                    formData.companyDetails.crExtractExpiry
+            <div className="mt-6 space-y-4">
+              {/* Company Computer Card */}
+              <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Company Computer Card
+                  </label>
+                  <input
+                    type="file"
+                    onChange={(e) =>
+                      handleFileChange({
+                        target: {
+                          name: "companyComputerCard",
+                          files: e.target.files,
+                        },
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2"
+                  />
+                  {files.companyComputerCard && (
+                    <div className="mt-2 flex items-center text-sm text-gray-500">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <span className="truncate">
+                        {files.companyComputerCard.name}
+                      </span>
+                    </div>
                   )}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    name="companyDetails.companyComputerCardExpiry"
+                    value={formatDateForInput(
+                      formData.companyDetails.companyComputerCardExpiry
+                    )}
+                    onChange={handleChange}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Scope of License
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) =>
-                    handleFileChange({
-                      target: {
-                        name: "scopeOfLicense",
-                        files: e.target.files,
-                      },
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2"
-                />
-                {files.scopeOfLicense && (
-                  <div className="mt-2 flex items-center text-sm text-gray-500">
-                    <PaperClipIcon className="h-4 w-4 mr-1" />
-                    <span className="truncate">
-                      {files.scopeOfLicense.name}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Scope of License Expiry
-                </label>
-                <input
-                  type="date"
-                  name="companyDetails.scopeOfLicenseExpiry"
-                  value={formatDateForInput(
-                    formData.companyDetails.scopeOfLicenseExpiry
+              {/* Tax Card */}
+              <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Tax Card
+                  </label>
+                  <input
+                    type="file"
+                    onChange={(e) =>
+                      handleFileChange({
+                        target: {
+                          name: "taxCard",
+                          files: e.target.files,
+                        },
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2"
+                  />
+                  {files.taxCard && (
+                    <div className="mt-2 flex items-center text-sm text-gray-500">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <span className="truncate">{files.taxCard.name}</span>
+                    </div>
                   )}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    name="companyDetails.taxCardExpiry"
+                    value={formatDateForInput(
+                      formData.companyDetails.taxCardExpiry
+                    )}
+                    onChange={handleChange}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Article of Associate
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) =>
-                    handleFileChange({
-                      target: {
-                        name: "articleOfAssociate",
-                        files: e.target.files,
-                      },
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2"
-                />
-                {files.articleOfAssociate && (
-                  <div className="mt-2 flex items-center text-sm text-gray-500">
-                    <PaperClipIcon className="h-4 w-4 mr-1" />
-                    <span className="truncate">
-                      {files.articleOfAssociate.name}
-                    </span>
+              {/* CR Extract - Updated Section */}
+              <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    CR Extract (Max 2 files)
+                  </label>
+                  <div
+                    className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
+                      crExtractFiles.length > 0
+                        ? "border-green-500 bg-green-50"
+                        : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(false);
+                      const files = Array.from(e.dataTransfer.files).slice(
+                        0,
+                        2
+                      );
+                      if (files.length > 0) {
+                        setCrExtractFiles(files);
+                      }
+                    }}
+                  >
+                    {/* Show selected files */}
+                    {crExtractFiles.length > 0 ? (
+                      <div className="space-y-2">
+                        {crExtractFiles.map((file, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm border border-gray-100"
+                          >
+                            <div className="flex items-center">
+                              <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
+                              <span className="text-xs text-gray-900 font-medium truncate max-w-[100px]">
+                                {file.name}
+                              </span>
+                              <span className="text-xs text-gray-500 ml-1">
+                                ({(file.size / 1024).toFixed(1)}KB)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeCrExtractFile(index)}
+                              className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                              title="Remove file"
+                            >
+                              <XMarkIcon className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* Add more files button if less than 2 files */}
+                        {crExtractFiles.length < 2 && (
+                          <div className="text-center pt-2">
+                            <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                              + Add{" "}
+                              {crExtractFiles.length === 1
+                                ? "1 more"
+                                : "another"}{" "}
+                              document
+                              <input
+                                type="file"
+                                className="sr-only"
+                                multiple
+                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                onChange={(e) => {
+                                  const newFiles = Array.from(e.target.files);
+                                  const remainingSlots =
+                                    2 - crExtractFiles.length;
+                                  const filesToAdd = newFiles.slice(
+                                    0,
+                                    remainingSlots
+                                  );
+                                  setCrExtractFiles((prev) => [
+                                    ...prev,
+                                    ...filesToAdd,
+                                  ]);
+                                }}
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-3">
+                        <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                        <div>
+                          <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                            Upload CR Extract Documents (1-2 files)
+                            <input
+                              type="file"
+                              className="sr-only"
+                              multiple
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              onChange={(e) =>
+                                handleCrExtractFileChange(e.target.files)
+                              }
+                            />
+                          </label>
+                          <p className="text-xs text-gray-500 mt-1">
+                            or drag and drop here
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+
+                {/* CR Extract Expiry Date */}
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Expiry Date
+                  </label>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <input
+                      type="date"
+                      name="companyDetails.crExtractExpiry"
+                      value={formatDateForInput(
+                        formData.companyDetails.crExtractExpiry
+                      )}
+                      onChange={handleChange}
+                      className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newDate = new Date();
+                        newDate.setFullYear(newDate.getFullYear() + 1);
+                        const dateString = newDate.toISOString().split("T")[0];
+
+                        // Update the companyDetails state
+                        setFormData((prev) => ({
+                          ...prev,
+                          companyDetails: {
+                            ...prev.companyDetails,
+                            crExtractExpiry: dateString,
+                          },
+                        }));
+                      }}
+                      className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                      title="Renew for one year"
+                    >
+                      <ArrowPathIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Certificate of Incorporate
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) =>
-                    handleFileChange({
-                      target: {
-                        name: "certificateOfIncorporate",
-                        files: e.target.files,
-                      },
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2"
-                />
-                {files.certificateOfIncorporate && (
-                  <div className="mt-2 flex items-center text-sm text-gray-500">
-                    <PaperClipIcon className="h-4 w-4 mr-1" />
-                    <span className="truncate">
-                      {files.certificateOfIncorporate.name}
-                    </span>
-                  </div>
-                )}
+              {/* Continue with other document sections... */}
+              {/* Scope of License */}
+              <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Scope of License
+                  </label>
+                  <input
+                    type="file"
+                    onChange={(e) =>
+                      handleFileChange({
+                        target: {
+                          name: "scopeOfLicense",
+                          files: e.target.files,
+                        },
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2"
+                  />
+                  {files.scopeOfLicense && (
+                    <div className="mt-2 flex items-center text-sm text-gray-500">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <span className="truncate">
+                        {files.scopeOfLicense.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    name="companyDetails.scopeOfLicenseExpiry"
+                    value={formatDateForInput(
+                      formData.companyDetails.scopeOfLicenseExpiry
+                    )}
+                    onChange={handleChange}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Article of Associate */}
+              <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+                <div className="col-span-5">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Article of Associate (AOA)
+                  </label>
+                  <input
+                    type="file"
+                    onChange={(e) =>
+                      handleFileChange({
+                        target: {
+                          name: "articleOfAssociate",
+                          files: e.target.files,
+                        },
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2"
+                  />
+                  {files.articleOfAssociate && (
+                    <div className="mt-2 flex items-center text-sm text-gray-500">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <span className="truncate">
+                        {files.articleOfAssociate.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Certificate of Incorporate */}
+              <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+                <div className="col-span-5">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Certificate of Incorporate (COI)
+                  </label>
+                  <input
+                    type="file"
+                    onChange={(e) =>
+                      handleFileChange({
+                        target: {
+                          name: "certificateOfIncorporate",
+                          files: e.target.files,
+                        },
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2"
+                  />
+                  {files.certificateOfIncorporate && (
+                    <div className="mt-2 flex items-center text-sm text-gray-500">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <span className="truncate">
+                        {files.certificateOfIncorporate.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1715,6 +1867,7 @@ const CreatePreApprovedJob = () => {
                   </div>
                 </div>
 
+                {/* Director Documents */}
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
