@@ -20,6 +20,7 @@ function AllClients() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [exporting, setExporting] = useState(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -83,10 +84,132 @@ function AllClients() {
       }
     });
 
+  // Convert clients data to CSV format
+  const convertToCSV = (data) => {
+    const headers = [
+      "Client Name",
+      "Email",
+      "Starting Point",
+      "Total Jobs",
+      "Active Jobs",
+      "Latest Job Date",
+      "Latest Service Type",
+      "Engagement Letter",
+      "Client ID",
+    ];
+
+    const csvContent = [
+      headers.join(","),
+      ...data.map((client) =>
+        [
+          `"${(client.name || "").replace(/"/g, '""')}"`,
+          `"${(client.gmail || "").replace(/"/g, '""')}"`,
+          `"${(client.startingPoint || "").replace(/"/g, '""')}"`,
+          client.jobCount || 0,
+          client.activeJobCount || 0,
+          client.latestJobDate
+            ? new Date(client.latestJobDate).toLocaleDateString()
+            : "None",
+          `"${(client.latestServiceType || "N/A").replace(/"/g, '""')}"`,
+          client.engagementLetter ? "Yes" : "No",
+          `"${(client._id || "").replace(/"/g, '""')}"`,
+        ].join(",")
+      ),
+    ].join("\n");
+
+    return csvContent;
+  };
+
+  // Download CSV file
+  const downloadCSV = (csvContent, filename) => {
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  // Fetch all clients for export (not just current page)
+  const fetchAllClientsForExport = async () => {
+    try {
+      const response = await axiosInstance.get("/clients/all", {
+        params: {
+          page: 1,
+          limit: 1000, // Get a large number to include all clients
+        },
+      });
+      return response.data.clients || [];
+    } catch (err) {
+      console.error("Error fetching all clients for export:", err);
+      throw new Error("Failed to fetch all clients for export");
+    }
+  };
+
   // Export clients function
-  const exportClients = () => {
-    // Implementation for exporting clients data
-    alert("Export functionality would go here");
+  const exportClients = async () => {
+    try {
+      setExporting(true);
+
+      // Fetch all clients for export (not just current page)
+      const allClients = await fetchAllClientsForExport();
+
+      // Apply current filters and sorting to the complete dataset
+      const filteredAllClients = allClients
+        .filter((client) => {
+          if (searchQuery) {
+            const searchLower = searchQuery.toLowerCase();
+            return (
+              client.name?.toLowerCase().includes(searchLower) ||
+              client.gmail?.toLowerCase().includes(searchLower) ||
+              client.startingPoint?.toLowerCase().includes(searchLower)
+            );
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          switch (sortBy) {
+            case "latest":
+              return (
+                new Date(b.latestJobDate || 0) - new Date(a.latestJobDate || 0)
+              );
+            case "name":
+              return (a.name || "").localeCompare(b.name || "");
+            case "jobCount":
+              return (b.jobCount || 0) - (a.jobCount || 0);
+            default:
+              return 0;
+          }
+        });
+
+      // Convert to CSV
+      const csvContent = convertToCSV(filteredAllClients);
+
+      // Generate filename with current date
+      const now = new Date();
+      const timestamp = now.toISOString().split("T")[0]; // YYYY-MM-DD format
+      const filename = `clients_export_${timestamp}.csv`;
+
+      // Download the file
+      downloadCSV(csvContent, filename);
+
+      // Show success message (optional)
+      console.log(
+        `Exported ${filteredAllClients.length} clients to ${filename}`
+      );
+    } catch (err) {
+      console.error("Export failed:", err);
+      setError("Failed to export clients. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   // Handle client selection
@@ -141,13 +264,34 @@ function AllClients() {
           <div className="mt-4 sm:mt-0 sm:flex-none">
             <button
               onClick={exportClients}
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"
+              disabled={exporting}
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <ArrowDownTrayIcon className="h-5 w-5 mr-2 group-hover:animate-bounce" />
-              Export Clients
+              <ArrowDownTrayIcon
+                className={`h-5 w-5 mr-2 ${
+                  exporting ? "animate-bounce" : "group-hover:animate-bounce"
+                }`}
+              />
+              {exporting ? "Exporting..." : "Export Clients"}
             </button>
           </div>
         </div>
+
+        {/* Export Status Message */}
+        {exporting && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl"
+          >
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-3"></div>
+              <p className="text-blue-700 text-sm">
+                Preparing your export... This may take a few moments.
+              </p>
+            </div>
+          </motion.div>
+        )}
 
         {/* Stats Section */}
         <motion.div

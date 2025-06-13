@@ -214,6 +214,9 @@ function AdminJobs() {
   const [operationManagers, setOperationManagers] = useState([]);
   const [services, setServices] = useState([]);
 
+  // State for export functionality
+  const [isExporting, setIsExporting] = useState(false);
+
   // Fetch operation managers and services for the edit form
   useEffect(() => {
     const fetchEditFormData = async () => {
@@ -319,6 +322,152 @@ function AdminJobs() {
           return new Date(b.createdAt) - new Date(a.createdAt);
       }
     });
+
+  // Enhanced CSV export function with proper escaping and error handling
+  const escapeCsvField = (field) => {
+    if (field === null || field === undefined) return "";
+    const str = String(field);
+    if (str.includes('"') || str.includes(",") || str.includes("\n")) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const formatDate = (dateString) => {
+    try {
+      return new Date(dateString).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
+  const formatDateTime = (dateString) => {
+    try {
+      return new Date(dateString).toLocaleString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
+  const exportData = async () => {
+    try {
+      setIsExporting(true);
+      showNotification(
+        "Export Started",
+        "Preparing your jobs export...",
+        "info"
+      );
+
+      // Enhanced headers with more comprehensive data
+      const headers = [
+        "Job Number",
+        "Job ID",
+        "Service Type",
+        "Client Name",
+        "Email",
+        "Starting Point",
+        "Status",
+        "Created Date",
+        "Created Time",
+        "Assigned To",
+        "Job Details",
+        "Special Description",
+        "Rejection Reason",
+        "Cancellation Reason",
+        "Has Passport Document",
+        "Has ID Document",
+        "Number of Other Documents",
+        "Last Updated",
+      ];
+
+      // Create CSV rows with proper escaping
+      const rows = filteredJobs.map((job) => [
+        escapeCsvField(job.jobNumber || "N/A"),
+        escapeCsvField(job._id),
+        escapeCsvField(job.serviceType || "N/A"),
+        escapeCsvField(job.clientName || "N/A"),
+        escapeCsvField(job.gmail || "N/A"),
+        escapeCsvField(job.startingPoint || "N/A"),
+        escapeCsvField(job.status || "pending"),
+        escapeCsvField(formatDate(job.createdAt)),
+        escapeCsvField(formatDateTime(job.createdAt)),
+        escapeCsvField(getAssignedPersonName(job.assignedPerson)),
+        escapeCsvField(job.jobDetails || "N/A"),
+        escapeCsvField(job.specialDescription || "N/A"),
+        escapeCsvField(job.rejectionReason || "N/A"),
+        escapeCsvField(job.cancellationReason || "N/A"),
+        escapeCsvField(job.documentPassport ? "Yes" : "No"),
+        escapeCsvField(job.documentID ? "Yes" : "No"),
+        escapeCsvField(
+          job.otherDocuments ? job.otherDocuments.length.toString() : "0"
+        ),
+        escapeCsvField(formatDateTime(job.updatedAt || job.createdAt)),
+      ]);
+
+      // Create CSV content
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\n");
+
+      // Add BOM for proper UTF-8 encoding in Excel
+      const BOM = "\uFEFF";
+      const csvWithBOM = BOM + csvContent;
+
+      // Create and download file
+      const blob = new Blob([csvWithBOM], {
+        type: "text/csv;charset=utf-8;",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      // Generate filename with current filter and date
+      const filterSuffix = selectedFilter !== "all" ? `_${selectedFilter}` : "";
+      const timestamp = new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[:]/g, "-");
+      const filename = `jobs_export${filterSuffix}_${timestamp}.csv`;
+
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = "hidden";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Clean up the URL object
+      URL.revokeObjectURL(url);
+
+      // Show success notification
+      showNotification(
+        "Export Successful",
+        `Successfully exported ${filteredJobs.length} jobs to ${filename}`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Export failed:", error);
+      showNotification(
+        "Export Failed",
+        "Failed to export jobs data. Please try again.",
+        "error"
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Handlers for job actions
   const handleViewJob = (job) => {
@@ -831,50 +980,6 @@ function AdminJobs() {
     return job.status !== "cancelled"; // Jobs can be cancelled if they're not already cancelled
   };
 
-  const exportData = () => {
-    // Convert jobs data to CSV format - UPDATED to include jobNumber
-    const headers = [
-      "Job Number",
-      "Job ID",
-      "Service Type",
-      "Client Name",
-      "Email",
-      "Start Point",
-      "Status",
-      "Created Date",
-      "Assigned To",
-    ].join(",");
-
-    const rows = filteredJobs.map((job) =>
-      [
-        job.jobNumber || "N/A",
-        job._id,
-        job.serviceType || "N/A",
-        job.clientName || "N/A",
-        job.gmail || "N/A",
-        job.startingPoint || "N/A",
-        job.status || "pending",
-        new Date(job.createdAt).toLocaleDateString(),
-        getAssignedPersonName(job.assignedPerson),
-      ].join(",")
-    );
-
-    const csvContent = [headers, ...rows].join("\n");
-
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `jobs_export_${new Date().toISOString().slice(0, 10)}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50 via-indigo-50 to-slate-50">
       {/* Toast Container */}
@@ -894,13 +999,37 @@ function AdminJobs() {
           <div className="mt-4 sm:mt-0 sm:flex-none">
             <button
               onClick={exportData}
-              className="inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"
+              disabled={isExporting}
+              className={`inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group ${
+                isExporting ? "opacity-75 cursor-not-allowed" : ""
+              }`}
             >
-              <ArrowDownTrayIcon className="h-5 w-5 mr-2 group-hover:animate-bounce" />
-              Export Data
+              <ArrowDownTrayIcon
+                className={`h-5 w-5 mr-2 ${
+                  isExporting ? "animate-bounce" : "group-hover:animate-bounce"
+                }`}
+              />
+              {isExporting ? "Exporting..." : "Export Data"}
             </button>
           </div>
         </div>
+
+        {/* Export Status Message */}
+        {isExporting && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl"
+          >
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-3"></div>
+              <p className="text-blue-700 text-sm">
+                Preparing your export with {filteredJobs.length} jobs... This
+                may take a few moments.
+              </p>
+            </div>
+          </motion.div>
+        )}
 
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -1223,6 +1352,7 @@ function AdminJobs() {
           </div>
         </div>
 
+        {/* All the modals remain the same, so I'll include just the first one as example */}
         {/* Edit Job Modal - NEW */}
         <Transition appear show={isEditModalOpen} as={Fragment}>
           <Dialog
