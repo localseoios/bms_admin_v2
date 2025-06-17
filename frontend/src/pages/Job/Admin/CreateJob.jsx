@@ -18,6 +18,8 @@ import {
   InformationCircleIcon,
   ExclamationCircleIcon,
   HashtagIcon,
+  EyeIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 
 function CreateJob() {
@@ -34,6 +36,13 @@ function CreateJob() {
   const [existingClient, setExistingClient] = useState(null);
   const [checkingClient, setCheckingClient] = useState(false);
 
+  // New state for existing documents
+  const [existingDocuments, setExistingDocuments] = useState({
+    documentPassport: null,
+    documentID: null,
+    otherDocuments: [],
+  });
+
   // New state for job number availability checking
   const [jobNumberStatus, setJobNumberStatus] = useState({
     checking: false,
@@ -43,7 +52,7 @@ function CreateJob() {
 
   // State for form data
   const [formData, setFormData] = useState({
-    jobNumber: "", // Add job number field
+    jobNumber: "",
     serviceType: "",
     documentPassport: null,
     documentID: null,
@@ -69,6 +78,13 @@ function CreateJob() {
   // State for submission errors
   const [submissionError, setSubmissionError] = useState("");
 
+  // State to track whether user wants to use existing documents
+  const [useExistingDocuments, setUseExistingDocuments] = useState({
+    documentPassport: false,
+    documentID: false,
+    otherDocuments: false,
+  });
+
   // Fetch operation managers
   useEffect(() => {
     const fetchOperationManagers = async () => {
@@ -89,7 +105,6 @@ function CreateJob() {
       try {
         setLoadingServices(true);
         const response = await axiosInstance.get("/services");
-        // Only use active services
         const activeServices = response.data.filter(
           (service) => service.status === "active"
         );
@@ -136,16 +151,25 @@ function CreateJob() {
     }
   };
 
-  // Modified function to check if a client with the given email exists
+  // Modified function to check if a client with the given email exists and get documents
   const checkExistingClient = async (email) => {
     if (!email || !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email)) {
       setExistingClient(null);
+      setExistingDocuments({
+        documentPassport: null,
+        documentID: null,
+        otherDocuments: [],
+      });
+      setUseExistingDocuments({
+        documentPassport: false,
+        documentID: false,
+        otherDocuments: false,
+      });
       return;
     }
 
     setCheckingClient(true);
     try {
-      // Try to fetch client by email
       const response = await axiosInstance.get(
         `/clients/${encodeURIComponent(email)}`
       );
@@ -160,15 +184,66 @@ function CreateJob() {
           startingPoint:
             response.data.client.startingPoint || prev.startingPoint,
         }));
+
+        // Set existing documents if available
+        if (response.data.mostRecentDocuments) {
+          const docs = response.data.mostRecentDocuments;
+          setExistingDocuments(docs);
+
+          // Auto-enable using existing documents if they exist
+          setUseExistingDocuments({
+            documentPassport: !!docs.documentPassport,
+            documentID: !!docs.documentID,
+            otherDocuments:
+              docs.otherDocuments && docs.otherDocuments.length > 0,
+          });
+        }
       }
     } catch (error) {
-      // 404 means client doesn't exist, which is fine
       if (error.response && error.response.status !== 404) {
         console.error("Error checking client:", error);
       }
       setExistingClient(null);
+      setExistingDocuments({
+        documentPassport: null,
+        documentID: null,
+        otherDocuments: [],
+      });
+      setUseExistingDocuments({
+        documentPassport: false,
+        documentID: false,
+        otherDocuments: false,
+      });
     } finally {
       setCheckingClient(false);
+    }
+  };
+
+  // Function to get filename from URL
+  const getFilenameFromUrl = (url) => {
+    if (!url) return "Document";
+    try {
+      const urlParts = url.split("/");
+      const filename = urlParts[urlParts.length - 1];
+      return filename.split(".")[0] || "Document";
+    } catch {
+      return "Document";
+    }
+  };
+
+  // Function to toggle using existing documents
+  const toggleUseExistingDocument = (documentType) => {
+    setUseExistingDocuments((prev) => ({
+      ...prev,
+      [documentType]: !prev[documentType],
+    }));
+
+    // Clear the form field if we're not using existing document
+    if (useExistingDocuments[documentType]) {
+      setFormData((prev) => ({
+        ...prev,
+        [documentType]: documentType === "otherDocuments" ? [] : null,
+      }));
     }
   };
 
@@ -202,12 +277,10 @@ function CreateJob() {
       }));
     }
 
-    // Reset submission error whenever any input changes
     if (submissionError) {
       setSubmissionError("");
     }
 
-    // Check for existing client when email changes
     if (
       name === "gmail" &&
       /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)
@@ -215,9 +288,18 @@ function CreateJob() {
       debouncedCheckClient(value);
     } else if (name === "gmail") {
       setExistingClient(null);
+      setExistingDocuments({
+        documentPassport: null,
+        documentID: null,
+        otherDocuments: [],
+      });
+      setUseExistingDocuments({
+        documentPassport: false,
+        documentID: false,
+        otherDocuments: false,
+      });
     }
 
-    // Check job number availability when job number changes
     if (name === "jobNumber") {
       debouncedCheckJobNumber(value);
     }
@@ -244,7 +326,6 @@ function CreateJob() {
   const validateForm = () => {
     const newErrors = {};
 
-    // Job number validation
     if (!formData.jobNumber) {
       newErrors.jobNumber = "Job number is required";
     } else if (!/^[A-Za-z0-9-]+$/.test(formData.jobNumber)) {
@@ -282,7 +363,6 @@ function CreateJob() {
     setProcessingFile(true);
 
     try {
-      // Compress image if it's an image file
       const processedFile = file.type.startsWith("image/")
         ? await compressImage(file)
         : file;
@@ -291,6 +371,14 @@ function CreateJob() {
         ...prev,
         [field]: processedFile,
       }));
+
+      // Disable using existing document when new file is selected
+      if (useExistingDocuments[field]) {
+        setUseExistingDocuments((prev) => ({
+          ...prev,
+          [field]: false,
+        }));
+      }
 
       if (errors[field]) {
         setErrors((prev) => ({
@@ -319,7 +407,6 @@ function CreateJob() {
       const processedFiles = [];
 
       for (const file of files) {
-        // Compress each image file individually
         const processedFile = file.type.startsWith("image/")
           ? await compressImage(file)
           : file;
@@ -331,6 +418,14 @@ function CreateJob() {
         ...prev,
         otherDocuments: [...prev.otherDocuments, ...processedFiles],
       }));
+
+      // Disable using existing documents when new files are added
+      if (useExistingDocuments.otherDocuments) {
+        setUseExistingDocuments((prev) => ({
+          ...prev,
+          otherDocuments: false,
+        }));
+      }
     } catch (error) {
       console.error("Error processing files:", error);
       setErrors((prev) => ({
@@ -394,16 +489,42 @@ function CreateJob() {
       formDataToSend.append("gmail", formData.gmail);
       formDataToSend.append("startingPoint", formData.startingPoint);
 
-      // Add files with validation
-      if (formData.documentPassport) {
+      // Handle passport document - use existing or new
+      if (
+        useExistingDocuments.documentPassport &&
+        existingDocuments.documentPassport
+      ) {
+        formDataToSend.append(
+          "existingDocumentPassport",
+          existingDocuments.documentPassport
+        );
+      } else if (formData.documentPassport) {
         formDataToSend.append("documentPassport", formData.documentPassport);
       }
 
-      if (formData.documentID) {
+      // Handle ID document - use existing or new
+      if (useExistingDocuments.documentID && existingDocuments.documentID) {
+        formDataToSend.append(
+          "existingDocumentID",
+          existingDocuments.documentID
+        );
+      } else if (formData.documentID) {
         formDataToSend.append("documentID", formData.documentID);
       }
 
-      // Add other documents
+      // Handle other documents - use existing or new
+      if (
+        useExistingDocuments.otherDocuments &&
+        existingDocuments.otherDocuments &&
+        existingDocuments.otherDocuments.length > 0
+      ) {
+        // Send existing document URLs
+        existingDocuments.otherDocuments.forEach((docUrl) => {
+          formDataToSend.append("existingOtherDocuments", docUrl);
+        });
+      }
+
+      // Add new other documents
       formData.otherDocuments.forEach((file) => {
         formDataToSend.append("otherDocuments", file);
       });
@@ -433,7 +554,6 @@ function CreateJob() {
       });
 
       console.log("Job created successfully:", response.data);
-      // Navigate to admin jobs page to see the job
       navigate("/admin/jobs");
     } catch (error) {
       console.error("Error creating job:", error);
@@ -441,7 +561,6 @@ function CreateJob() {
       let errorMessage = "An error occurred when creating the job.";
 
       if (error.response) {
-        // The request was made and the server responded with an error status
         if (error.response.status === 413) {
           errorMessage =
             "Files are too large. Please upload smaller files or compress images further.";
@@ -454,11 +573,9 @@ function CreateJob() {
         errorMessage =
           "Cannot connect to the server. Please check your internet connection or contact support for CORS issues.";
       } else if (error.request) {
-        // The request was made but no response was received
         errorMessage =
           "No response from server. Please try again or contact support.";
       } else {
-        // Something happened in setting up the request
         errorMessage = error.message;
       }
 
@@ -469,7 +586,7 @@ function CreateJob() {
     }
   };
 
-  // Optional: Get status color for user
+  // Get status color for user
   const getStatusColor = (status) => {
     switch (status) {
       case "Available":
@@ -531,6 +648,8 @@ function CreateJob() {
                     <p className="mt-1 text-sm text-green-700">
                       This client is already in our system. The job will be
                       auto-approved and bypass Compliance Management review.
+                      Documents from their most recent job are available for
+                      reuse.
                     </p>
                   </div>
                 </div>
@@ -538,7 +657,7 @@ function CreateJob() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-8">
-              {/* Job Number Section - NEW */}
+              {/* Job Number Section */}
               <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <div className="p-2 bg-purple-100 rounded-xl">
@@ -661,7 +780,7 @@ function CreateJob() {
                 </div>
               </div>
 
-              {/* Documents Section */}
+              {/* Documents Section - Enhanced with existing document support */}
               <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <div className="p-2 bg-indigo-100 rounded-xl">
@@ -681,9 +800,12 @@ function CreateJob() {
                     <InformationCircleIcon className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
                     <div className="ml-3">
                       <p className="text-sm text-blue-700">
-                        Both passport and ID documents are optional. You can
-                        upload other supporting documents if needed. Large
-                        images will be automatically compressed.
+                        {existingClient &&
+                        (existingDocuments.documentPassport ||
+                          existingDocuments.documentID ||
+                          existingDocuments.otherDocuments?.length > 0)
+                          ? "Documents from this client's previous job are available for reuse. You can choose to use existing documents or upload new ones."
+                          : "Both passport and ID documents are optional. You can upload other supporting documents if needed. Large images will be automatically compressed."}
                       </p>
                     </div>
                   </div>
@@ -696,67 +818,114 @@ function CreateJob() {
                       Passport Document{" "}
                       <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
-                    <div className="flex items-center">
-                      <input
-                        type="file"
-                        onChange={(e) =>
-                          handleFileChange(e, "documentPassport")
-                        }
-                        className="hidden"
-                        id="passport-upload"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        disabled={processingFile || isSubmitting}
-                      />
-                      <label
-                        htmlFor="passport-upload"
-                        className={`flex items-center justify-center w-full px-4 py-4 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
-                          processingFile
-                            ? "border-yellow-300 bg-yellow-50"
-                            : formData.documentPassport
-                            ? "border-green-500 bg-green-50 hover:bg-green-100"
-                            : errors.documentPassport
-                            ? "border-red-300 bg-red-50 hover:bg-red-100"
-                            : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
-                        } ${
-                          processingFile || isSubmitting
-                            ? "cursor-not-allowed opacity-70"
-                            : ""
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          {processingFile ? (
-                            <ArrowPathIcon className="h-5 w-5 text-yellow-500 animate-spin" />
-                          ) : (
-                            <CloudArrowUpIcon
-                              className={`h-6 w-6 ${
-                                formData.documentPassport
-                                  ? "text-green-500"
-                                  : errors.documentPassport
-                                  ? "text-red-500"
-                                  : "text-gray-400"
-                              }`}
+
+                    {/* Show existing document option if available */}
+                    {existingClient && existingDocuments.documentPassport && (
+                      <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <input
+                              type="checkbox"
+                              id="use-existing-passport"
+                              checked={useExistingDocuments.documentPassport}
+                              onChange={() =>
+                                toggleUseExistingDocument("documentPassport")
+                              }
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                             />
-                          )}
-                          <span
-                            className={`text-sm font-medium ${
-                              processingFile
-                                ? "text-yellow-700"
-                                : formData.documentPassport
-                                ? "text-green-700"
-                                : errors.documentPassport
-                                ? "text-red-700"
-                                : "text-gray-600"
-                            }`}
+                            <label
+                              htmlFor="use-existing-passport"
+                              className="text-sm text-gray-700"
+                            >
+                              Use existing passport document:{" "}
+                              <span className="font-medium">
+                                {getFilenameFromUrl(
+                                  existingDocuments.documentPassport
+                                )}
+                              </span>
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              window.open(
+                                existingDocuments.documentPassport,
+                                "_blank"
+                              )
+                            }
+                            className="text-blue-600 hover:text-blue-500"
                           >
-                            {processingFile
-                              ? "Processing file..."
-                              : formData.documentPassport
-                              ? formData.documentPassport.name
-                              : "Click to upload passport document (optional)"}
-                          </span>
+                            <EyeIcon className="h-4 w-4" />
+                          </button>
                         </div>
-                      </label>
-                    </div>
+                      </div>
+                    )}
+
+                    {/* File upload section */}
+                    {!useExistingDocuments.documentPassport && (
+                      <div className="flex items-center">
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handleFileChange(e, "documentPassport")
+                          }
+                          className="hidden"
+                          id="passport-upload"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          disabled={processingFile || isSubmitting}
+                        />
+                        <label
+                          htmlFor="passport-upload"
+                          className={`flex items-center justify-center w-full px-4 py-4 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
+                            processingFile
+                              ? "border-yellow-300 bg-yellow-50"
+                              : formData.documentPassport
+                              ? "border-green-500 bg-green-50 hover:bg-green-100"
+                              : errors.documentPassport
+                              ? "border-red-300 bg-red-50 hover:bg-red-100"
+                              : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                          } ${
+                            processingFile || isSubmitting
+                              ? "cursor-not-allowed opacity-70"
+                              : ""
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            {processingFile ? (
+                              <ArrowPathIcon className="h-5 w-5 text-yellow-500 animate-spin" />
+                            ) : (
+                              <CloudArrowUpIcon
+                                className={`h-6 w-6 ${
+                                  formData.documentPassport
+                                    ? "text-green-500"
+                                    : errors.documentPassport
+                                    ? "text-red-500"
+                                    : "text-gray-400"
+                                }`}
+                              />
+                            )}
+                            <span
+                              className={`text-sm font-medium ${
+                                processingFile
+                                  ? "text-yellow-700"
+                                  : formData.documentPassport
+                                  ? "text-green-700"
+                                  : errors.documentPassport
+                                  ? "text-red-700"
+                                  : "text-gray-600"
+                              }`}
+                            >
+                              {processingFile
+                                ? "Processing file..."
+                                : formData.documentPassport
+                                ? formData.documentPassport.name
+                                : "Click to upload passport document (optional)"}
+                            </span>
+                          </div>
+                        </label>
+                      </div>
+                    )}
+
                     {errors.documentPassport && (
                       <p className="mt-1 text-sm text-red-600">
                         {errors.documentPassport}
@@ -770,65 +939,112 @@ function CreateJob() {
                       ID Document{" "}
                       <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
-                    <div className="flex items-center">
-                      <input
-                        type="file"
-                        onChange={(e) => handleFileChange(e, "documentID")}
-                        className="hidden"
-                        id="id-upload"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        disabled={processingFile || isSubmitting}
-                      />
-                      <label
-                        htmlFor="id-upload"
-                        className={`flex items-center justify-center w-full px-4 py-4 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
-                          processingFile
-                            ? "border-yellow-300 bg-yellow-50"
-                            : formData.documentID
-                            ? "border-green-500 bg-green-50 hover:bg-green-100"
-                            : errors.documentID
-                            ? "border-red-300 bg-red-50 hover:bg-red-100"
-                            : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
-                        } ${
-                          processingFile || isSubmitting
-                            ? "cursor-not-allowed opacity-70"
-                            : ""
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          {processingFile ? (
-                            <ArrowPathIcon className="h-5 w-5 text-yellow-500 animate-spin" />
-                          ) : (
-                            <CloudArrowUpIcon
-                              className={`h-6 w-6 ${
-                                formData.documentID
-                                  ? "text-green-500"
-                                  : errors.documentID
-                                  ? "text-red-500"
-                                  : "text-gray-400"
-                              }`}
+
+                    {/* Show existing document option if available */}
+                    {existingClient && existingDocuments.documentID && (
+                      <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <input
+                              type="checkbox"
+                              id="use-existing-id"
+                              checked={useExistingDocuments.documentID}
+                              onChange={() =>
+                                toggleUseExistingDocument("documentID")
+                              }
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                             />
-                          )}
-                          <span
-                            className={`text-sm font-medium ${
-                              processingFile
-                                ? "text-yellow-700"
-                                : formData.documentID
-                                ? "text-green-700"
-                                : errors.documentID
-                                ? "text-red-700"
-                                : "text-gray-600"
-                            }`}
+                            <label
+                              htmlFor="use-existing-id"
+                              className="text-sm text-gray-700"
+                            >
+                              Use existing ID document:{" "}
+                              <span className="font-medium">
+                                {getFilenameFromUrl(
+                                  existingDocuments.documentID
+                                )}
+                              </span>
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              window.open(
+                                existingDocuments.documentID,
+                                "_blank"
+                              )
+                            }
+                            className="text-blue-600 hover:text-blue-500"
                           >
-                            {processingFile
-                              ? "Processing file..."
-                              : formData.documentID
-                              ? formData.documentID.name
-                              : "Click to upload ID document (optional)"}
-                          </span>
+                            <EyeIcon className="h-4 w-4" />
+                          </button>
                         </div>
-                      </label>
-                    </div>
+                      </div>
+                    )}
+
+                    {/* File upload section */}
+                    {!useExistingDocuments.documentID && (
+                      <div className="flex items-center">
+                        <input
+                          type="file"
+                          onChange={(e) => handleFileChange(e, "documentID")}
+                          className="hidden"
+                          id="id-upload"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          disabled={processingFile || isSubmitting}
+                        />
+                        <label
+                          htmlFor="id-upload"
+                          className={`flex items-center justify-center w-full px-4 py-4 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
+                            processingFile
+                              ? "border-yellow-300 bg-yellow-50"
+                              : formData.documentID
+                              ? "border-green-500 bg-green-50 hover:bg-green-100"
+                              : errors.documentID
+                              ? "border-red-300 bg-red-50 hover:bg-red-100"
+                              : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                          } ${
+                            processingFile || isSubmitting
+                              ? "cursor-not-allowed opacity-70"
+                              : ""
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            {processingFile ? (
+                              <ArrowPathIcon className="h-5 w-5 text-yellow-500 animate-spin" />
+                            ) : (
+                              <CloudArrowUpIcon
+                                className={`h-6 w-6 ${
+                                  formData.documentID
+                                    ? "text-green-500"
+                                    : errors.documentID
+                                    ? "text-red-500"
+                                    : "text-gray-400"
+                                }`}
+                              />
+                            )}
+                            <span
+                              className={`text-sm font-medium ${
+                                processingFile
+                                  ? "text-yellow-700"
+                                  : formData.documentID
+                                  ? "text-green-700"
+                                  : errors.documentID
+                                  ? "text-red-700"
+                                  : "text-gray-600"
+                              }`}
+                            >
+                              {processingFile
+                                ? "Processing file..."
+                                : formData.documentID
+                                ? formData.documentID.name
+                                : "Click to upload ID document (optional)"}
+                            </span>
+                          </div>
+                        </label>
+                      </div>
+                    )}
+
                     {errors.documentID && (
                       <p className="mt-1 text-sm text-red-600">
                         {errors.documentID}
@@ -842,85 +1058,157 @@ function CreateJob() {
                       Other Documents{" "}
                       <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
-                    <div
-                      className={`border-2 border-dashed rounded-xl p-8 transition-all duration-200 ${
-                        processingFile
-                          ? "border-yellow-300 bg-yellow-50"
-                          : dragActive
-                          ? "border-blue-500 bg-blue-50 shadow-lg"
-                          : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
-                      } ${
-                        processingFile || isSubmitting
-                          ? "cursor-not-allowed opacity-70"
-                          : ""
-                      }`}
-                      onDragEnter={(e) =>
-                        !processingFile && !isSubmitting && handleDrag(e, true)
-                      }
-                      onDragLeave={(e) =>
-                        !processingFile && !isSubmitting && handleDrag(e, false)
-                      }
-                      onDragOver={(e) =>
-                        !processingFile && !isSubmitting && handleDrag(e, true)
-                      }
-                      onDrop={(e) =>
-                        !processingFile && !isSubmitting && handleDrop(e)
-                      }
-                    >
-                      <div className="text-center">
-                        {processingFile ? (
-                          <div className="flex flex-col items-center">
-                            <ArrowPathIcon className="h-12 w-12 text-yellow-500 animate-spin" />
-                            <p className="mt-3 text-sm text-yellow-700">
-                              Processing files...
-                            </p>
-                          </div>
-                        ) : (
-                          <>
-                            <CloudArrowUpIcon className="mx-auto h-12 w-12 text-blue-500" />
-                            <p className="mt-3 text-sm text-gray-600">
-                              <span className="font-semibold">
-                                Drag and drop files here
-                              </span>
-                              , or{" "}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  !processingFile &&
-                                  !isSubmitting &&
-                                  document.getElementById("other-docs").click()
+
+                    {/* Show existing documents option if available */}
+                    {existingClient &&
+                      existingDocuments.otherDocuments &&
+                      existingDocuments.otherDocuments.length > 0 && (
+                        <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="use-existing-other"
+                                checked={useExistingDocuments.otherDocuments}
+                                onChange={() =>
+                                  toggleUseExistingDocument("otherDocuments")
                                 }
-                                className="text-blue-600 hover:text-blue-500 font-semibold"
-                                disabled={processingFile || isSubmitting}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <label
+                                htmlFor="use-existing-other"
+                                className="text-sm text-gray-700"
                               >
-                                browse
-                              </button>
-                            </p>
-                            <p className="mt-1 text-xs text-gray-500">
-                              Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG
-                            </p>
-                          </>
-                        )}
-                        <input
-                          type="file"
-                          id="other-docs"
-                          multiple
-                          className="hidden"
-                          onChange={(e) =>
-                            handleMultipleFileChange(Array.from(e.target.files))
-                          }
-                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                          disabled={processingFile || isSubmitting}
-                        />
+                                Use existing other documents (
+                                {existingDocuments.otherDocuments.length} files)
+                              </label>
+                            </div>
+                          </div>
+                          {useExistingDocuments.otherDocuments && (
+                            <div className="mt-2 space-y-1">
+                              {existingDocuments.otherDocuments.map(
+                                (docUrl, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex items-center justify-between text-xs text-gray-600 bg-white p-2 rounded border"
+                                  >
+                                    <span>{getFilenameFromUrl(docUrl)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        window.open(docUrl, "_blank")
+                                      }
+                                      className="text-blue-600 hover:text-blue-500"
+                                    >
+                                      <EyeIcon className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    {/* File upload section */}
+                    {!useExistingDocuments.otherDocuments && (
+                      <div
+                        className={`border-2 border-dashed rounded-xl p-8 transition-all duration-200 ${
+                          processingFile
+                            ? "border-yellow-300 bg-yellow-50"
+                            : dragActive
+                            ? "border-blue-500 bg-blue-50 shadow-lg"
+                            : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                        } ${
+                          processingFile || isSubmitting
+                            ? "cursor-not-allowed opacity-70"
+                            : ""
+                        }`}
+                        onDragEnter={(e) =>
+                          !processingFile &&
+                          !isSubmitting &&
+                          handleDrag(e, true)
+                        }
+                        onDragLeave={(e) =>
+                          !processingFile &&
+                          !isSubmitting &&
+                          handleDrag(e, false)
+                        }
+                        onDragOver={(e) =>
+                          !processingFile &&
+                          !isSubmitting &&
+                          handleDrag(e, true)
+                        }
+                        onDrop={(e) =>
+                          !processingFile && !isSubmitting && handleDrop(e)
+                        }
+                      >
+                        <div className="text-center">
+                          {processingFile ? (
+                            <div className="flex flex-col items-center">
+                              <ArrowPathIcon className="h-12 w-12 text-yellow-500 animate-spin" />
+                              <p className="mt-3 text-sm text-yellow-700">
+                                Processing files...
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <CloudArrowUpIcon className="mx-auto h-12 w-12 text-blue-500" />
+                              <p className="mt-3 text-sm text-gray-600">
+                                <span className="font-semibold">
+                                  Drag and drop files here
+                                </span>
+                                , or{" "}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    !processingFile &&
+                                    !isSubmitting &&
+                                    document
+                                      .getElementById("other-docs")
+                                      .click()
+                                  }
+                                  className="text-blue-600 hover:text-blue-500 font-semibold"
+                                  disabled={processingFile || isSubmitting}
+                                >
+                                  browse
+                                </button>
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                Supported formats: PDF, DOC, DOCX, JPG, JPEG,
+                                PNG
+                              </p>
+                            </>
+                          )}
+                          <input
+                            type="file"
+                            id="other-docs"
+                            multiple
+                            className="hidden"
+                            onChange={(e) =>
+                              handleMultipleFileChange(
+                                Array.from(e.target.files)
+                              )
+                            }
+                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            disabled={processingFile || isSubmitting}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
+
                     {errors.otherDocuments && (
                       <p className="mt-1 text-sm text-red-600">
                         {errors.otherDocuments}
                       </p>
                     )}
+
+                    {/* Show newly uploaded files */}
                     {formData.otherDocuments.length > 0 && (
                       <div className="mt-4 space-y-2">
+                        <p className="text-sm font-medium text-gray-700">
+                          New documents to upload:
+                        </p>
                         {formData.otherDocuments.map((doc, index) => (
                           <div
                             key={index}
@@ -962,7 +1250,7 @@ function CreateJob() {
                   </h2>
                 </div>
                 <div className="space-y-6">
-                  {/* Assigned Person (Dynamic) */}
+                  {/* Assigned Person */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Assigned Person{" "}

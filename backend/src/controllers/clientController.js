@@ -1,14 +1,14 @@
-// controllers/clientController.js
+// controllers/clientController.js - Updated to include documents from most recent job
 
 const Client = require("../models/Client");
 const Job = require("../models/Job");
 const { CompanyDetails } = require("../models/OperationModels");
-const { findPersonDetailsByGmail } = require("../utils/clientUtils"); // Import the utility function
+const { findPersonDetailsByGmail } = require("../utils/clientUtils");
 const asyncHandler = require("express-async-handler");
 
-// Modified getClientByGmail to work with any email format
+// Modified getClientByGmail to include documents from most recent job
 const getClientByGmail = async (req, res) => {
-  const { gmail } = req.params; // Despite the name, this now contains any email
+  const { gmail } = req.params;
   try {
     // Find the client using the email (stored in the gmail field)
     const client = await Client.findOne({ gmail });
@@ -16,9 +16,10 @@ const getClientByGmail = async (req, res) => {
       return res.status(404).json({ message: "Client not found" });
     }
 
-    // Rest of the function remains the same
-    // Get all jobs for this client
-    const jobs = await Job.find({ clientId: client._id });
+    // Get all jobs for this client, sorted by most recent first
+    const jobs = await Job.find({ clientId: client._id }).sort({
+      createdAt: -1,
+    });
 
     // Find the most recent engagement letter for this client
     let engagementLetter = null;
@@ -27,26 +28,49 @@ const getClientByGmail = async (req, res) => {
       const companyDetailsWithLetter = await CompanyDetails.findOne({
         jobId: { $in: jobIds },
         engagementLetters: { $exists: true, $ne: null },
-      }).sort({ updatedAt: -1 }); // Get the most recently updated one
+      }).sort({ updatedAt: -1 });
 
       if (companyDetailsWithLetter) {
         engagementLetter = companyDetailsWithLetter.engagementLetters;
       }
     }
 
-    // Return the enhanced response with engagement letter
+    // Get documents from the most recent job that has documents
+    let mostRecentDocuments = {
+      documentPassport: null,
+      documentID: null,
+      otherDocuments: [],
+    };
+
+    if (jobs.length > 0) {
+      // Find the most recent job with documents
+      const jobWithDocuments = jobs.find(
+        (job) =>
+          job.documentPassport ||
+          job.documentID ||
+          (job.otherDocuments && job.otherDocuments.length > 0)
+      );
+
+      if (jobWithDocuments) {
+        mostRecentDocuments = {
+          documentPassport: jobWithDocuments.documentPassport,
+          documentID: jobWithDocuments.documentID,
+          otherDocuments: jobWithDocuments.otherDocuments || [],
+        };
+      }
+    }
+
+    // Return the enhanced response with engagement letter and documents
     res.status(200).json({
       client,
       jobs,
       engagementLetter,
+      mostRecentDocuments, // Include documents from most recent job
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-// We don't need to modify other functions as they will work with any email
-// stored in the gmail field of the Client model
 
 // Get engagement letter for a specific client by Gmail
 const getEngagementLetterByGmail = async (req, res) => {
@@ -68,7 +92,7 @@ const getEngagementLetterByGmail = async (req, res) => {
       const companyDetailsWithLetter = await CompanyDetails.findOne({
         jobId: { $in: jobIds },
         engagementLetters: { $exists: true, $ne: null },
-      }).sort({ updatedAt: -1 }); // Get the most recently updated one
+      }).sort({ updatedAt: -1 });
 
       if (companyDetailsWithLetter) {
         engagementLetter = companyDetailsWithLetter.engagementLetters;
@@ -81,7 +105,6 @@ const getEngagementLetterByGmail = async (req, res) => {
         .json({ message: "No engagement letter found for this client" });
     }
 
-    // Return just the engagement letter URL
     res.status(200).json({ engagementLetter });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
@@ -91,22 +114,21 @@ const getEngagementLetterByGmail = async (req, res) => {
 // Get person details by Gmail
 const getPersonDetailsByGmail = async (req, res) => {
   const { gmail, personType } = req.params;
-  
-  // Validate personType
+
   if (!["director", "shareholder", "secretary", "sef"].includes(personType)) {
     return res.status(400).json({ message: "Invalid person type" });
   }
-  
+
   try {
     console.log(`Looking for ${personType} details for gmail: ${gmail}`);
     const personDetails = await findPersonDetailsByGmail(gmail, personType);
-    
+
     if (!personDetails) {
-      return res.status(404).json({ 
-        message: `No ${personType} details found for client with Gmail ${gmail}`
+      return res.status(404).json({
+        message: `No ${personType} details found for client with Gmail ${gmail}`,
       });
     }
-    
+
     console.log(`Returning ${personType} details for gmail: ${gmail}`);
     res.status(200).json(personDetails);
   } catch (error) {
@@ -115,7 +137,6 @@ const getPersonDetailsByGmail = async (req, res) => {
   }
 };
 
-
 /**
  * Synchronize person details across all jobs for a client
  */
@@ -123,57 +144,55 @@ const synchronizeClientPersonDetails = async (req, res) => {
   const { gmail, personType } = req.params;
   const { sourcePersonId } = req.body;
 
-  // Validate personType
   if (!["director", "shareholder", "secretary", "sef"].includes(personType)) {
     return res.status(400).json({ message: "Invalid person type" });
   }
 
   try {
-    // Import the utility functions
-    const { 
-      findAllPersonDetailsByGmail, 
-      synchronizePersonDetails 
+    const {
+      findAllPersonDetailsByGmail,
+      synchronizePersonDetails,
     } = require("../utils/clientUtils");
 
-    // First check if multiple records exist
     const allRecords = await findAllPersonDetailsByGmail(gmail, personType);
-    
+
     if (allRecords.length <= 1) {
       return res.status(200).json({
         success: true,
         message: "No synchronization needed - only one or zero records found",
-        records: allRecords
+        records: allRecords,
       });
     }
 
-    // Perform the synchronization
-    const syncResult = await synchronizePersonDetails(gmail, personType, sourcePersonId);
-    
+    const syncResult = await synchronizePersonDetails(
+      gmail,
+      personType,
+      sourcePersonId
+    );
+
     if (!syncResult.success) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Synchronization failed", 
-        error: syncResult.message 
+      return res.status(400).json({
+        success: false,
+        message: "Synchronization failed",
+        error: syncResult.message,
       });
     }
 
-    // Get the updated records after synchronization
     const updatedRecords = await findAllPersonDetailsByGmail(gmail, personType);
 
-    // Return success with updated records
     return res.status(200).json({
       success: true,
       message: `Successfully synchronized ${syncResult.updatedRecords} records`,
       sourceRecord: syncResult.source,
       updatedRecords: syncResult.updatedRecords,
-      records: updatedRecords
+      records: updatedRecords,
     });
   } catch (error) {
     console.error("Error in synchronizeClientPersonDetails:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: "Server error during synchronization", 
-      error: error.message 
+      message: "Server error during synchronization",
+      error: error.message,
     });
   }
 };
@@ -183,37 +202,37 @@ const synchronizeClientPersonDetails = async (req, res) => {
  */
 const checkPersonDetailsInconsistencies = async (req, res) => {
   const { gmail } = req.params;
-  
+
   try {
-    // Import utility functions
     const { findAllPersonDetailsByGmail } = require("../utils/clientUtils");
-    
+
     const results = {};
     const inconsistencies = {};
-    
-    // Check each person type
+
     for (const personType of ["director", "shareholder", "secretary", "sef"]) {
       const records = await findAllPersonDetailsByGmail(gmail, personType);
       results[personType] = records.length;
-      
-      // If more than one record exists, check for inconsistencies
+
       if (records.length > 1) {
         const firstRecord = records[0];
-        
-        // Fields to compare
+
         const fieldsToCheck = [
-          'name', 'nationality', 'qidNo', 'mobileNo', 'email', 
-          'passportNo', 'nationalAddress'
+          "name",
+          "nationality",
+          "qidNo",
+          "mobileNo",
+          "email",
+          "passportNo",
+          "nationalAddress",
         ];
-        
-        // Compare each field across all records
-        fieldsToCheck.forEach(field => {
+
+        fieldsToCheck.forEach((field) => {
           const uniqueValues = new Set(
             records
-              .map(r => r[field])
-              .filter(val => val !== null && val !== undefined && val !== '')
+              .map((r) => r[field])
+              .filter((val) => val !== null && val !== undefined && val !== "")
           );
-          
+
           if (uniqueValues.size > 1) {
             if (!inconsistencies[personType]) {
               inconsistencies[personType] = {};
@@ -223,18 +242,17 @@ const checkPersonDetailsInconsistencies = async (req, res) => {
         });
       }
     }
-    
-    // Return the results
+
     return res.status(200).json({
       records: results,
       hasInconsistencies: Object.keys(inconsistencies).length > 0,
-      inconsistencies
+      inconsistencies,
     });
   } catch (error) {
     console.error("Error checking inconsistencies:", error);
-    return res.status(500).json({ 
-      message: "Server error checking inconsistencies", 
-      error: error.message 
+    return res.status(500).json({
+      message: "Server error checking inconsistencies",
+      error: error.message,
     });
   }
 };
@@ -244,38 +262,34 @@ const checkPersonDetailsInconsistencies = async (req, res) => {
  */
 const checkCompanyDetailsStatus = async (req, res) => {
   const { gmail } = req.params;
-  
+
   try {
-    // First find the client
     const client = await Client.findOne({ gmail });
     if (!client) {
       return res.status(404).json({ message: "Client not found" });
     }
 
-    // Get all jobs for this client
     const jobs = await Job.find({ clientId: client._id });
-    
-    // Count jobs with company details
+
     let jobsWithCompanyDetails = 0;
-    
+
     for (const job of jobs) {
       const companyDetails = await CompanyDetails.findOne({ jobId: job._id });
       if (companyDetails) {
         jobsWithCompanyDetails++;
       }
     }
-    
-    // Return the results
+
     return res.status(200).json({
       totalJobs: jobs.length,
       jobsWithCompanyDetails,
-      hasMultipleJobs: jobs.length > 1
+      hasMultipleJobs: jobs.length > 1,
     });
   } catch (error) {
     console.error("Error checking company details status:", error);
-    return res.status(500).json({ 
-      message: "Server error checking company details", 
-      error: error.message 
+    return res.status(500).json({
+      message: "Server error checking company details",
+      error: error.message,
     });
   }
 };
@@ -288,7 +302,6 @@ const getAssignedClients = asyncHandler(async (req, res) => {
 
     console.log(`Finding jobs assigned to user ${req.user._id}`);
 
-    // First, get all jobs assigned to this user
     const assignedJobs = await Job.find({ assignedPerson: req.user._id })
       .select("clientId serviceType status createdAt")
       .populate("clientId", "name gmail startingPoint");
@@ -310,11 +323,9 @@ const getAssignedClients = asyncHandler(async (req, res) => {
       });
     }
 
-    // Group jobs by client
     const clientsMap = {};
 
     assignedJobs.forEach((job) => {
-      // Skip jobs with no valid clientId (just in case)
       if (!job.clientId || !job.clientId._id) {
         console.log(`Job ${job._id} has no valid clientId, skipping`);
         return;
@@ -336,7 +347,6 @@ const getAssignedClients = asyncHandler(async (req, res) => {
         };
       }
 
-      // Add job to client's jobs array
       clientsMap[clientId].jobs.push({
         _id: job._id,
         serviceType: job.serviceType,
@@ -344,14 +354,12 @@ const getAssignedClients = asyncHandler(async (req, res) => {
         createdAt: job.createdAt,
       });
 
-      // Update counts
       clientsMap[clientId].jobCount++;
 
       if (!["completed", "cancelled", "rejected"].includes(job.status)) {
         clientsMap[clientId].activeJobCount++;
       }
 
-      // Update latest job info if needed
       if (
         !clientsMap[clientId].latestJobDate ||
         new Date(job.createdAt) > new Date(clientsMap[clientId].latestJobDate)
@@ -361,7 +369,6 @@ const getAssignedClients = asyncHandler(async (req, res) => {
       }
     });
 
-    // Convert to array and sort by latest job date
     let clientsArray = Object.values(clientsMap);
 
     console.log(`Grouped into ${clientsArray.length} unique clients`);
@@ -385,24 +392,18 @@ const getAssignedClients = asyncHandler(async (req, res) => {
       return new Date(b.latestJobDate) - new Date(a.latestJobDate);
     });
 
-    // Get total count for pagination
     const totalClients = clientsArray.length;
-
-    // Apply pagination
     clientsArray = clientsArray.slice(skip, skip + limit);
 
-    // For each client in the paginated list, find engagement letter
     const jobIdsByClient = {};
     clientsArray.forEach((client) => {
       jobIdsByClient[client._id.toString()] = client.jobs.map((job) => job._id);
     });
 
-    // Flatten job IDs array for query
     const allJobIds = [].concat(...Object.values(jobIdsByClient));
 
     console.log(`Looking for engagement letters for ${allJobIds.length} jobs`);
 
-    // Get all engagement letters in one query
     const companyDetailsWithLetters = await CompanyDetails.find({
       jobId: { $in: allJobIds },
       engagementLetters: { $exists: true, $ne: null },
@@ -410,21 +411,17 @@ const getAssignedClients = asyncHandler(async (req, res) => {
 
     console.log(`Found ${companyDetailsWithLetters.length} engagement letters`);
 
-    // Map job IDs to letters
     const engagementLettersByJob = {};
     companyDetailsWithLetters.forEach((detail) => {
       engagementLettersByJob[detail.jobId.toString()] =
         detail.engagementLetters;
     });
 
-    // Add engagement letter to each client
     clientsArray = clientsArray.map((client) => {
-      // Find first job with a letter
       const jobWithLetter = client.jobs.find(
         (job) => engagementLettersByJob[job._id.toString()]
       );
 
-      // Clean up by removing the jobs array which we no longer need to return
       const { jobs, ...clientData } = client;
 
       return {
@@ -435,7 +432,6 @@ const getAssignedClients = asyncHandler(async (req, res) => {
       };
     });
 
-    // Calculate pagination info
     const totalPages = Math.ceil(totalClients / limit);
 
     res.status(200).json({
@@ -462,26 +458,21 @@ const getAllClients = asyncHandler(async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Get all clients with pagination
     const totalClients = await Client.countDocuments();
     const clients = await Client.find()
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    // For each client, find their jobs and calculate metrics
     const enhancedClients = await Promise.all(
       clients.map(async (client) => {
-        // Find all jobs for this client
         const jobs = await Job.find({ clientId: client._id });
 
-        // Calculate metrics
         const jobCount = jobs.length;
         const activeJobCount = jobs.filter(
           (job) => !["completed", "cancelled", "rejected"].includes(job.status)
         ).length;
 
-        // Find latest job
         let latestJob = null;
         let latestJobDate = null;
         let latestServiceType = null;
@@ -499,7 +490,6 @@ const getAllClients = asyncHandler(async (req, res) => {
           latestServiceType = latestJob.serviceType;
         }
 
-        // Find engagement letter
         let engagementLetter = null;
         if (jobs.length > 0) {
           const jobIds = jobs.map((job) => job._id);
@@ -545,7 +535,6 @@ const getAllClients = asyncHandler(async (req, res) => {
   }
 });
 
-
 module.exports = {
   getClientByGmail,
   getEngagementLetterByGmail,
@@ -553,6 +542,6 @@ module.exports = {
   synchronizeClientPersonDetails,
   checkPersonDetailsInconsistencies,
   checkCompanyDetailsStatus,
-  getAssignedClients, // New function added
+  getAssignedClients,
   getAllClients,
 };

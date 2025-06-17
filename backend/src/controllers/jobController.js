@@ -1,4 +1,4 @@
-// controllers/jobController.js
+// controllers/jobController.js - FIXED to handle existing documents
 const Job = require("../models/Job");
 const cloudinary = require("../config/cloudinary");
 const fs = require("fs");
@@ -33,15 +33,34 @@ const checkJobNumberExists = async (jobNumber) => {
 const createJob = async (req, res) => {
   try {
     const {
-      jobNumber, // New field
+      jobNumber,
       serviceType,
       assignedPerson,
       jobDetails,
       specialDescription,
       clientName,
-      gmail, // This will now contain any email (not just Gmail)
+      gmail,
       startingPoint,
+      // NEW: Handle existing document parameters
+      existingDocumentPassport,
+      existingDocumentID,
+      existingOtherDocuments,
     } = req.body;
+
+    console.log("Creating job with data:", {
+      jobNumber,
+      serviceType,
+      clientName,
+      gmail,
+      existingDocumentPassport: !!existingDocumentPassport,
+      existingDocumentID: !!existingDocumentID,
+      existingOtherDocuments: existingOtherDocuments
+        ? Array.isArray(existingOtherDocuments)
+          ? existingOtherDocuments.length
+          : 1
+        : 0,
+      uploadedFiles: req.files ? Object.keys(req.files) : "none",
+    });
 
     // Validate required fields including jobNumber
     if (
@@ -56,8 +75,7 @@ const createJob = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Validate job number format (you can customize this regex as needed)
-    // Example: JOB-2024-001, or any alphanumeric format
+    // Validate job number format
     const jobNumberRegex = /^[A-Za-z0-9-]+$/;
     if (!jobNumberRegex.test(jobNumber)) {
       return res.status(400).json({
@@ -73,59 +91,99 @@ const createJob = async (req, res) => {
       });
     }
 
-    // Updated validation to check for valid email format instead of just gmail
+    // Validate email format
     if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(gmail)) {
       return res
         .status(400)
         .json({ message: "Please provide a valid email address" });
     }
 
-    // Check if client exists, create if not - using the email as the identifier
-    let client = await Client.findOne({ gmail }); // Despite the field name, this will store any email
-    const clientExists = !!client; // Flag to track if this is an existing client
+    // Check if client exists, create if not
+    let client = await Client.findOne({ gmail });
+    const clientExists = !!client;
 
     if (!client) {
       client = new Client({ name: clientName, gmail, startingPoint });
       await client.save();
     }
 
-    // Check if passport document exists before trying to upload it
-    const documentPassportUrl = req.files["documentPassport"]
-      ? await safeCloudinaryUpload(req.files["documentPassport"][0].path)
-      : { url: null }; // Set a default if not provided
+    // FIXED: Handle document URLs - prioritize existing documents, then uploaded files
+    let documentPassportUrl = null;
+    let documentIDUrl = null;
+    let otherDocumentsUrls = [];
 
-    // Leave the ID document handling as is since it's required
-    const documentIDUrl = req.files["documentID"]
-      ? await safeCloudinaryUpload(req.files["documentID"][0].path)
-      : { url: null };
+    // Handle passport document
+    if (existingDocumentPassport) {
+      // Use existing document URL
+      documentPassportUrl = existingDocumentPassport;
+      console.log(
+        "Using existing passport document:",
+        existingDocumentPassport
+      );
+    } else if (req.files && req.files["documentPassport"]) {
+      // Upload new document
+      const uploadResult = await safeCloudinaryUpload(
+        req.files["documentPassport"][0].path
+      );
+      documentPassportUrl = uploadResult.url;
+      console.log("Uploaded new passport document:", documentPassportUrl);
+    }
 
-    // Other documents handling remains the same
-    const otherDocumentsUrls = req.files["otherDocuments"]
-      ? await Promise.all(
-          req.files["otherDocuments"].map((file) =>
-            safeCloudinaryUpload(file.path)
-          )
+    // Handle ID document
+    if (existingDocumentID) {
+      // Use existing document URL
+      documentIDUrl = existingDocumentID;
+      console.log("Using existing ID document:", existingDocumentID);
+    } else if (req.files && req.files["documentID"]) {
+      // Upload new document
+      const uploadResult = await safeCloudinaryUpload(
+        req.files["documentID"][0].path
+      );
+      documentIDUrl = uploadResult.url;
+      console.log("Uploaded new ID document:", documentIDUrl);
+    }
+
+    // Handle other documents
+    // First, add existing documents if specified
+    if (existingOtherDocuments) {
+      if (Array.isArray(existingOtherDocuments)) {
+        otherDocumentsUrls = [...existingOtherDocuments];
+      } else {
+        // Single existing document
+        otherDocumentsUrls = [existingOtherDocuments];
+      }
+      console.log("Using existing other documents:", otherDocumentsUrls);
+    }
+
+    // Then, add newly uploaded documents
+    if (req.files && req.files["otherDocuments"]) {
+      const uploadedOtherDocs = await Promise.all(
+        req.files["otherDocuments"].map((file) =>
+          safeCloudinaryUpload(file.path)
         )
-      : [];
+      );
+      const newDocUrls = uploadedOtherDocs.map((result) => result.url);
+      otherDocumentsUrls = [...otherDocumentsUrls, ...newDocUrls];
+      console.log("Added new other documents:", newDocUrls);
+    }
 
     // Set initial status based on whether client exists
-    // If client exists, auto-approve the job (status = "approved")
     const initialStatus = clientExists ? "approved" : "pending";
 
     const job = new Job({
-      jobNumber, // Add the job number
+      jobNumber,
       clientId: client._id,
       serviceType,
-      documentPassport: documentPassportUrl.url,
-      documentID: documentIDUrl.url,
-      otherDocuments: otherDocumentsUrls.map((result) => result.url),
+      documentPassport: documentPassportUrl,
+      documentID: documentIDUrl,
+      otherDocuments: otherDocumentsUrls,
       assignedPerson,
       jobDetails,
       specialDescription,
       clientName,
-      gmail, // This now contains any email
+      gmail,
       startingPoint,
-      status: initialStatus, // Auto-approve for existing clients
+      status: initialStatus,
       createdBy: req.user._id,
 
       // Initialize the timeline with job creation
@@ -152,6 +210,15 @@ const createJob = async (req, res) => {
     });
 
     const savedJob = await job.save();
+
+    console.log("Job created successfully:", {
+      jobId: savedJob._id,
+      jobNumber: savedJob.jobNumber,
+      status: savedJob.status,
+      documentPassport: savedJob.documentPassport,
+      documentID: savedJob.documentID,
+      otherDocuments: savedJob.otherDocuments?.length || 0,
+    });
 
     // Clean up temporary files
     if (req.files) {
@@ -281,14 +348,13 @@ const checkJobNumber = asyncHandler(async (req, res) => {
   });
 });
 
-
 // Get single job details with validation for assigned person
 const getJobDetails = asyncHandler(async (req, res) => {
   try {
     const job = await Job.findById(req.params.id)
       .populate("clientId", "name gmail startingPoint")
       .populate("assignedPerson", "name email")
-      .populate("createdBy", "name email") // Add this line to show who created the job
+      .populate("createdBy", "name email")
       .populate("timeline.updatedBy", "name");
 
     if (!job) {
@@ -297,7 +363,6 @@ const getJobDetails = asyncHandler(async (req, res) => {
     }
 
     // Check if user is authorized to view this job
-    // Allow if: user is admin, has compliance management permission, or is the assigned person
     const isAdmin = req.user.role?.name === "admin";
     const hasCompliancePermission =
       req.user.role?.permissions?.complianceManagement;
@@ -318,39 +383,27 @@ const getJobDetails = asyncHandler(async (req, res) => {
   }
 });
 
-
-
-
-// Get All Jobs (existing function)
-// controllers/jobController.js - Update the getAllJobs function
-
 // Get All Jobs with improved status filtering
 const getAllJobs = asyncHandler(async (req, res) => {
   try {
-    // Handle status filter - it could be a single value or an array
     let statusFilter = {};
     if (req.query.status) {
-      // If status is an array (like status[]=pending&status[]=approved)
       if (Array.isArray(req.query.status)) {
         statusFilter = { status: { $in: req.query.status } };
       } else {
-        // If status is a single value
         statusFilter = { status: req.query.status };
       }
     }
 
-    // Add other filters if needed
     const filters = {
       ...statusFilter,
-      // Add any other filters here
     };
 
     console.log("Job filters:", JSON.stringify(filters));
 
-    // Find jobs with filters
     const jobs = await Job.find(filters)
-      .populate('clientId', 'name gmail startingPoint')
-      .populate('assignedPerson', 'name email')
+      .populate("clientId", "name gmail startingPoint")
+      .populate("assignedPerson", "name email")
       .sort({ createdAt: -1 });
 
     res.status(200).json(jobs);
@@ -363,58 +416,15 @@ const getAllJobs = asyncHandler(async (req, res) => {
   }
 });
 
-// In your kycController.js - modify getKycStatus to avoid 404 for expected scenarios
-const getKycStatus = asyncHandler(async (req, res) => {
-  const { jobId } = req.params;
-  
-  // Check if the job exists first
-  const job = await Job.findById(jobId);
-  
-  if (!job) {
-    return res.status(404).json({ message: "Job not found" });
-  }
-  
-  // Now check for KYC approval
-  const kycApproval = await KycApproval.findOne({ jobId });
-  
-  if (!kycApproval) {
-    // Return 200 with a structured response instead of 404
-    return res.status(200).json({ 
-      exists: false,
-      message: "KYC approval not initiated yet",
-      jobId,
-      jobStatus: job.status,
-      canInitialize: job.status === "om_completed",
-      jobInfo: {
-        clientName: job.clientName,
-        serviceType: job.serviceType,
-        createdAt: job.createdAt
-      }
-    });
-  }
-  
-  res.status(200).json({
-    exists: true,
-    ...kycApproval.toObject()
-  });
-});
-
-
-// Similarly, update other functions that handle KYC-related statuses
-
-
-
-
-
 // Update the getAllJobsAdmin function
 const getAllJobsAdmin = asyncHandler(async (req, res) => {
   try {
     const jobs = await Job.find()
-      .populate('clientId', 'name gmail startingPoint')
-      .populate('assignedPerson', 'name email')
-      .populate('createdBy', 'name email') // Add this line to populate the creator details
-      .sort({ createdAt: -1 }); // Sort by newest first
-      
+      .populate("clientId", "name gmail startingPoint")
+      .populate("assignedPerson", "name email")
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1 });
+
     res.status(200).json(jobs);
   } catch (error) {
     res.status(500).json({
@@ -423,9 +433,6 @@ const getAllJobsAdmin = asyncHandler(async (req, res) => {
     });
   }
 });
-
-// Import the necessary helper function if not already at the top of the file
-// const safeCloudinaryUpload = require("../utils/cloudinaryHelpers").safeCloudinaryUpload;
 
 // Update the approveJob function to handle document uploads
 const approveJob = asyncHandler(async (req, res) => {
@@ -436,39 +443,33 @@ const approveJob = asyncHandler(async (req, res) => {
   }
 
   job.status = "approved";
-  
-  // Handle optional approval document
+
   let approvalDocumentUrl = null;
   if (req.file) {
     const uploadResult = await safeCloudinaryUpload(req.file.path);
     if (uploadResult.success) {
       approvalDocumentUrl = uploadResult.url;
-      // Clean up temporary file after successful upload
       fs.unlink(req.file.path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     } else {
       console.error("Failed to upload approval document:", uploadResult.error);
-      // Proceed even if upload fails, as the document is optional
     }
   }
 
-  // Save approval document URL if provided
   if (approvalDocumentUrl) {
     job.approvalDocument = approvalDocumentUrl;
   }
 
-  // Get approval notes from request body
   const { approvalNotes } = req.body;
   if (approvalNotes) {
     job.approvalNotes = approvalNotes;
   }
 
-  // Add timeline entry for job approval with optional notes
   job.timeline.push({
     status: "screening_done",
-    description: approvalNotes 
-      ? `Screening Done: ${approvalNotes}` 
+    description: approvalNotes
+      ? `Screening Done: ${approvalNotes}`
       : "Screening Done",
     timestamp: new Date(),
     updatedBy: req.user._id,
@@ -478,7 +479,6 @@ const approveJob = asyncHandler(async (req, res) => {
 
   // Create notification for job approval
   try {
-    // Notify the approving user
     await notificationService.createNotification(
       {
         title: "Job Approved",
@@ -489,7 +489,6 @@ const approveJob = asyncHandler(async (req, res) => {
       { _id: req.user._id }
     );
 
-    // Notify all admins
     await notificationService.createNotification(
       {
         title: "Job Approved",
@@ -499,8 +498,7 @@ const approveJob = asyncHandler(async (req, res) => {
       },
       { "role.name": "admin" }
     );
-    
-    // Notify the assigned person about the approved status
+
     await notificationService.createNotification(
       {
         title: "Job Ready for Processing",
@@ -513,7 +511,6 @@ const approveJob = asyncHandler(async (req, res) => {
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
-    // Continue even if notification fails
   }
 
   res.status(200).json(updatedJob);
@@ -537,13 +534,11 @@ const rejectJob = asyncHandler(async (req, res) => {
     const uploadResult = await safeCloudinaryUpload(req.file.path);
     if (uploadResult.success) {
       rejectionDocumentUrl = uploadResult.url;
-      // Clean up temporary file after successful upload
       fs.unlink(req.file.path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     } else {
       console.error("Failed to upload rejection document:", uploadResult.error);
-      // Proceed even if upload fails, as the document is optional
     }
   }
 
@@ -553,7 +548,6 @@ const rejectJob = asyncHandler(async (req, res) => {
     job.rejectionDocument = rejectionDocumentUrl;
   }
 
-  // Add timeline entry for job rejection
   job.timeline.push({
     status: "rejected",
     description: `Job rejected: ${rejectionReason}`,
@@ -565,7 +559,6 @@ const rejectJob = asyncHandler(async (req, res) => {
 
   // Create notification for job rejection
   try {
-    // Notify the rejecting user
     await notificationService.createNotification(
       {
         title: "Job Rejected",
@@ -576,7 +569,6 @@ const rejectJob = asyncHandler(async (req, res) => {
       { _id: req.user._id }
     );
 
-    // Notify all admins
     await notificationService.createNotification(
       {
         title: "Job Rejected",
@@ -588,7 +580,6 @@ const rejectJob = asyncHandler(async (req, res) => {
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
-    // Continue even if notification fails
   }
 
   res.status(200).json(updatedJob);
@@ -608,11 +599,9 @@ const cancelJob = asyncHandler(async (req, res) => {
     throw new Error("Cancellation reason is required");
   }
 
-  // Update job status and set cancellation reason
   job.status = "cancelled";
   job.cancellationReason = cancellationReason;
 
-  // Add timeline entry for job cancellation
   job.timeline.push({
     status: "cancelled",
     description: `Job cancelled: ${cancellationReason}`,
@@ -624,7 +613,6 @@ const cancelJob = asyncHandler(async (req, res) => {
 
   // Create notification for job cancellation
   try {
-    // Notify the cancelling admin
     await notificationService.createNotification(
       {
         title: "Job Cancelled",
@@ -635,7 +623,6 @@ const cancelJob = asyncHandler(async (req, res) => {
       { _id: req.user._id }
     );
 
-    // Notify all admins
     await notificationService.createNotification(
       {
         title: "Job Cancelled",
@@ -646,7 +633,6 @@ const cancelJob = asyncHandler(async (req, res) => {
       { "role.name": "admin" }
     );
 
-    // Notify compliance management team
     await notificationService.createNotification(
       {
         title: "Job Cancelled",
@@ -658,7 +644,6 @@ const cancelJob = asyncHandler(async (req, res) => {
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
-    // Continue even if notification fails
   }
 
   res.status(200).json(updatedJob);
@@ -666,23 +651,19 @@ const cancelJob = asyncHandler(async (req, res) => {
 
 // Resubmit Job (updated function with timeline)
 const resubmitJob = asyncHandler(async (req, res) => {
-  // Find the job by ID
   const job = await Job.findById(req.params.id);
   if (!job) {
     res.status(404);
     throw new Error("Job not found");
   }
 
-  // Check if the job is rejected
   if (job.status !== "rejected") {
     res.status(400);
     throw new Error("Only rejected jobs can be resubmitted");
   }
 
-  // Extract resubmission notes from the request body
   const { resubmitNotes } = req.body;
 
-  // Initialize the resubmission object with defaults from the original documents
   const resubmission = {
     resubmitNotes,
     newDocumentPassport: job.documentPassport,
@@ -690,7 +671,6 @@ const resubmitJob = asyncHandler(async (req, res) => {
     newOtherDocuments: job.otherDocuments || [],
   };
 
-  // Handle new passport document upload
   if (req.files && req.files["newDocumentPassport"]) {
     const uploadResult = await safeCloudinaryUpload(
       req.files["newDocumentPassport"][0].path
@@ -701,7 +681,6 @@ const resubmitJob = asyncHandler(async (req, res) => {
     });
   }
 
-  // Handle new ID document upload
   if (req.files && req.files["newDocumentID"]) {
     const uploadResult = await safeCloudinaryUpload(
       req.files["newDocumentID"][0].path
@@ -712,7 +691,6 @@ const resubmitJob = asyncHandler(async (req, res) => {
     });
   }
 
-  // Handle new other documents upload
   if (req.files && req.files["newOtherDocuments"]) {
     const uploadPromises = req.files["newOtherDocuments"].map((file) =>
       safeCloudinaryUpload(file.path).then((result) => {
@@ -725,15 +703,11 @@ const resubmitJob = asyncHandler(async (req, res) => {
     resubmission.newOtherDocuments = await Promise.all(uploadPromises);
   }
 
-  // Add the resubmission to the job's resubmissions array
   job.resubmissions.push(resubmission);
-
-  // Update job status and clear rejection details
   job.status = "corrected";
   job.rejectionReason = undefined;
   job.rejectionDocument = undefined;
 
-  // Add timeline entry for job resubmission
   job.timeline.push({
     status: "corrected",
     description: resubmitNotes
@@ -743,12 +717,10 @@ const resubmitJob = asyncHandler(async (req, res) => {
     updatedBy: req.user._id,
   });
 
-  // Save the updated job
   const updatedJob = await job.save();
 
   // Create notification for job resubmission
   try {
-    // Notify compliance management team
     await notificationService.createNotification(
       {
         title: "Job Resubmitted",
@@ -759,7 +731,6 @@ const resubmitJob = asyncHandler(async (req, res) => {
       { "role.permissions.complianceManagement": true }
     );
 
-    // Notify admins about the resubmission
     await notificationService.createNotification(
       {
         title: "Job Resubmitted",
@@ -770,7 +741,6 @@ const resubmitJob = asyncHandler(async (req, res) => {
       { "role.name": "admin" }
     );
 
-    // Personal confirmation to the admin who resubmitted the job
     await notificationService.createNotification(
       {
         title: "Job Resubmission Successful",
@@ -781,7 +751,6 @@ const resubmitJob = asyncHandler(async (req, res) => {
       { _id: req.user._id }
     );
 
-    // If there were resubmission notes, include them in a detailed notification
     if (resubmitNotes) {
       await notificationService.createNotification(
         {
@@ -795,7 +764,6 @@ const resubmitJob = asyncHandler(async (req, res) => {
     }
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
-    // Continue even if notification fails
   }
 
   res.status(200).json(updatedJob);
@@ -818,37 +786,32 @@ const getAssignedJobs = asyncHandler(async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    
-    // Get status filter if provided
+
     const statusFilter = req.query.status ? { status: req.query.status } : {};
-    
-    // Combined filter for assigned person and optional status
+
     const filter = {
       assignedPerson: req.user._id,
-      ...statusFilter
+      ...statusFilter,
     };
-    
-    // Count total matching documents for pagination
+
     const total = await Job.countDocuments(filter);
-    
-    // Get jobs assigned to the current user with pagination
+
     const jobs = await Job.find(filter)
-      .populate('clientId', 'name gmail startingPoint')
-      .sort({ createdAt: -1 }) // Sort by newest first
+      .populate("clientId", "name gmail startingPoint")
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
-    
-    // Calculate pagination info
+
     const totalPages = Math.ceil(total / limit);
-    
+
     res.status(200).json({
       jobs,
       pagination: {
         currentPage: page,
         totalPages,
         totalItems: total,
-        itemsPerPage: limit
-      }
+        itemsPerPage: limit,
+      },
     });
   } catch (error) {
     res.status(500).json({
@@ -877,7 +840,6 @@ const updateJob = asyncHandler(async (req, res) => {
       startingPoint,
     } = req.body;
 
-    // Check if job number is being changed and if it already exists
     if (jobNumber && jobNumber !== job.jobNumber) {
       const jobNumberExists = await checkJobNumberExists(jobNumber);
       if (jobNumberExists) {
@@ -886,7 +848,6 @@ const updateJob = asyncHandler(async (req, res) => {
         });
       }
 
-      // Validate job number format
       const jobNumberRegex = /^[A-Za-z0-9-]+$/;
       if (!jobNumberRegex.test(jobNumber)) {
         return res.status(400).json({
@@ -895,7 +856,6 @@ const updateJob = asyncHandler(async (req, res) => {
       }
     }
 
-    // Validate email format if provided
     if (
       gmail &&
       !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(gmail)
@@ -905,46 +865,39 @@ const updateJob = asyncHandler(async (req, res) => {
       });
     }
 
-    // Handle document updates
     let updatedDocuments = {
       documentPassport: job.documentPassport,
       documentID: job.documentID,
       otherDocuments: job.otherDocuments || [],
     };
 
-    // Update passport document if provided
     if (req.files && req.files["documentPassport"]) {
       const uploadResult = await safeCloudinaryUpload(
         req.files["documentPassport"][0].path
       );
       if (uploadResult.success) {
         updatedDocuments.documentPassport = uploadResult.url;
-        // Clean up temporary file
         fs.unlink(req.files["documentPassport"][0].path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       }
     }
 
-    // Update ID document if provided
     if (req.files && req.files["documentID"]) {
       const uploadResult = await safeCloudinaryUpload(
         req.files["documentID"][0].path
       );
       if (uploadResult.success) {
         updatedDocuments.documentID = uploadResult.url;
-        // Clean up temporary file
         fs.unlink(req.files["documentID"][0].path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       }
     }
 
-    // Handle other documents - can replace or add to existing
     if (req.files && req.files["otherDocuments"]) {
       const uploadPromises = req.files["otherDocuments"].map(async (file) => {
         const result = await safeCloudinaryUpload(file.path);
-        // Clean up temporary file
         fs.unlink(file.path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
@@ -953,11 +906,9 @@ const updateJob = asyncHandler(async (req, res) => {
 
       const newDocuments = await Promise.all(uploadPromises);
 
-      // Option 1: Replace all other documents
       if (req.body.replaceOtherDocuments === "true") {
         updatedDocuments.otherDocuments = newDocuments;
       } else {
-        // Option 2: Add to existing documents
         updatedDocuments.otherDocuments = [
           ...(job.otherDocuments || []),
           ...newDocuments,
@@ -965,7 +916,6 @@ const updateJob = asyncHandler(async (req, res) => {
       }
     }
 
-    // Update job fields
     const updateFields = {
       ...(jobNumber && { jobNumber }),
       ...(serviceType && { serviceType }),
@@ -978,7 +928,6 @@ const updateJob = asyncHandler(async (req, res) => {
       ...updatedDocuments,
     };
 
-    // Update the job
     const updatedJob = await Job.findByIdAndUpdate(
       req.params.id,
       updateFields,
@@ -988,7 +937,6 @@ const updateJob = asyncHandler(async (req, res) => {
       .populate("assignedPerson", "name email")
       .populate("createdBy", "name email");
 
-    // Add timeline entry for job update
     updatedJob.timeline.push({
       status: "updated",
       description: `Job details updated by ${req.user.name}`,
@@ -1000,7 +948,6 @@ const updateJob = asyncHandler(async (req, res) => {
 
     // Create notifications for job update
     try {
-      // Notify the updating admin
       await notificationService.createNotification(
         {
           title: "Job Updated Successfully",
@@ -1011,7 +958,6 @@ const updateJob = asyncHandler(async (req, res) => {
         { _id: req.user._id }
       );
 
-      // Notify other admins
       await notificationService.createNotification(
         {
           title: "Job Updated",
@@ -1022,7 +968,6 @@ const updateJob = asyncHandler(async (req, res) => {
         { "role.name": "admin" }
       );
 
-      // Notify assigned person if assignment changed
       if (assignedPerson && assignedPerson !== job.assignedPerson.toString()) {
         await notificationService.createNotification(
           {
@@ -1037,14 +982,12 @@ const updateJob = asyncHandler(async (req, res) => {
       }
     } catch (notificationError) {
       console.error("Error creating notification:", notificationError);
-      // Continue even if notification fails
     }
 
     res.status(200).json(updatedJob);
   } catch (error) {
     console.error("Error updating job:", error);
 
-    // Handle unique constraint error
     if (
       error.code === 11000 &&
       error.keyPattern &&
