@@ -1,4 +1,4 @@
-// services/notificationService.js (Updated for BRA notifications)
+// services/notificationService.js (Fixed time display issue)
 const Notification = require("../models/notificationModel");
 const User = require("../models/userModel");
 const mongoose = require("mongoose");
@@ -73,47 +73,81 @@ const getNotificationStyle = (type, subType = null) => {
   }
 };
 
-// Format the time for display
+// Format the time for display - FIXED to accept a date parameter
 const formatTimeAgo = (date) => {
-  const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+  const now = new Date();
+  const notificationDate = new Date(date);
+  const seconds = Math.floor((now - notificationDate) / 1000);
 
   let interval = seconds / 31536000;
-  if (interval > 1) return Math.floor(interval) + " years ago";
+  if (interval > 1)
+    return (
+      Math.floor(interval) +
+      " year" +
+      (Math.floor(interval) > 1 ? "s" : "") +
+      " ago"
+    );
 
   interval = seconds / 2592000;
-  if (interval > 1) return Math.floor(interval) + " months ago";
+  if (interval > 1)
+    return (
+      Math.floor(interval) +
+      " month" +
+      (Math.floor(interval) > 1 ? "s" : "") +
+      " ago"
+    );
 
   interval = seconds / 86400;
-  if (interval > 1) return Math.floor(interval) + " days ago";
+  if (interval > 1)
+    return (
+      Math.floor(interval) +
+      " day" +
+      (Math.floor(interval) > 1 ? "s" : "") +
+      " ago"
+    );
 
   interval = seconds / 3600;
-  if (interval > 1) return Math.floor(interval) + " hours ago";
+  if (interval > 1)
+    return (
+      Math.floor(interval) +
+      " hour" +
+      (Math.floor(interval) > 1 ? "s" : "") +
+      " ago"
+    );
 
   interval = seconds / 60;
-  if (interval > 1) return Math.floor(interval) + " minutes ago";
+  if (interval > 1)
+    return (
+      Math.floor(interval) +
+      " minute" +
+      (Math.floor(interval) > 1 ? "s" : "") +
+      " ago"
+    );
 
-  return "just now";
+  if (seconds < 30) return "just now";
+  return (
+    Math.floor(seconds) +
+    " second" +
+    (Math.floor(seconds) > 1 ? "s" : "") +
+    " ago"
+  );
 };
 
-// Create a new notification
+// Create a new notification - FIXED: Remove static time calculation
 const createNotification = async (notificationData, queryOrUserId) => {
   try {
-    // Format the time for display
-    const now = new Date();
-    const time = formatTimeAgo(now);
-
     // Get styling based on notification type
     const styling = getNotificationStyle(
       notificationData.type,
       notificationData.subType
     );
 
-    // Create the notification with styling
+    // Create the notification with styling - REMOVED static time field
     const notification = new Notification({
       ...notificationData,
-      time,
       ...styling,
       recipients: [],
+      // Remove the static time field - it will be calculated dynamically
     });
 
     // Find users to notify
@@ -145,7 +179,7 @@ const createNotification = async (notificationData, queryOrUserId) => {
   }
 };
 
-// Get notifications for a user
+// Get notifications for a user - FIXED: Calculate time dynamically
 const getUserNotifications = async (userId) => {
   try {
     // Convert string ID to ObjectId
@@ -185,7 +219,6 @@ const getUserNotifications = async (userId) => {
           iconType: 1,
           iconColor: 1,
           bgColor: 1,
-          time: 1,
           createdAt: 1,
           relatedTo: 1,
           status: { $cond: ["$userSpecificStatus.read", "read", "unread"] },
@@ -194,7 +227,13 @@ const getUserNotifications = async (userId) => {
       { $sort: { createdAt: -1 } },
     ]);
 
-    return notifications;
+    // FIXED: Calculate time dynamically for each notification
+    const notificationsWithTime = notifications.map((notification) => ({
+      ...notification,
+      time: formatTimeAgo(notification.createdAt),
+    }));
+
+    return notificationsWithTime;
   } catch (error) {
     console.error("Error getting user notifications:", error);
     throw error;

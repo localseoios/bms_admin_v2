@@ -1,15 +1,28 @@
-// models/notificationModel.js
+// models/notificationModel.js (Fixed - removed static time field)
 const mongoose = require("mongoose");
 
 const notificationSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
     description: { type: String, required: true },
-    time: { type: String }, // For display purposes
+    // REMOVED: time field - now calculated dynamically
     type: {
       type: String,
       enum: ["job", "role", "user", "system", "security"],
       required: true,
+    },
+    // Added subType for more specific categorization
+    subType: {
+      type: String,
+      enum: [
+        "assignment",
+        "kyc",
+        "bra",
+        "approval",
+        "rejection",
+        "cancellation",
+      ],
+      required: false,
     },
     status: {
       type: String,
@@ -30,7 +43,12 @@ const notificationSchema = new mongoose.Schema(
     iconColor: { type: String, default: "text-blue-600" },
     bgColor: { type: String, default: "bg-blue-50" },
   },
-  { timestamps: true }
+  {
+    timestamps: true, // This provides createdAt and updatedAt automatically
+  }
 );
+
+// Add index for better query performance
+notificationSchema.index({ "recipients.user": 1, createdAt: -1 });
 
 module.exports = mongoose.model("Notification", notificationSchema);
