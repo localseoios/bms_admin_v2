@@ -1,4 +1,4 @@
-// routes/operationRoutes.js - Updated with job number checking
+// routes/operationRoutes.js - Fixed with correct middleware references
 const express = require("express");
 const router = express.Router();
 const { protect, checkPermission } = require("../middleware/authMiddleware");
@@ -17,6 +17,12 @@ const {
   getPersonFieldHistory,
   getEngagementLetters,
   getClientEngagementLetters,
+  getExpiringJobs,
+  exportExpiringJobs,
+  sendExpiryNotifications,
+  getExpiringJobsForDashboard,
+  getExpiringJobsStats,
+  updateJobExpiryDate,
 } = require("../controllers/operationController");
 
 // Import job controller functions for job number checking
@@ -80,6 +86,54 @@ router.get(
   protect,
   checkPermission("operationManagement"),
   checkJobNumber
+);
+
+// FIXED: Dashboard expiring jobs route - corrected middleware
+router.get(
+  "/dashboard/expiring-jobs",
+  protect,
+  checkPermission("operationManagement"),
+  getExpiringJobsForDashboard
+);
+
+// FIXED: Expiring jobs stats route - corrected middleware
+router.get(
+  "/expiring-jobs/stats",
+  protect,
+  checkPermission("operationManagement"),
+  getExpiringJobsStats
+);
+
+// FIXED: Update job expiry route - corrected middleware
+router.put(
+  "/jobs/:jobId/expiry",
+  protect,
+  checkPermission("operationManagement"),
+  updateJobExpiryDate
+);
+
+// Keep the existing route for full management
+router.get(
+  "/expiring-jobs",
+  protect,
+  checkPermission("operationManagement"),
+  getExpiringJobs
+);
+
+// Export expiring jobs to Excel
+router.get(
+  "/expiring-jobs/export",
+  protect,
+  checkPermission("operationManagement"),
+  exportExpiringJobs
+);
+
+// Send expiry notifications manually
+router.post(
+  "/expiring-jobs/notify",
+  protect,
+  checkPermission("operationManagement"),
+  sendExpiryNotifications
 );
 
 // Company Details Routes

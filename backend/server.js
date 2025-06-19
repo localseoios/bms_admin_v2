@@ -16,6 +16,10 @@ const errorLoggingMiddleware = require("./src/middleware/errorLoggingMiddleware"
 const braRoutes = require("./src/routes/braRoutes");
 const monthlyPaymentRoutes = require("./src/routes/monthlyPaymentRoutes");
 const serviceRoutes = require("./src/routes/serviceRoutes");
+const cron = require("node-cron");
+const {
+  sendExpiryNotifications,
+} = require("./src/controllers/operationController");
 
 // Ensure temp uploads directory exists
 const tempUploadsDir = path.join(__dirname, "src/temp-uploads");
@@ -34,6 +38,18 @@ app.use((req, res, next) => {
     console.log(`${req.method} ${req.url}`);
   }
   next();
+});
+
+// Run at 9:00 AM every day
+cron.schedule("0 9 * * *", async () => {
+  console.log("🏃 Running daily expiry notification job at 09:00");
+  try {
+    // Running the sendExpiryNotifications function
+    const result = await sendExpiryNotifications();
+    console.log("Expiry notifications sent:", result.notificationsSent);
+  } catch (err) {
+    console.error("Error in cron expiry job:", err);
+  }
 });
 
 // Special CORS preflight handler - MUST be before ANY other middleware
