@@ -7,6 +7,9 @@ const asyncHandler = require("express-async-handler");
 const notificationService = require("../services/notificationService");
 const Client = require("../models/Client");
 
+// ADD THESE MISSING IMPORTS
+const { PersonDetails, CompanyDetails } = require("../models/OperationModels");
+
 // Helper function to safely upload to Cloudinary with fallback
 const safeCloudinaryUpload = async (filePath, options = {}) => {
   try {
@@ -29,6 +32,195 @@ const checkJobNumberExists = async (jobNumber) => {
   const existingJob = await Job.findOne({ jobNumber });
   return !!existingJob;
 };
+
+// FIXED: Enhanced search function with proper error handling
+const searchJobsWithPersonDetails = asyncHandler(async (req, res) => {
+  try {
+    const { query, status } = req.query;
+    
+    console.log('Search request received:', { query, status });
+    
+    if (!query || query.trim().length < 2) {
+      console.log('Query too short, returning regular jobs');
+      return getAllJobs(req, res);
+    }
+
+    const searchRegex = new RegExp(query.trim(), 'i');
+    
+    // Build status filter
+    let statusFilter = {};
+    if (status && status !== 'all') {
+      statusFilter = { status };
+    }
+
+    console.log('Search filters:', { query: query.trim(), statusFilter });
+
+    // FIXED: Search in Jobs collection (removed problematic _id regex)
+    const jobMatches = await Job.find({
+      ...statusFilter,
+      $or: [
+        { jobNumber: searchRegex },
+        { clientName: searchRegex },
+        { serviceType: searchRegex },
+        { jobDetails: searchRegex },
+        { gmail: searchRegex },
+        { specialDescription: searchRegex }
+      ]
+    }).distinct('_id');
+
+    console.log(`Found ${jobMatches.length} job matches`);
+
+    // FIXED: Search in PersonDetails collection with proper error handling
+    let personMatches = [];
+    try {
+      personMatches = await PersonDetails.find({
+        $or: [
+          { name: searchRegex },
+          { nationality: searchRegex },
+          { qidNo: searchRegex },
+          { nationalAddress: searchRegex },
+          { passportNo: searchRegex },
+          { mobileNo: searchRegex },
+          { email: searchRegex }
+        ]
+      }).distinct('jobId');
+      console.log(`Found ${personMatches.length} person detail matches`);
+    } catch (personError) {
+      console.error('Error searching PersonDetails:', personError.message);
+      personMatches = [];
+    }
+
+    // FIXED: Search in CompanyDetails collection with proper error handling
+    let companyMatches = [];
+    try {
+      companyMatches = await CompanyDetails.find({
+        $or: [
+          { companyName: searchRegex },
+          { qfcNo: searchRegex },
+          { registeredAddress: searchRegex },
+          { serviceType: searchRegex },
+          { mainPurpose: searchRegex }
+        ]
+      }).distinct('jobId');
+      console.log(`Found ${companyMatches.length} company detail matches`);
+    } catch (companyError) {
+      console.error('Error searching CompanyDetails:', companyError.message);
+      companyMatches = [];
+    }
+
+    // FIXED: Combine all matching job IDs with proper ObjectId handling
+    const allJobIds = [...new Set([
+      ...jobMatches.map(id => id.toString()),
+      ...personMatches.map(id => id.toString()),
+      ...companyMatches.map(id => id.toString())
+    ])];
+
+    console.log(`Total unique job IDs found: ${allJobIds.length}`);
+
+    if (allJobIds.length === 0) {
+      console.log('No matches found, returning empty array');
+      return res.status(200).json([]);
+    }
+
+    // FIXED: Fetch complete job data with proper ObjectId conversion
+    const jobs = await Job.find({ 
+      _id: { $in: allJobIds.map(id => id) },
+      ...statusFilter
+    })
+    .populate("clientId", "name gmail startingPoint")
+    .populate("assignedPerson", "name email")
+    .populate("createdBy", "name email")
+    .sort({ createdAt: -1 });
+
+    console.log(`Retrieved ${jobs.length} complete job records`);
+
+    // OPTIMIZED: Get all person and company details in bulk
+    const jobIds = jobs.map(job => job._id);
+    
+    const [allPersonDetails, allCompanyDetails] = await Promise.all([
+      PersonDetails.find({ jobId: { $in: jobIds } })
+        .select('jobId personType name nationality qidNo passportNo mobileNo email')
+        .lean(),
+      CompanyDetails.find({ jobId: { $in: jobIds } })
+        .select('jobId companyName qfcNo registeredAddress serviceType mainPurpose')
+        .lean()
+    ]);
+
+    // Create lookup maps for efficient access
+    const personDetailsMap = {};
+    const companyDetailsMap = {};
+
+    allPersonDetails.forEach(person => {
+      const jobIdStr = person.jobId.toString();
+      if (!personDetailsMap[jobIdStr]) {
+        personDetailsMap[jobIdStr] = [];
+      }
+      personDetailsMap[jobIdStr].push(person);
+    });
+
+    allCompanyDetails.forEach(company => {
+      const jobIdStr = company.jobId.toString();
+      companyDetailsMap[jobIdStr] = company;
+    });
+
+    // OPTIMIZED: Process jobs with search match context
+    const jobsWithPersonDetails = jobs.map(job => {
+      const jobObj = job.toObject();
+      const jobIdStr = job._id.toString();
+      
+      const personDetails = personDetailsMap[jobIdStr] || [];
+      const companyDetails = companyDetailsMap[jobIdStr] || null;
+
+      // Add search match context
+      const searchMatches = [];
+      
+      // Check what matched in job itself
+      ['jobNumber', 'clientName', 'serviceType', 'jobDetails', 'gmail', 'specialDescription'].forEach(field => {
+        if (job[field] && typeof job[field] === 'string' && searchRegex.test(job[field])) {
+          searchMatches.push(`Job: ${field} - ${job[field]}`);
+        }
+      });
+      
+      // Check what matched in person details
+      personDetails.forEach(person => {
+        ['name', 'nationality', 'qidNo', 'passportNo', 'mobileNo', 'email'].forEach(field => {
+          if (person[field] && typeof person[field] === 'string' && searchRegex.test(person[field])) {
+            searchMatches.push(`${person.personType}: ${field} - ${person[field]}`);
+          }
+        });
+      });
+
+      // Check what matched in company details
+      if (companyDetails) {
+        ['companyName', 'qfcNo', 'registeredAddress', 'serviceType', 'mainPurpose'].forEach(field => {
+          if (companyDetails[field] && typeof companyDetails[field] === 'string' && searchRegex.test(companyDetails[field])) {
+            searchMatches.push(`Company: ${field} - ${companyDetails[field]}`);
+          }
+        });
+      }
+
+      return {
+        ...jobObj,
+        personDetails,
+        companyDetails,
+        searchMatches: searchMatches.slice(0, 3) // Limit to 3 matches for display
+      };
+    });
+
+    console.log(`Returning ${jobsWithPersonDetails.length} jobs with enhanced search data`);
+    res.status(200).json(jobsWithPersonDetails);
+
+  } catch (error) {
+    console.error("Error in enhanced search:", error);
+    res.status(500).json({
+      message: "Error searching jobs",
+      error: error.message,
+    });
+  }
+});
+
+
+
 
 const createJob = async (req, res) => {
   try {
@@ -1005,6 +1197,8 @@ const updateJob = asyncHandler(async (req, res) => {
   }
 });
 
+
+
 module.exports = {
   createJob,
   checkJobNumber,
@@ -1018,4 +1212,5 @@ module.exports = {
   getAssignedJobs,
   getJobDetails,
   updateJob,
+  searchJobsWithPersonDetails,
 };

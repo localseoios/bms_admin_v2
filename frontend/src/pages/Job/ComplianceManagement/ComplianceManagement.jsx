@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, Fragment, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, Transition } from "@headlessui/react";
 import { Link } from "react-router-dom";
@@ -24,6 +24,7 @@ import {
   CalendarIcon,
   DocumentCheckIcon,
   UserIcon,
+  InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 
 // Filter options
@@ -127,6 +128,8 @@ function ComplianceManagement() {
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [selectedSort, setSelectedSort] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
 
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
@@ -140,13 +143,13 @@ function ComplianceManagement() {
   const [rejectionFile, setRejectionFile] = useState(null);
   const [fileDetails, setFileDetails] = useState(null);
   const [dragActive, setDragActive] = useState(false);
-  
+
   // New state for approval
   const [approvalNotes, setApprovalNotes] = useState("");
   const [approvalFile, setApprovalFile] = useState(null);
   const [approvalFileDetails, setApprovalFileDetails] = useState(null);
   const [approvalDragActive, setApprovalDragActive] = useState(false);
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showResubmissionHistory, setShowResubmissionHistory] = useState(false);
 
@@ -171,6 +174,212 @@ function ComplianceManagement() {
     }
 
     return null;
+  };
+
+  // Enhanced search function with better error handling and debugging
+  const performSearch = useCallback(async (query, filter) => {
+    if (!query || query.trim().length < 2) {
+      // If search is empty, fetch regular jobs
+      await fetchRegularJobs(filter);
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      setError(null); // Clear any previous errors
+
+      console.log("🔍 Performing search:", { query: query.trim(), filter });
+
+      const response = await axiosInstance.get("/jobs/search", {
+        params: {
+          query: query.trim(),
+          status: filter !== "all" ? filter : undefined,
+        },
+      });
+
+      const searchResults = response.data || [];
+      console.log("✅ Search results received:", searchResults.length, "jobs");
+
+      // Log first few results for debugging
+      if (searchResults.length > 0) {
+        console.log(
+          "📊 Sample results:",
+          searchResults.slice(0, 2).map((job) => ({
+            id: job._id,
+            clientName: job.clientName,
+            searchMatches: job.searchMatches?.slice(0, 2),
+          }))
+        );
+      }
+
+      setJobs(searchResults);
+      setError(null);
+    } catch (err) {
+      console.error("❌ Error searching jobs:", err);
+
+      // Provide more specific error messages
+      let errorMessage = "Failed to search jobs. Please try again.";
+
+      if (err.response?.status === 500) {
+        errorMessage =
+          "Server error while searching. Please try a different search term or contact support.";
+        console.error("Server error details:", err.response?.data);
+      } else if (err.response?.status === 400) {
+        errorMessage = "Invalid search query. Please check your search terms.";
+      } else if (err.code === "NETWORK_ERROR") {
+        errorMessage =
+          "Network error. Please check your connection and try again.";
+      }
+
+      setError(errorMessage);
+      setJobs([]); // Clear jobs on error
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  // Regular job fetching (when not searching)
+  const fetchRegularJobs = async (filter = "all") => {
+    try {
+      setIsLoading(true);
+      console.log("📋 Fetching regular jobs with filter:", filter);
+
+      const response = await axiosInstance.get("/jobs");
+      let fetchedJobs = response.data || [];
+
+      console.log("📊 Raw jobs received:", fetchedJobs.length);
+
+      // Apply filter
+      if (filter !== "all") {
+        fetchedJobs = fetchedJobs.filter((job) => job.status === filter);
+        console.log("🔧 After filtering:", fetchedJobs.length, "jobs");
+      }
+
+      setJobs(fetchedJobs);
+      setError(null);
+    } catch (err) {
+      console.error("❌ Error fetching jobs:", err);
+      setError("Failed to load jobs. Please try again later.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Debounced search effect
+  useEffect(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    const timeout = setTimeout(() => {
+      performSearch(searchQuery, selectedFilter);
+    }, 500); // 500ms debounce
+
+    setSearchTimeout(timeout);
+
+    return () => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    };
+  }, [searchQuery, selectedFilter, performSearch]);
+
+  // Initial load
+  useEffect(() => {
+    if (!searchQuery) {
+      fetchRegularJobs(selectedFilter);
+    }
+  }, [selectedFilter]);
+
+  // Enhanced filter function for client-side sorting
+  const getFilteredAndSortedJobs = () => {
+    let filtered = [...jobs];
+
+    // Sort the results
+    filtered.sort((a, b) => {
+      switch (selectedSort) {
+        case "oldest":
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        case "client":
+          return (a.clientName || "").localeCompare(b.clientName || "");
+        case "service":
+          return (a.serviceType || "").localeCompare(b.serviceType || "");
+        default:
+          return new Date(b.createdAt) - new Date(a.createdAt);
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredJobs = getFilteredAndSortedJobs();
+
+  // Enhanced search result display component
+  const SearchMatchIndicator = ({ job }) => {
+    if (!job.searchMatches || job.searchMatches.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="mt-1 space-y-1">
+        {job.searchMatches.slice(0, 3).map((match, index) => (
+          <div
+            key={index}
+            className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full inline-flex items-center mr-1 mb-1"
+          >
+            <InformationCircleIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+            <span className="truncate max-w-[200px]">{match}</span>
+          </div>
+        ))}
+        {job.searchMatches.length > 3 && (
+          <div className="text-xs text-gray-500 italic">
+            +{job.searchMatches.length - 3} more matches
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Search statistics component
+  const SearchStats = ({ jobs, searchQuery, isSearching }) => {
+    if (!searchQuery || isSearching) return null;
+
+    const stats = {
+      total: jobs.length,
+      withPersonDetails: jobs.filter(
+        (job) => job.personDetails && job.personDetails.length > 0
+      ).length,
+      withCompanyDetails: jobs.filter((job) => job.companyDetails).length,
+      matchTypes: {},
+    };
+
+    // Count match types
+    jobs.forEach((job) => {
+      if (job.searchMatches) {
+        job.searchMatches.forEach((match) => {
+          const type = match.split(":")[0];
+          stats.matchTypes[type] = (stats.matchTypes[type] || 0) + 1;
+        });
+      }
+    });
+
+    return (
+      <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="text-sm text-blue-800">
+          <span className="font-medium">Search Results:</span> Found{" "}
+          {stats.total} job{stats.total !== 1 ? "s" : ""} matching "
+          {searchQuery}"
+        </div>
+        {Object.keys(stats.matchTypes).length > 0 && (
+          <div className="text-xs text-blue-600 mt-1">
+            Matches in:{" "}
+            {Object.entries(stats.matchTypes)
+              .map(([type, count]) => `${type} (${count})`)
+              .join(", ")}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Function to fetch user data
@@ -229,8 +438,8 @@ function ComplianceManagement() {
       setFileDetails(null);
       return;
     }
-    if (file.size > 0 * 1024 * 1024) {
-      alert("File size exceeds the 100MB limit. Please select a smaller file.");
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File size exceeds the 10MB limit. Please select a smaller file.");
       return;
     }
     setRejectionFile(file);
@@ -416,38 +625,6 @@ function ComplianceManagement() {
       setShowResubmissionHistory(false);
     }
   }, [isDetailModalOpen]);
-
-  // Filter + sort
-  const filteredJobs = jobs
-    .filter((job) => {
-      if (selectedFilter !== "all" && job.status !== selectedFilter)
-        return false;
-      if (searchQuery) {
-        const searchLower = searchQuery.toLowerCase();
-        return (
-          (job._id && job._id.toLowerCase().includes(searchLower)) ||
-          (job.clientName &&
-            job.clientName.toLowerCase().includes(searchLower)) ||
-          (job.serviceType &&
-            job.serviceType.toLowerCase().includes(searchLower)) ||
-          (job.jobDetails && job.jobDetails.toLowerCase().includes(searchLower))
-        );
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      switch (selectedSort) {
-        case "oldest":
-          return new Date(a.createdAt) - new Date(b.createdAt);
-        case "client":
-          return (a.clientName || "").localeCompare(b.clientName || "");
-        case "service":
-          return (a.serviceType || "").localeCompare(b.serviceType || "");
-        default:
-          // newest first
-          return new Date(b.createdAt) - new Date(a.createdAt);
-      }
-    });
 
   // Handlers for job actions
   const handleViewJob = (job) => {
@@ -682,6 +859,12 @@ function ComplianceManagement() {
             </h1>
             <p className="mt-2 text-sm text-gray-600">
               Review and manage compliance requests efficiently
+              {searchQuery && (
+                <span className="text-blue-600 font-medium">
+                  {" "}
+                  - Searching across all job and person details
+                </span>
+              )}
             </p>
           </div>
           <motion.button
@@ -707,16 +890,51 @@ function ComplianceManagement() {
               <div className="flex-1">
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                    <MagnifyingGlassIcon
+                      className={`h-5 w-5 transition-colors ${
+                        isSearching
+                          ? "text-blue-500 animate-pulse"
+                          : "text-gray-400"
+                      }`}
+                    />
                   </div>
                   <input
                     type="text"
                     className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
-                    placeholder="Search by Job ID, Client, Service Type..."
+                    placeholder="Search jobs, clients, person details, company info..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    >
+                      <XMarkIcon className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                    </button>
+                  )}
                 </div>
+                {searchQuery && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    <div className="flex items-center space-x-4">
+                      <span>
+                        Searching in: Job details, Client info, Person details
+                        (Directors, Shareholders, Secretaries, SEF), Company
+                        details
+                      </span>
+                      {isSearching && (
+                        <span className="text-blue-600 animate-pulse">
+                          Searching...
+                        </span>
+                      )}
+                    </div>
+                    {searchQuery.length < 2 && (
+                      <div className="text-amber-600 mt-1">
+                        Enter at least 2 characters to search
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center space-x-4">
                 <select
@@ -745,6 +963,13 @@ function ComplianceManagement() {
             </div>
           </div>
         </motion.div>
+
+        {/* Search Statistics */}
+        <SearchStats
+          jobs={filteredJobs}
+          searchQuery={searchQuery}
+          isSearching={isSearching}
+        />
 
         {/* Jobs Table */}
         <motion.div
@@ -796,13 +1021,13 @@ function ComplianceManagement() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {isLoading ? (
+                {isLoading || isSearching ? (
                   <tr>
                     <td
                       colSpan="6"
                       className="px-6 py-4 text-center text-gray-500"
                     >
-                      Loading jobs...
+                      {isSearching ? "Searching..." : "Loading jobs..."}
                     </td>
                   </tr>
                 ) : error ? (
@@ -820,7 +1045,9 @@ function ComplianceManagement() {
                       colSpan="6"
                       className="px-6 py-4 text-center text-gray-500"
                     >
-                      No jobs found
+                      {searchQuery
+                        ? "No jobs match your search criteria"
+                        : "No jobs found"}
                     </td>
                   </tr>
                 ) : (
@@ -831,19 +1058,33 @@ function ComplianceManagement() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
-                        transition={{ duration: 0.3, delay: index * 0.1 }}
+                        transition={{ duration: 0.3, delay: index * 0.05 }}
                         className="hover:bg-gray-50 transition-colors duration-150"
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {job.clientName || "N/A"}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {job._id}
+                          <div className="flex flex-col">
+                            <div className="flex items-center">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {job.clientName || "N/A"}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {job.jobNumber || job._id}
+                                </div>
+                                {/* Show person count if available */}
+                                {job.personDetails &&
+                                  job.personDetails.length > 0 && (
+                                    <div className="text-xs text-gray-400 mt-1">
+                                      {job.personDetails.length} person
+                                      {job.personDetails.length !== 1
+                                        ? "s"
+                                        : ""}{" "}
+                                      registered
+                                    </div>
+                                  )}
                               </div>
                             </div>
+                            <SearchMatchIndicator job={job} />
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -893,18 +1134,18 @@ function ComplianceManagement() {
                             </motion.button>
 
                             {/* "View Profile" button only if job is approved */}
-                            {job.status === "approved" ||
-                              ("om_completed" && (
-                                <Link to={`/clients/${job.gmail}`}>
-                                  <motion.button
-                                    whileHover={{ scale: 1.1 }}
-                                    whileTap={{ scale: 0.9 }}
-                                    className="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors duration-200"
-                                  >
-                                    <UserIcon className="h-5 w-5" />
-                                  </motion.button>
-                                </Link>
-                              ))}
+                            {(job.status === "approved" ||
+                              job.status === "om_completed") && (
+                              <Link to={`/clients/${job.gmail}`}>
+                                <motion.button
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  className="text-blue-600 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors duration-200"
+                                >
+                                  <UserIcon className="h-5 w-5" />
+                                </motion.button>
+                              </Link>
+                            )}
 
                             {/* Approve/Reject if pending or corrected */}
                             {(!job.status ||

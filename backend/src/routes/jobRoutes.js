@@ -18,7 +18,8 @@ const {
   getAssignedJobs,
   getJobDetails,
   updateJob, // ← FIXED: Import from the same controller
-  checkJobNumber, // ← FIXED: Import from the same controller
+  checkJobNumber,
+  searchJobsWithPersonDetails, // ← FIXED: Import from the same controller
 } = require("../controllers/jobController"); // ← All functions from the same file
 const multer = require("multer");
 const path = require("path");
@@ -96,6 +97,14 @@ router.get(
   protect,
   checkPermission("operationManagement"),
   getAssignedJobs
+);
+
+// Add this route to jobRoutes.js before the general routes
+router.get(
+  "/search", 
+  protect, 
+  checkPermission("complianceManagement"), 
+  searchJobsWithPersonDetails
 );
 
 // ===== CREATE JOB ROUTE =====
