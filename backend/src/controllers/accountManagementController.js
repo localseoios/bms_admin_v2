@@ -718,10 +718,261 @@ const uploadInvoiceDocument = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Update a specific invoice within a payment record
+ */
+const updatePaymentInvoice = asyncHandler(async (req, res) => {
+  const { paymentId, invoiceId } = req.params;
+  const { invoiceDate, description, amount, option, paymentMethod, notes } = req.body;
+
+  try {
+    console.log(`Updating invoice ${invoiceId} in payment ${paymentId}`);
+
+    // Find the payment record
+    const payment = await MonthlyPayment.findById(paymentId);
+    if (!payment) {
+      res.status(404);
+      throw new Error("Payment record not found");
+    }
+
+    // Find the specific invoice
+    const invoiceIndex = payment.invoices.findIndex(
+      (invoice) => invoice._id.toString() === invoiceId
+    );
+
+    if (invoiceIndex === -1) {
+      res.status(404);
+      throw new Error("Invoice not found");
+    }
+
+    const invoice = payment.invoices[invoiceIndex];
+
+    // Handle file upload if present
+    let fileUrl = invoice.fileUrl;
+    let fileName = invoice.fileName;
+
+    if (req.file) {
+      try {
+        const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+          folder: `monthly-payments/${payment.jobId}/${payment.year}/${payment.month}`,
+          resource_type: "auto",
+          timeout: 60000,
+        });
+
+        fileUrl = uploadResult.secure_url;
+        fileName = req.file.originalname;
+
+        // Clean up temp file
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.error(`Error deleting temp file ${req.file.path}:`, err);
+        });
+      } catch (uploadError) {
+        console.error(`Error uploading file:`, uploadError);
+        // Keep existing file if upload fails
+      }
+    }
+
+    // Update the invoice
+    payment.invoices[invoiceIndex] = {
+      ...invoice.toObject(),
+      invoiceDate: invoiceDate || invoice.invoiceDate,
+      description: description || invoice.description,
+      amount: amount ? parseFloat(amount) : invoice.amount,
+      option: option !== undefined ? option : invoice.option,
+      paymentMethod: paymentMethod || invoice.paymentMethod,
+      fileUrl,
+      fileName,
+    };
+
+    // Update the payment record's updatedBy field
+    payment.updatedBy = req.user._id;
+
+    const updatedPayment = await payment.save();
+
+    // Create notification for invoice update
+    await notificationService.createNotification(
+      {
+        title: "Payment Invoice Updated",
+        description: `Invoice for ${payment.monthName} ${payment.year} has been updated.`,
+        type: "payment",
+        relatedTo: { model: "MonthlyPayment", id: payment._id },
+      },
+      { "role.permissions.operationManagement": true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Invoice updated successfully",
+      payment: updatedPayment,
+      updatedInvoice: payment.invoices[invoiceIndex],
+    });
+  } catch (error) {
+    console.error("Error updating payment invoice:", error);
+    res.status(500).json({
+      message: "Failed to update payment invoice",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * Add a new invoice to an existing payment record
+ */
+const addPaymentInvoice = asyncHandler(async (req, res) => {
+  const { paymentId } = req.params;
+  const { invoiceDate, description, amount, option, paymentMethod } = req.body;
+
+  try {
+    console.log(`Adding new invoice to payment ${paymentId}`);
+
+    // Find the payment record
+    const payment = await MonthlyPayment.findById(paymentId);
+    if (!payment) {
+      res.status(404);
+      throw new Error("Payment record not found");
+    }
+
+    // Handle file upload if present
+    let fileUrl = null;
+    let fileName = null;
+
+    if (req.file) {
+      try {
+        const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+          folder: `monthly-payments/${payment.jobId}/${payment.year}/${payment.month}`,
+          resource_type: "auto",
+          timeout: 60000,
+        });
+
+        fileUrl = uploadResult.secure_url;
+        fileName = req.file.originalname;
+
+        // Clean up temp file
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.error(`Error deleting temp file ${req.file.path}:`, err);
+        });
+      } catch (uploadError) {
+        console.error(`Error uploading file:`, uploadError);
+        // Continue without file if upload fails
+        const filename = path.basename(req.file.path);
+        fileUrl = `/files/${filename}`;
+        fileName = req.file.originalname;
+      }
+    }
+
+    // Create new invoice object
+    const newInvoice = {
+      invoiceDate: invoiceDate || new Date(),
+      description: description || "New Invoice",
+      amount: amount ? parseFloat(amount) : 0,
+      option: option || "",
+      paymentMethod: paymentMethod || "Bank Transfer",
+      fileUrl,
+      fileName,
+    };
+
+    // Add the new invoice
+    payment.invoices.push(newInvoice);
+
+    // Update the payment record's updatedBy field
+    payment.updatedBy = req.user._id;
+
+    const updatedPayment = await payment.save();
+
+    // Create notification for new invoice
+    await notificationService.createNotification(
+      {
+        title: "New Payment Invoice Added",
+        description: `A new invoice has been added to ${payment.monthName} ${payment.year} payment record.`,
+        type: "payment",
+        relatedTo: { model: "MonthlyPayment", id: payment._id },
+      },
+      { "role.permissions.operationManagement": true }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Invoice added successfully",
+      payment: updatedPayment,
+      newInvoice: payment.invoices[payment.invoices.length - 1],
+    });
+  } catch (error) {
+    console.error("Error adding payment invoice:", error);
+    res.status(500).json({
+      message: "Failed to add payment invoice",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * Delete a specific invoice from a payment record
+ */
+const deletePaymentInvoice = asyncHandler(async (req, res) => {
+  const { paymentId, invoiceId } = req.params;
+
+  try {
+    console.log(`Deleting invoice ${invoiceId} from payment ${paymentId}`);
+
+    // Find the payment record
+    const payment = await MonthlyPayment.findById(paymentId);
+    if (!payment) {
+      res.status(404);
+      throw new Error("Payment record not found");
+    }
+
+    // Find the specific invoice
+    const invoiceIndex = payment.invoices.findIndex(
+      (invoice) => invoice._id.toString() === invoiceId
+    );
+
+    if (invoiceIndex === -1) {
+      res.status(404);
+      throw new Error("Invoice not found");
+    }
+
+    // Remove the invoice
+    const deletedInvoice = payment.invoices[invoiceIndex];
+    payment.invoices.splice(invoiceIndex, 1);
+
+    // Update the payment record's updatedBy field
+    payment.updatedBy = req.user._id;
+
+    const updatedPayment = await payment.save();
+
+    // Create notification for invoice deletion
+    await notificationService.createNotification(
+      {
+        title: "Payment Invoice Deleted",
+        description: `An invoice has been deleted from ${payment.monthName} ${payment.year} payment record.`,
+        type: "payment",
+        relatedTo: { model: "MonthlyPayment", id: payment._id },
+      },
+      { "role.permissions.operationManagement": true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Invoice deleted successfully",
+      payment: updatedPayment,
+      deletedInvoice,
+    });
+  } catch (error) {
+    console.error("Error deleting payment invoice:", error);
+    res.status(500).json({
+      message: "Failed to delete payment invoice",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = {
   getDashboardStats,
   createUpdatePaymentRecord,
   updatePaymentStatus,
   getPaymentReports,
   uploadInvoiceDocument,
+  updatePaymentInvoice,
+  addPaymentInvoice,
+  deletePaymentInvoice,
 };

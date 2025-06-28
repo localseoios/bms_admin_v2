@@ -1,4 +1,4 @@
-// utils/accountService.js
+// utils/accountService.js - Fixed with correct routes
 import axiosInstance from "./axios";
 
 // Service for handling Account Management functionality
@@ -263,6 +263,115 @@ const accountService = {
       return response.data;
     } catch (error) {
       console.error(`Error updating payment status for ${paymentId}:`, error);
+      throw error.response?.data || error.message;
+    }
+  },
+
+  // Update a specific invoice within a payment record
+  updatePaymentInvoice: async (paymentId, invoiceId, invoiceData, file = null) => {
+    try {
+      console.log(`Updating invoice ${invoiceId} in payment ${paymentId}`, invoiceData);
+      
+      // Validate paymentId and invoiceId
+      if (!paymentId || paymentId === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
+      if (!invoiceId || invoiceId === 'undefined') {
+        throw new Error('Invalid invoice ID');
+      }
+
+      const formData = new FormData();
+      
+      // Add invoice data
+      if (invoiceData.invoiceDate) formData.append("invoiceDate", invoiceData.invoiceDate);
+      if (invoiceData.description) formData.append("description", invoiceData.description);
+      if (invoiceData.amount) formData.append("amount", invoiceData.amount.toString());
+      if (invoiceData.option) formData.append("option", invoiceData.option);
+      if (invoiceData.paymentMethod) formData.append("paymentMethod", invoiceData.paymentMethod);
+      
+      // Add file if present
+      if (file) {
+        formData.append("invoiceFile", file);
+      }
+
+      const response = await axiosInstance.put(
+        `/account/payments/${paymentId}/invoices/${invoiceId}`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("Error updating payment invoice:", error);
+      throw error.response?.data || error.message;
+    }
+  },
+
+  // Add a new invoice to an existing payment record
+  addPaymentInvoice: async (paymentId, invoiceData, file = null) => {
+    try {
+      console.log(`Adding new invoice to payment ${paymentId}`, invoiceData);
+      
+      // Validate paymentId
+      if (!paymentId || paymentId === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
+
+      const formData = new FormData();
+      
+      // Add invoice data
+      if (invoiceData.invoiceDate) formData.append("invoiceDate", invoiceData.invoiceDate);
+      if (invoiceData.description) formData.append("description", invoiceData.description);
+      if (invoiceData.amount) formData.append("amount", invoiceData.amount.toString());
+      if (invoiceData.option) formData.append("option", invoiceData.option);
+      if (invoiceData.paymentMethod) formData.append("paymentMethod", invoiceData.paymentMethod);
+      
+      // Add file if present
+      if (file) {
+        formData.append("invoiceFile", file);
+      }
+
+      const response = await axiosInstance.post(
+        `/account/payments/${paymentId}/invoices`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("Error adding payment invoice:", error);
+      throw error.response?.data || error.message;
+    }
+  },
+
+  // Delete a specific invoice from a payment record
+  deletePaymentInvoice: async (paymentId, invoiceId) => {
+    try {
+      console.log(`Deleting invoice ${invoiceId} from payment ${paymentId}`);
+      
+      // Validate paymentId and invoiceId
+      if (!paymentId || paymentId === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
+      if (!invoiceId || invoiceId === 'undefined') {
+        throw new Error('Invalid invoice ID');
+      }
+
+      const response = await axiosInstance.delete(
+        `/account/payments/${paymentId}/invoices/${invoiceId}`
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("Error deleting payment invoice:", error);
       throw error.response?.data || error.message;
     }
   },

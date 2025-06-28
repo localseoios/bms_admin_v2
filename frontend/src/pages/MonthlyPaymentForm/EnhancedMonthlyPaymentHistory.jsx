@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { format } from "date-fns";
+import axiosInstance from "../../utils/axios";
+import InvoiceEditModal from "./FixedInvoiceEditModal";
 import {
   CalendarIcon,
   DocumentTextIcon,
@@ -12,8 +15,13 @@ import {
   DocumentPlusIcon,
   ArrowPathIcon,
   EyeIcon,
-  ArrowPathIcon as RefreshIcon,
+  PencilSquareIcon,
+  PlusIcon,
   InformationCircleIcon,
+  CurrencyDollarIcon,
+  CreditCardIcon,
+  BuildingLibraryIcon,
+  BanknotesIcon,
 } from "@heroicons/react/24/outline";
 import accountService from "../../utils/accountService";
 import { toast } from "react-toastify";
@@ -24,6 +32,12 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
   const [error, setError] = useState(null);
   const [expandedPayment, setExpandedPayment] = useState(null);
   const [selectedYear, setSelectedYear] = useState("All Years");
+  
+  // Invoice edit modal states
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [selectedPaymentId, setSelectedPaymentId] = useState(null);
+  const [modalMode, setModalMode] = useState("edit"); // "edit", "add", "view"
 
   useEffect(() => {
     fetchPaymentHistory();
@@ -51,6 +65,85 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
     } else {
       setExpandedPayment(paymentId);
     }
+  };
+
+  // Fixed invoice modal handlers with proper validation
+  const handleEditInvoice = (paymentId, invoice) => {
+    console.log("handleEditInvoice called with:", { paymentId, invoice });
+    
+    // Validate paymentId
+    if (!paymentId || paymentId === 'undefined') {
+      toast.error('Invalid payment ID. Please refresh the page and try again.');
+      return;
+    }
+    
+    if (!invoice || !invoice._id) {
+      toast.error('Invalid invoice data. Please refresh the page and try again.');
+      return;
+    }
+    
+    setSelectedPaymentId(paymentId);
+    setSelectedInvoice(invoice);
+    setModalMode("edit");
+    setEditModalOpen(true);
+  };
+
+  const handleViewInvoice = (paymentId, invoice) => {
+    console.log("handleViewInvoice called with:", { paymentId, invoice });
+    
+    // Validate paymentId
+    if (!paymentId || paymentId === 'undefined') {
+      toast.error('Invalid payment ID. Please refresh the page and try again.');
+      return;
+    }
+    
+    if (!invoice) {
+      toast.error('Invalid invoice data. Please refresh the page and try again.');
+      return;
+    }
+    
+    setSelectedPaymentId(paymentId);
+    setSelectedInvoice(invoice);
+    setModalMode("view");
+    setEditModalOpen(true);
+  };
+
+  const handleAddInvoice = (paymentId) => {
+    console.log("handleAddInvoice called with paymentId:", paymentId);
+    
+    // Validate paymentId
+    if (!paymentId || paymentId === 'undefined') {
+      toast.error('Invalid payment ID. Please refresh the page and try again.');
+      return;
+    }
+    
+    setSelectedPaymentId(paymentId);
+    setSelectedInvoice(null);
+    setModalMode("add");
+    setEditModalOpen(true);
+  };
+
+  const handleModalSuccess = (data) => {
+    console.log("Invoice operation successful:", data);
+    // Refresh the payment history
+    fetchPaymentHistory();
+    
+    // Show appropriate success message
+    let message = "Operation completed successfully";
+    if (modalMode === "add") {
+      message = "Invoice added successfully";
+    } else if (modalMode === "edit") {
+      message = "Invoice updated successfully";
+    }
+    
+    toast.success(message);
+  };
+
+  const handleModalClose = () => {
+    setEditModalOpen(false);
+    setSelectedInvoice(null);
+    setSelectedPaymentId(null);
+    setModalMode("edit");
   };
 
   const formatCurrency = (amount) => {
@@ -83,6 +176,21 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
         return (
           <DocumentIcon className="h-5 w-5 text-gray-500 mr-1.5 flex-shrink-0" />
         );
+    }
+  };
+
+  const getPaymentMethodIcon = (method) => {
+    switch (method) {
+      case "Bank Transfer":
+        return <BuildingLibraryIcon className="h-4 w-4" />;
+      case "Cash":
+        return <BanknotesIcon className="h-4 w-4" />;
+      case "Credit Card":
+        return <CreditCardIcon className="h-4 w-4" />;
+      case "Document Only":
+        return <DocumentIcon className="h-4 w-4" />;
+      default:
+        return <CurrencyDollarIcon className="h-4 w-4" />;
     }
   };
 
@@ -218,7 +326,7 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
         <InformationCircleIcon className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" />
         <p>
           Click on a month row to expand and view detailed invoice information.
-          You can upload one invoice document per month in the payment history.
+          You can edit, view, or add new invoices to each payment record.
         </p>
       </div>
 
@@ -231,22 +339,26 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
           })
           .map((payment) => {
             const hasInvoice = hasInvoiceDocument(payment);
+            const { payment: paymentInvoices, document: documentInvoices } = categorizeInvoices(payment.invoices);
+            // Get the correct payment ID (handle both _id and id)
+            const paymentId = payment._id || payment.id;
+            
             return (
               <div
-                key={payment.id}
+                key={paymentId}
                 className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow"
               >
                 {/* Payment header */}
                 <div
                   className={`px-4 py-3 flex justify-between items-center ${
-                    expandedPayment === payment.id
+                    expandedPayment === paymentId
                       ? "bg-blue-50 border-b border-gray-200"
                       : ""
                   }`}
                 >
                   <div
                     className="flex items-center cursor-pointer flex-1"
-                    onClick={() => handleToggleExpand(payment.id)}
+                    onClick={() => handleToggleExpand(paymentId)}
                   >
                     <div
                       className={`mr-3 p-2 rounded-full ${
@@ -264,7 +376,7 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
                         {payment.monthName} {payment.year}
                       </h4>
                       <p className="text-sm text-gray-500">
-                        {formatCurrency(payment.totalAmount)} •{" "}
+                        {payment.invoices?.length || 0} invoices • {formatCurrency(payment.totalAmount)} •{" "}
                         <span
                           className={`${
                             payment.status === "Paid"
@@ -284,42 +396,60 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center">
-                    {/* Upload invoice button for each month */}
+                  <div className="flex items-center space-x-2">
+                    {/* Add New Invoice Button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleInvoiceAction(payment);
+                        console.log("Add Invoice button clicked, paymentId:", paymentId);
+                        handleAddInvoice(paymentId);
                       }}
-                      className={`ml-2 mr-3 inline-flex items-center px-3 py-1.5 border border-blue-600 text-xs font-medium rounded text-blue-600 bg-white hover:bg-blue-50 transition-colors
+                      className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-600 hover:text-white hover:bg-green-600 bg-green-50 rounded-lg border border-green-200 hover:shadow-md transition-all duration-200"
+                    >
+                      <PlusIcon className="h-4 w-4 mr-1" />
+                      Add Invoice
+                    </button>
+
+                    {/* Upload document button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const paymentRecord = {
+                          ...payment,
+                          _id: paymentId // Ensure _id is available
+                        };
+                        console.log("Upload Document button clicked, payment:", paymentRecord);
+                        handleInvoiceAction(paymentRecord);
+                      }}
+                      className={`inline-flex items-center px-3 py-1.5 border text-xs font-medium rounded bg-white transition-colors
                         ${
                           hasInvoice
                             ? "border-yellow-600 text-yellow-600 hover:bg-yellow-50"
-                            : ""
+                            : "border-blue-600 text-blue-600 hover:bg-blue-50"
                         }`}
                       title={`${
                         hasInvoice ? "Replace" : "Upload"
-                      } invoice for ${payment.monthName} ${payment.year}`}
+                      } invoice document for ${payment.monthName} ${payment.year}`}
                     >
                       {hasInvoice ? (
                         <>
-                          <RefreshIcon className="h-4 w-4 mr-1" />
-                          Replace Invoice
+                          <ArrowPathIcon className="h-4 w-4 mr-1" />
+                          Replace Document
                         </>
                       ) : (
                         <>
                           <DocumentPlusIcon className="h-4 w-4 mr-1" />
-                          Upload Invoice
+                          Upload Document
                         </>
                       )}
                     </button>
 
                     {/* Expand/collapse button */}
                     <button
-                      onClick={() => handleToggleExpand(payment.id)}
+                      onClick={() => handleToggleExpand(paymentId)}
                       className="p-1 text-gray-500 hover:text-gray-700"
                     >
-                      {expandedPayment === payment.id ? (
+                      {expandedPayment === paymentId ? (
                         <ChevronUpIcon className="h-5 w-5" />
                       ) : (
                         <ChevronDownIcon className="h-5 w-5" />
@@ -329,7 +459,7 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
                 </div>
 
                 {/* Expanded payment details */}
-                {expandedPayment === payment.id && (
+                {expandedPayment === paymentId && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
@@ -366,198 +496,220 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
                       )}
                     </div>
 
-                    {/* Invoices */}
+                    {/* Invoices Section */}
                     <div className="mb-4">
-                      <div className="flex justify-between items-center mb-2">
+                      <div className="flex justify-between items-center mb-4">
                         <h5 className="text-sm font-medium text-gray-700 flex items-center">
                           <DocumentIcon className="h-4 w-4 mr-1 text-blue-600" />
                           Invoices for {payment.monthName} {payment.year}
                         </h5>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleInvoiceAction(payment);
-                          }}
-                          className={`inline-flex items-center px-3 py-1.5 border text-xs font-medium rounded bg-white transition-colors
-                            ${
-                              hasInvoice
-                                ? "border-yellow-600 text-yellow-600 hover:bg-yellow-50"
-                                : "border-blue-600 text-blue-600 hover:bg-blue-50"
-                            }`}
+                          onClick={() => handleAddInvoice(paymentId)}
+                          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-600 hover:text-white hover:bg-green-600 bg-green-50 rounded-lg border border-green-200 hover:shadow-md transition-all duration-200"
                         >
-                          {hasInvoice ? (
-                            <>
-                              <RefreshIcon className="h-4 w-4 mr-1" />
-                              Replace Invoice
-                            </>
-                          ) : (
-                            <>
-                              <DocumentPlusIcon className="h-4 w-4 mr-1" />
-                              Upload Invoice
-                            </>
-                          )}
+                          <PlusIcon className="h-4 w-4 mr-1" />
+                          Add New Invoice
                         </button>
                       </div>
 
                       {payment.invoices && payment.invoices.length > 0 ? (
                         <div className="space-y-4">
                           {/* Payment Invoices Section */}
-                          {(() => {
-                            const {
-                              payment: paymentInvoices,
-                              document: documentInvoices,
-                            } = categorizeInvoices(payment.invoices);
-
-                            return (
-                              <>
-                                {paymentInvoices.length > 0 && (
-                                  <div>
-                                    <h6 className="text-xs font-medium text-gray-600 mb-2">
-                                      Payment Invoices
-                                    </h6>
-                                    <div className="space-y-2">
-                                      {paymentInvoices.map((invoice, index) => (
-                                        <div
-                                          key={`payment-${index}`}
-                                          className={`p-3 rounded-lg border ${
-                                            invoice.isIncorrectInvoice
-                                              ? "border-red-200 bg-red-50"
-                                              : "border-gray-200 bg-white"
-                                          }`}
-                                        >
-                                          <div className="flex justify-between items-start">
+                          {paymentInvoices.length > 0 && (
+                            <div>
+                              <h6 className="text-xs font-medium text-gray-600 mb-3 flex items-center">
+                                <CurrencyDollarIcon className="h-4 w-4 mr-1" />
+                                Payment Invoices ({paymentInvoices.length})
+                              </h6>
+                              <div className="space-y-3">
+                                {paymentInvoices.map((invoice, index) => (
+                                  <motion.div
+                                    key={`payment-${invoice._id || index}`}
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ duration: 0.3, delay: index * 0.1 }}
+                                    className={`p-4 rounded-lg border hover:shadow-md transition-all duration-200 ${
+                                      invoice.isIncorrectInvoice
+                                        ? "border-red-200 bg-red-50"
+                                        : "border-gray-200 bg-white"
+                                    }`}
+                                  >
+                                    <div className="flex justify-between items-start">
+                                      <div className="flex-1">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center space-x-2">
+                                            <div className="bg-blue-100 rounded-lg p-1.5">
+                                              <DocumentTextIcon className="h-4 w-4 text-blue-600" />
+                                            </div>
                                             <div>
-                                              <p className="text-sm font-medium">
-                                                {invoice.description}
+                                              <h5 className="font-medium text-gray-900">
+                                                {invoice.description || `Invoice ${index + 1}`}
                                                 {invoice.isIncorrectInvoice && (
                                                   <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
                                                     Marked Incorrect
                                                   </span>
                                                 )}
+                                              </h5>
+                                              <p className="text-sm text-gray-500">
+                                                {formatDate(invoice.invoiceDate)} • {formatCurrency(invoice.amount)}
                                               </p>
-                                              <p className="text-xs text-gray-500">
-                                                {formatDate(
-                                                  invoice.invoiceDate
-                                                )}{" "}
-                                                •{" "}
-                                                {formatCurrency(invoice.amount)}{" "}
-                                                • {invoice.paymentMethod}
-                                              </p>
-                                              {invoice.incorrectReason && (
-                                                <p className="text-xs italic text-red-600 mt-1">
-                                                  Reason:{" "}
-                                                  {invoice.incorrectReason}
-                                                </p>
-                                              )}
-                                            </div>
-                                            <div>
-                                              {invoice.fileUrl ? (
-                                                <a
-                                                  href={invoice.fileUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
-                                                >
-                                                  <EyeIcon className="h-4 w-4 mr-1" />
-                                                  View
-                                                </a>
-                                              ) : (
-                                                <span className="text-gray-400 text-sm">
-                                                  No file
-                                                </span>
-                                              )}
                                             </div>
                                           </div>
+                                          <div className="text-right">
+                                            <span className="text-lg font-semibold text-gray-900">
+                                              {formatCurrency(invoice.amount)}
+                                            </span>
+                                          </div>
                                         </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
 
-                                {/* Document-Only Invoices Section - Limited to just one */}
-                                {documentInvoices.length > 0 && (
-                                  <div className="mt-4">
-                                    <h6 className="text-xs font-medium text-gray-600 mb-2">
-                                      Invoice Document
-                                    </h6>
-                                    <div>
-                                      {/* Show only the first document */}
-                                      <div
-                                        className={`p-3 rounded-lg border ${
-                                          documentInvoices[0].isIncorrectInvoice
-                                            ? "border-red-200 bg-red-50"
-                                            : "border-blue-100 bg-blue-50"
-                                        }`}
-                                      >
-                                        <div className="flex justify-between items-start">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                                          <div className="flex items-center space-x-2">
+                                            {getPaymentMethodIcon(invoice.paymentMethod)}
+                                            <span className="text-sm text-gray-600">
+                                              {invoice.paymentMethod || "Not specified"}
+                                            </span>
+                                          </div>
+                                          
+                                          {invoice.option && (
+                                            <div className="flex items-center space-x-2">
+                                              <span className="text-sm text-gray-500">Option:</span>
+                                              <span className="text-sm text-gray-700">{invoice.option}</span>
+                                            </div>
+                                          )}
+
+                                          {invoice.fileName && (
+                                            <div className="flex items-center space-x-2">
+                                              <DocumentIcon className="h-4 w-4 text-gray-400" />
+                                              <a
+                                                href={invoice.fileUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-sm text-blue-600 hover:text-blue-800 truncate"
+                                              >
+                                                {invoice.fileName}
+                                              </a>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {invoice.incorrectReason && (
+                                          <p className="text-sm italic text-red-600 mt-2 p-2 bg-red-50 rounded">
+                                            Reason: {invoice.incorrectReason}
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      {/* Action Buttons */}
+                                      <div className="flex flex-col space-y-2 ml-4">
+                                        <button
+                                          onClick={() => handleViewInvoice(paymentId, invoice)}
+                                          className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded border border-gray-200 hover:border-blue-200 transition-all duration-200"
+                                        >
+                                          <EyeIcon className="h-3 w-3 mr-1" />
+                                          View
+                                        </button>
+                                        <button
+                                          onClick={() => handleEditInvoice(paymentId, invoice)}
+                                          className="inline-flex items-center px-2 py-1 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded border border-indigo-200 transition-all duration-200"
+                                        >
+                                          <PencilSquareIcon className="h-3 w-3 mr-1" />
+                                          Edit
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Document-Only Invoices Section */}
+                          {documentInvoices.length > 0 && (
+                            <div className="mt-6">
+                              <h6 className="text-xs font-medium text-gray-600 mb-3 flex items-center">
+                                <DocumentIcon className="h-4 w-4 mr-1" />
+                                Supporting Documents ({documentInvoices.length})
+                              </h6>
+                              <div className="space-y-3">
+                                {documentInvoices.map((invoice, index) => (
+                                  <div
+                                    key={`document-${invoice._id || index}`}
+                                    className={`p-4 rounded-lg border ${
+                                      invoice.isIncorrectInvoice
+                                        ? "border-red-200 bg-red-50"
+                                        : "border-blue-100 bg-blue-50"
+                                    }`}
+                                  >
+                                    <div className="flex justify-between items-start">
+                                      <div className="flex-1">
+                                        <div className="flex items-center space-x-2 mb-2">
+                                          <div className="bg-blue-100 rounded-lg p-1.5">
+                                            <DocumentIcon className="h-4 w-4 text-blue-600" />
+                                          </div>
                                           <div>
-                                            <p className="text-sm font-medium">
-                                              {documentInvoices[0].description}
-                                              {documentInvoices[0]
-                                                .isIncorrectInvoice && (
+                                            <h5 className="font-medium text-gray-900">
+                                              {invoice.description}
+                                              {invoice.isIncorrectInvoice && (
                                                 <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
                                                   Marked Incorrect
                                                 </span>
                                               )}
+                                            </h5>
+                                            <p className="text-sm text-gray-500">
+                                              {formatDate(invoice.invoiceDate)} • Supporting Document
                                             </p>
-                                            <p className="text-xs text-gray-500">
-                                              {formatDate(
-                                                documentInvoices[0].invoiceDate
-                                              )}{" "}
-                                              • Supporting Document
-                                            </p>
-                                            {documentInvoices[0]
-                                              .incorrectReason && (
-                                              <p className="text-xs italic text-red-600 mt-1">
-                                                Reason:{" "}
-                                                {
-                                                  documentInvoices[0]
-                                                    .incorrectReason
-                                                }
-                                              </p>
-                                            )}
-                                          </div>
-                                          <div>
-                                            {documentInvoices[0].fileUrl ? (
-                                              <a
-                                                href={
-                                                  documentInvoices[0].fileUrl
-                                                }
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
-                                              >
-                                                <EyeIcon className="h-4 w-4 mr-1" />
-                                                View
-                                              </a>
-                                            ) : (
-                                              <span className="text-gray-400 text-sm">
-                                                No file
-                                              </span>
-                                            )}
                                           </div>
                                         </div>
+                                        
+                                        {invoice.incorrectReason && (
+                                          <p className="text-sm italic text-red-600 mt-2 p-2 bg-red-50 rounded">
+                                            Reason: {invoice.incorrectReason}
+                                          </p>
+                                        )}
+                                      </div>
+                                      
+                                      <div className="flex space-x-2">
+                                        {invoice.fileUrl && (
+                                          <a
+                                            href={invoice.fileUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 bg-white rounded border border-blue-200 hover:border-blue-300 transition-all duration-200"
+                                          >
+                                            <EyeIcon className="h-3 w-3 mr-1" />
+                                            View
+                                          </a>
+                                        )}
+                                        <button
+                                          onClick={() => handleEditInvoice(paymentId, invoice)}
+                                          className="inline-flex items-center px-2 py-1 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded border border-indigo-200 transition-all duration-200"
+                                        >
+                                          <PencilSquareIcon className="h-3 w-3 mr-1" />
+                                          Edit
+                                        </button>
                                       </div>
                                     </div>
                                   </div>
-                                )}
-                              </>
-                            );
-                          })()}
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
-                        <div className="bg-blue-50 rounded-lg p-3 flex items-center justify-between">
-                          <p className="text-sm text-blue-600">
-                            No invoices attached to this payment record
+                        <div className="bg-blue-50 rounded-lg p-6 text-center">
+                          <DocumentTextIcon className="h-10 w-10 text-blue-400 mx-auto mb-3" />
+                          <h4 className="text-sm font-medium text-blue-800 mb-2">
+                            No Invoices Yet
+                          </h4>
+                          <p className="text-sm text-blue-600 mb-4">
+                            No invoices have been added to this payment record yet.
                           </p>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleInvoiceAction(payment);
-                            }}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            onClick={() => handleAddInvoice(paymentId)}
+                            className="inline-flex items-center px-4 py-2 text-sm font-medium text-green-600 hover:text-white hover:bg-green-600 bg-green-50 rounded-lg border border-green-200 hover:shadow-md transition-all duration-200"
                           >
-                            Upload Now
+                            <PlusIcon className="h-4 w-4 mr-2" />
+                            Add First Invoice
                           </button>
                         </div>
                       )}
@@ -568,6 +720,16 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
             );
           })}
       </div>
+
+      {/* Invoice Edit Modal */}
+      <InvoiceEditModal
+        isOpen={editModalOpen}
+        onClose={handleModalClose}
+        invoice={selectedInvoice}
+        paymentId={selectedPaymentId}
+        onSuccess={handleModalSuccess}
+        mode={modalMode}
+      />
     </div>
   );
 };

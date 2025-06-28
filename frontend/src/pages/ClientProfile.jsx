@@ -40,10 +40,12 @@ import {
   ClipboardIcon,
   DocumentArrowDownIcon,
   FolderOpenIcon,
+  PlusIcon,
 } from "@heroicons/react/24/outline";
 import MonthlyPaymentForm from "./MonthlyPaymentForm/MonthlyPaymentForm";
 import EnhancedMonthlyPaymentHistory from "./MonthlyPaymentForm/EnhancedMonthlyPaymentHistory";
 import AccountManagementSection from "./AccountManagement/AccountManagementSection";
+import { toast } from "react-toastify";
 
 function ClientProfile() {
   const { gmail } = useParams();
@@ -322,6 +324,118 @@ function ClientProfile() {
       setLoadingKycStatuses((prev) => ({ ...prev, [jobId]: false }));
     }
   };
+
+// Add this updated handleUploadInvoice function to your ClientProfile.jsx
+// Replace the existing handleUploadInvoice function with this one:
+
+const handleUploadInvoice = async (payment, isReplacing = false) => {
+  try {
+    console.log("handleUploadInvoice called with:", { payment, isReplacing });
+    
+    // Validate payment object and ID
+    if (!payment || (!payment._id && !payment.id)) {
+      toast.error('Invalid payment record. Please refresh the page and try again.');
+      return;
+    }
+
+    // Use _id as primary, fall back to id if _id doesn't exist
+    const paymentId = payment._id || payment.id;
+    
+    if (!paymentId || paymentId === 'undefined') {
+      toast.error('Payment ID is missing. Please refresh the page and try again.');
+      return;
+    }
+
+    console.log("Using paymentId:", paymentId);
+
+    // Create a file input element
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
+    
+    fileInput.onchange = async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // Validate file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size must be less than 5MB');
+        return;
+      }
+
+      try {
+        // Create FormData for upload
+        const formData = new FormData();
+        formData.append('paymentId', paymentId);
+        formData.append('invoiceFile', file);
+        formData.append('replaceExisting', isReplacing.toString());
+        formData.append('description', `Supporting Document - ${payment.monthName} ${payment.year}`);
+        formData.append('invoiceDate', new Date().toISOString().split('T')[0]);
+        formData.append('paymentMethod', 'Document Only'); // Use proper enum value
+        formData.append('amount', '0'); // Required field for schema
+        formData.append('option', 'DOCUMENT_ONLY'); // Special flag
+
+        // Debug logging
+        console.log("FormData being sent:");
+        for (let [key, value] of formData.entries()) {
+          console.log(key, value);
+        }
+
+        // Show loading state
+        const loadingToast = toast.loading(
+          isReplacing ? 'Replacing document...' : 'Uploading document...'
+        );
+
+        // Use the account service for consistency
+        const response = await accountService.uploadInvoiceDocument(formData);
+
+        // Dismiss loading toast
+        toast.dismiss(loadingToast);
+
+        console.log("Upload response:", response);
+
+        if (response.success) {
+          toast.success(
+            isReplacing 
+              ? 'Document replaced successfully!' 
+              : 'Document uploaded successfully!'
+          );
+          
+          // Trigger a refresh in the EnhancedMonthlyPaymentHistory component
+          // The component will handle its own refresh through the modal success callback
+        } else {
+          toast.error(response.message || 'Upload failed. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error uploading document:', error);
+        
+        // Enhanced error handling
+        let errorMessage = 'Failed to upload document';
+        
+        if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        // Show specific error messages for common issues
+        if (errorMessage.includes('API route not found')) {
+          errorMessage = 'Server route not found. Please contact support.';
+        } else if (errorMessage.includes('undefined')) {
+          errorMessage = 'Invalid payment ID. Please refresh the page and try again.';
+        }
+        
+        toast.error(errorMessage);
+      }
+    };
+
+    // Trigger file selection dialog
+    fileInput.click();
+  } catch (error) {
+    console.error('Error in handleUploadInvoice:', error);
+    toast.error('Failed to initiate upload');
+  }
+};
 
   // Add this function alongside the fetchKycStatus function:
   const fetchBraStatus = async (jobId) => {
@@ -3480,104 +3594,170 @@ function ClientProfile() {
                       </div>
 
                       {/* Monthly Payment Records Section */}
-                      <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.6 }}
-                        className="mt-6"
-                      >
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-base font-medium text-gray-900 flex items-center">
-                            <CalendarIcon className="h-5 w-5 mr-2 text-blue-600" />
-                            Monthly Payment Records
-                          </h4>
-                        </div>
+<motion.div
+  initial={{ y: 20, opacity: 0 }}
+  animate={{ y: 0, opacity: 1 }}
+  transition={{ delay: 0.6 }}
+  className="mt-6"
+>
+  <div className="flex items-center justify-between mb-4">
+    <h4 className="text-base font-medium text-gray-900 flex items-center">
+      <CalendarIcon className="h-5 w-5 mr-2 text-blue-600" />
+      Monthly Payment Records
+    </h4>
+    <div className="flex items-center space-x-2">
+      {/* Quick Stats */}
+      <div className="bg-blue-50 px-3 py-1 rounded-lg">
+        <span className="text-xs text-blue-700 font-medium">
+          Payment Management
+        </span>
+      </div>
+    </div>
+  </div>
 
-                        {/* Tabbed Navigation */}
-                        <div className="border-b border-gray-200 mb-4">
-                          <nav className="flex space-x-8" aria-label="Tabs">
-                            <button
-                              onClick={() =>
-                                setActivePaymentTab(job._id, "add")
-                              }
-                              className={`${
-                                activePaymentTabs[job._id] === "add" ||
-                                !activePaymentTabs[job._id]
-                                  ? "border-blue-500 text-blue-600"
-                                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                            >
-                              Add New Month
-                            </button>
-                            <button
-                              onClick={() =>
-                                setActivePaymentTab(job._id, "history")
-                              }
-                              className={`${
-                                activePaymentTabs[job._id] === "history"
-                                  ? "border-blue-500 text-blue-600"
-                                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                            >
-                              View History
-                            </button>
-                          </nav>
-                        </div>
+{/* Tabbed Navigation */}
+  <div className="border-b border-gray-200 mb-4">
+    <nav className="flex space-x-8" aria-label="Tabs">
+      <button
+        onClick={() => setActivePaymentTab(job._id, "add")}
+        className={`${
+          activePaymentTabs[job._id] === "add" ||
+          !activePaymentTabs[job._id]
+            ? "border-blue-500 text-blue-600"
+            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
+      >
+        <PlusIcon className="h-4 w-4 mr-2" />
+        Add New Month
+      </button>
+      <button
+        onClick={() => setActivePaymentTab(job._id, "history")}
+        className={`${
+          activePaymentTabs[job._id] === "history"
+            ? "border-blue-500 text-blue-600"
+            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
+      >
+        <DocumentTextIcon className="h-4 w-4 mr-2" />
+        View & Manage History
+      </button>
+    </nav>
+  </div>
 
-                        {/* Add New Month View */}
-                        {(!activePaymentTabs[job._id] ||
-                          activePaymentTabs[job._id] === "add") && (
-                          <div>
-                            {/* Add new month button styled to match the mockup */}
-                            <div className="mb-4">
-                              <button
-                                onClick={() =>
-                                  setIsAddNewMonthOpen((prev) => ({
-                                    ...prev,
-                                    [job._id]: true,
-                                  }))
-                                }
-                                className="w-full sm:w-auto px-6 py-3 text-white bg-green-500 hover:bg-green-600 rounded-lg flex items-center justify-center transition-colors duration-200 shadow-sm"
-                              >
-                                <span className="font-medium">
-                                  Add new month
-                                </span>
-                              </button>
-                            </div>
+{/* Add New Month View */}
+  {(!activePaymentTabs[job._id] ||
+    activePaymentTabs[job._id] === "add") && (
+    <div>
+      <div className="mb-4">
+        <button
+          onClick={() =>
+            setIsAddNewMonthOpen((prev) => ({
+              ...prev,
+              [job._id]: true,
+            }))
+          }
+          className="w-full sm:w-auto px-6 py-3 text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg"
+        >
+          <PlusIcon className="h-5 w-5 mr-2" />
+          <span className="font-medium">Add New Monthly Payment</span>
+        </button>
+        
+        {/* Information Box */}
+        <div className="mt-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+          <div className="flex items-start">
+            <InformationCircleIcon className="h-5 w-5 text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
+            <div>
+              <h4 className="text-sm font-medium text-blue-800 mb-1">
+                Payment Record Management
+              </h4>
+              <p className="text-sm text-blue-700">
+                Add monthly payment records with multiple invoices. Each record can contain
+                payment invoices and supporting documents. You can edit, add, or delete 
+                individual invoices after creating the monthly record.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-                            {/* Conditionally render the MonthlyPaymentForm component if open for this job */}
-                            {isAddNewMonthOpen &&
-                              isAddNewMonthOpen[job._id] && (
-                                <MonthlyPaymentForm
-                                  jobId={job._id}
-                                  jobType={job.serviceType}
-                                  onClose={() =>
-                                    setIsAddNewMonthOpen((prev) => ({
-                                      ...prev,
-                                      [job._id]: false,
-                                    }))
-                                  }
-                                  onSuccess={() => {
-                                    // Refresh data or update UI as needed after successful submission
-                                    if (
-                                      activePaymentTabs[job._id] !== "history"
-                                    ) {
-                                      setActivePaymentTab(job._id, "history");
-                                    }
-                                  }}
-                                />
-                              )}
-                          </div>
-                        )}
+      {isAddNewMonthOpen && isAddNewMonthOpen[job._id] && (
+        <MonthlyPaymentForm
+          jobId={job._id}
+          jobType={job.serviceType}
+          onClose={() =>
+            setIsAddNewMonthOpen((prev) => ({
+              ...prev,
+              [job._id]: false,
+            }))
+          }
+          onSuccess={() => {
+            setIsAddNewMonthOpen((prev) => ({
+              ...prev,
+              [job._id]: false,
+            }));
+            // Switch to history tab after successful creation
+            setActivePaymentTab(job._id, "history");
+            // Show success message
+            toast.success("Monthly payment record created successfully!");
+          }}
+        />
+      )}
+    </div>
+  )}
 
-                        {/* History View */}
-                        {activePaymentTabs[job._id] === "history" && (
-                          <EnhancedMonthlyPaymentHistory
-                            jobId={job._id}
-                            jobType={job.serviceType}
-                          />
-                        )}
-                      </motion.div>
+{/* History View with Enhanced Invoice Management */}
+  {activePaymentTabs[job._id] === "history" && (
+    <div>
+      {/* Management Instructions */}
+      <div className="mb-6 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-4">
+        <div className="flex items-start">
+          <SparklesIcon className="h-5 w-5 text-indigo-500 mt-0.5 mr-3 flex-shrink-0" />
+          <div>
+            <h4 className="text-sm font-medium text-indigo-800 mb-2">
+              Invoice Management Features
+            </h4>
+            <ul className="text-sm text-indigo-700 space-y-1">
+              <li className="flex items-center">
+                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                <strong>Edit Invoices:</strong> Click the "Edit" button on any invoice to modify details
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                <strong>Add Invoices:</strong> Use "Add Invoice" to add new invoices to existing months
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                <strong>Upload Documents:</strong> Use "Upload Document" for supporting files
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                <strong>View Details:</strong> Click "View" to see invoice information in detail
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <EnhancedMonthlyPaymentHistory
+        jobId={job._id}
+        jobType={job.serviceType}
+        onUploadInvoice={handleUploadInvoice}
+        onInvoiceUpdate={() => {
+          // Callback for when invoices are updated
+          toast.success("Invoice updated successfully!");
+        }}
+        onInvoiceAdd={() => {
+          // Callback for when invoices are added
+          toast.success("Invoice added successfully!");
+        }}
+        onInvoiceDelete={() => {
+          // Callback for when invoices are deleted
+          toast.success("Invoice deleted successfully!");
+        }}
+      />
+    </div>
+  )}
+</motion.div>
                     </motion.div>
                   )}
                 </AnimatePresence>
