@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -17,6 +17,7 @@ import axiosInstance from "../../../utils/axios";
 function AllClients() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,38 +30,70 @@ function AllClients() {
   });
   const [sortBy, setSortBy] = useState("latest"); // Sort options: latest, name, jobCount
 
-  // Fetch clients from API
+  // Debounce search query to avoid too many API calls
   useEffect(() => {
-    const fetchClients = async () => {
-      try {
-        setLoading(true);
-        const response = await axiosInstance.get("/clients/all", {
-          params: {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300); // 300ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset pagination when search query changes
+  useEffect(() => {
+    if (debouncedSearchQuery !== searchQuery) return; // Only reset when debounced query matches current query
+    
+    setPagination(prev => ({
+      ...prev,
+      currentPage: 1 // Reset to first page when searching
+    }));
+  }, [debouncedSearchQuery]);
+
+  // Fetch clients from API
+  const fetchClients = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // If there's a search query, fetch ALL clients to search through them
+      // Otherwise, use normal pagination
+      const params = debouncedSearchQuery 
+        ? {
+            page: 1,
+            limit: 1000, // Fetch all clients when searching
+          }
+        : {
             page: pagination.currentPage,
             limit: pagination.itemsPerPage,
-          },
-        });
+          };
 
-        console.log("API Response:", response.data);
-        setClients(response.data.clients || []);
+      const response = await axiosInstance.get("/clients/all", { params });
+
+      console.log("API Response:", response.data);
+      setClients(response.data.clients || []);
+      
+      // Only update pagination if we're not searching (to maintain normal pagination)
+      if (!debouncedSearchQuery) {
         setPagination(response.data.pagination || pagination);
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching clients:", err);
-        setError(err.response?.data?.message || "Failed to fetch clients");
-      } finally {
-        setLoading(false);
       }
-    };
+      
+      setError(null);
+    } catch (err) {
+      console.error("Error fetching clients:", err);
+      setError(err.response?.data?.message || "Failed to fetch clients");
+    } finally {
+      setLoading(false);
+    }
+  }, [pagination.currentPage, pagination.itemsPerPage, debouncedSearchQuery, sortBy]);
 
+  useEffect(() => {
     fetchClients();
-  }, [pagination.currentPage, pagination.itemsPerPage]);
+  }, [fetchClients]);
 
-  // Filter and sort clients
-  const filteredClients = clients
+  // Filter and sort clients (now works on all fetched clients)
+  const filteredAndSortedClients = clients
     .filter((client) => {
-      if (searchQuery) {
-        const searchLower = searchQuery.toLowerCase();
+      if (debouncedSearchQuery) {
+        const searchLower = debouncedSearchQuery.toLowerCase();
         return (
           client.name?.toLowerCase().includes(searchLower) ||
           client.gmail?.toLowerCase().includes(searchLower) ||
@@ -83,6 +116,11 @@ function AllClients() {
           return 0;
       }
     });
+
+  // When searching, show all results. When not searching, show paginated results.
+  const displayedClients = debouncedSearchQuery 
+    ? filteredAndSortedClients 
+    : filteredAndSortedClients;
 
   // Convert clients data to CSV format
   const convertToCSV = (data) => {
@@ -137,44 +175,26 @@ function AllClients() {
     }
   };
 
-  // Fetch all clients for export (not just current page)
-  const fetchAllClientsForExport = async () => {
-    try {
-      const response = await axiosInstance.get("/clients/all", {
-        params: {
-          page: 1,
-          limit: 1000, // Get a large number to include all clients
-        },
-      });
-      return response.data.clients || [];
-    } catch (err) {
-      console.error("Error fetching all clients for export:", err);
-      throw new Error("Failed to fetch all clients for export");
-    }
-  };
-
   // Export clients function
   const exportClients = async () => {
     try {
       setExporting(true);
 
-      // Fetch all clients for export (not just current page)
-      const allClients = await fetchAllClientsForExport();
+      let clientsToExport;
 
-      // Apply current filters and sorting to the complete dataset
-      const filteredAllClients = allClients
-        .filter((client) => {
-          if (searchQuery) {
-            const searchLower = searchQuery.toLowerCase();
-            return (
-              client.name?.toLowerCase().includes(searchLower) ||
-              client.gmail?.toLowerCase().includes(searchLower) ||
-              client.startingPoint?.toLowerCase().includes(searchLower)
-            );
-          }
-          return true;
-        })
-        .sort((a, b) => {
+      if (debouncedSearchQuery) {
+        // If searching, export the filtered results
+        clientsToExport = filteredAndSortedClients;
+      } else {
+        // If not searching, fetch all clients for export
+        const response = await axiosInstance.get("/clients/all", {
+          params: {
+            page: 1,
+            limit: 1000, // Get all clients
+          },
+        });
+        
+        clientsToExport = (response.data.clients || []).sort((a, b) => {
           switch (sortBy) {
             case "latest":
               return (
@@ -188,21 +208,23 @@ function AllClients() {
               return 0;
           }
         });
+      }
 
       // Convert to CSV
-      const csvContent = convertToCSV(filteredAllClients);
+      const csvContent = convertToCSV(clientsToExport);
 
       // Generate filename with current date
       const now = new Date();
       const timestamp = now.toISOString().split("T")[0]; // YYYY-MM-DD format
-      const filename = `clients_export_${timestamp}.csv`;
+      const searchSuffix = debouncedSearchQuery ? `_filtered_${debouncedSearchQuery.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+      const filename = `clients_export_${timestamp}${searchSuffix}.csv`;
 
       // Download the file
       downloadCSV(csvContent, filename);
 
       // Show success message (optional)
       console.log(
-        `Exported ${filteredAllClients.length} clients to ${filename}`
+        `Exported ${clientsToExport.length} clients to ${filename}`
       );
     } catch (err) {
       console.error("Export failed:", err);
@@ -215,6 +237,17 @@ function AllClients() {
   // Handle client selection
   const handleViewClient = (gmail) => {
     navigate(`/clients/${gmail}`);
+  };
+
+  // Handle search input change
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  // Handle sort change
+  const handleSortChange = (e) => {
+    setSortBy(e.target.value);
+    setPagination(prev => ({ ...prev, currentPage: 1 })); // Reset to first page when sorting
   };
 
   if (loading && clients.length === 0) {
@@ -259,6 +292,11 @@ function AllClients() {
             </h1>
             <p className="mt-2 text-lg text-gray-600">
               View and manage all clients in the system
+              {debouncedSearchQuery && (
+                <span className="ml-2 text-sm text-blue-600">
+                  (Filtered by: "{debouncedSearchQuery}")
+                </span>
+              )}
             </p>
           </div>
           <div className="mt-4 sm:mt-0 sm:flex-none">
@@ -307,10 +345,10 @@ function AllClients() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">
-                  Total Clients
+                  {debouncedSearchQuery ? "Found Clients" : "Total Clients"}
                 </p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {pagination.totalItems || clients.length}
+                  {debouncedSearchQuery ? filteredAndSortedClients.length : (pagination.totalItems || clients.length)}
                 </p>
               </div>
             </div>
@@ -324,7 +362,7 @@ function AllClients() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Active Jobs</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {clients.reduce(
+                  {(debouncedSearchQuery ? filteredAndSortedClients : clients).reduce(
                     (sum, client) => sum + (client.activeJobCount || 0),
                     0
                   )}
@@ -343,7 +381,7 @@ function AllClients() {
                   Engagement Letters
                 </p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {clients.filter((client) => client.engagementLetter).length}
+                  {(debouncedSearchQuery ? filteredAndSortedClients : clients).filter((client) => client.engagementLetter).length}
                 </p>
               </div>
             </div>
@@ -367,16 +405,21 @@ function AllClients() {
                   <input
                     type="text"
                     className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
-                    placeholder="Search clients by name or email..."
+                    placeholder="Search clients by name, email, or starting point..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={handleSearchChange}
                   />
+                  {loading && debouncedSearchQuery && (
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={handleSortChange}
                   className="block w-full pl-3 pr-10 py-2.5 text-base border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent rounded-xl text-sm transition-all duration-200"
                 >
                   <option value="latest">Sort by Latest Job</option>
@@ -393,15 +436,15 @@ function AllClients() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.3 }}
-          className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
+          className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-100 overflow-hidden relative"
         >
-          {loading && clients.length > 0 && (
+          {loading && (
             <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           )}
 
-          {filteredClients.length > 0 ? (
+          {filteredAndSortedClients.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead>
@@ -440,7 +483,7 @@ function AllClients() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   <AnimatePresence>
-                    {filteredClients.map((client, index) => (
+                    {filteredAndSortedClients.map((client, index) => (
                       <motion.tr
                         key={client._id || index}
                         initial={{ opacity: 0, y: 20 }}
@@ -503,7 +546,7 @@ function AllClients() {
                                 e.stopPropagation();
                                 window.open(client.engagementLetter, "_blank");
                               }}
-                              className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                              className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer"
                             >
                               <DocumentTextIcon className="h-4 w-4 mr-1" />
                               View
@@ -545,15 +588,23 @@ function AllClients() {
               <p className="mt-1 text-sm text-gray-500">
                 {error
                   ? `Error: ${error}`
-                  : searchQuery
-                  ? "No clients match your search criteria."
+                  : debouncedSearchQuery
+                  ? `No clients match your search for "${debouncedSearchQuery}".`
                   : "There are no clients in the system yet."}
               </p>
+              {debouncedSearchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="mt-3 text-sm text-blue-600 hover:text-blue-800"
+                >
+                  Clear search
+                </button>
+              )}
             </div>
           )}
 
-          {/* Pagination Controls */}
-          {pagination.totalPages > 1 && (
+          {/* Pagination Controls - Hide when searching client-side */}
+          {pagination.totalPages > 1 && !debouncedSearchQuery && (
             <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200">
               <div className="flex-1 flex justify-between sm:hidden">
                 <button

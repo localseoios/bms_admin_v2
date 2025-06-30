@@ -150,12 +150,14 @@ function AccountManagement() {
   };
 
   // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount || 0);
-  };
+const formatCurrency = (amount) => {
+  // ‘en-QA’ (or just ‘en’) + currency:'QAR' ➜ “QAR 6,076.25”
+  return new Intl.NumberFormat('en-QA', {
+    style: 'currency',
+    currency: 'QAR',
+    minimumFractionDigits: 2,
+  }).format(amount ?? 0);
+};
 
   // Get time since job was completed
   const getTimeElapsed = (date) => {

@@ -25,6 +25,8 @@ import {
   DocumentCheckIcon,
   UserIcon,
   InformationCircleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
 // Filter options
@@ -43,6 +45,9 @@ const sortOptions = [
   { id: "client", name: "Client Name" },
   { id: "service", name: "Service Type" },
 ];
+
+// Pagination options
+const itemsPerPageOptions = [10, 25, 50, 100];
 
 // File size formatter
 const formatFileSize = (bytes) => {
@@ -119,6 +124,145 @@ const isDocumentUpdated = (job, documentType) => {
   }
 };
 
+// Pagination Component
+const Pagination = ({ 
+  currentPage, 
+  totalPages, 
+  itemsPerPage, 
+  totalItems, 
+  onPageChange, 
+  onItemsPerPageChange,
+  startIndex,
+  endIndex 
+}) => {
+  const generatePageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 7;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 4) {
+        for (let i = 1; i <= 5; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 3) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 4; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  return (
+    <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+      <div className="flex-1 flex justify-between items-center">
+        <div className="flex items-center space-x-4">
+          <p className="text-sm text-gray-700">
+            Showing <span className="font-medium">{startIndex}</span> to{' '}
+            <span className="font-medium">{endIndex}</span> of{' '}
+            <span className="font-medium">{totalItems}</span> results
+          </p>
+          
+          <div className="flex items-center space-x-2">
+            <label htmlFor="items-per-page" className="text-sm text-gray-700">
+              Show:
+            </label>
+            <select
+              id="items-per-page"
+              value={itemsPerPage}
+              onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
+              className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {itemsPerPageOptions.map(option => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {/* Previous Button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className={`relative inline-flex items-center px-2 py-2 rounded-l-md border text-sm font-medium ${
+              currentPage === 1
+                ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
+                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+            }`}
+          >
+            <span className="sr-only">Previous</span>
+            <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+          </motion.button>
+
+          {/* Page Numbers */}
+          <div className="flex">
+            {generatePageNumbers().map((page, index) => (
+              <Fragment key={index}>
+                {page === '...' ? (
+                  <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                    ...
+                  </span>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => onPageChange(page)}
+                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                      currentPage === page
+                        ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                        : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                    }`}
+                  >
+                    {page}
+                  </motion.button>
+                )}
+              </Fragment>
+            ))}
+          </div>
+
+          {/* Next Button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className={`relative inline-flex items-center px-2 py-2 rounded-r-md border text-sm font-medium ${
+              currentPage === totalPages
+                ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
+                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+            }`}
+          >
+            <span className="sr-only">Next</span>
+            <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function ComplianceManagement() {
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -130,6 +274,10 @@ function ComplianceManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
@@ -213,6 +361,7 @@ function ComplianceManagement() {
       }
 
       setJobs(searchResults);
+      setCurrentPage(1); // Reset to first page when searching
       setError(null);
     } catch (err) {
       console.error("❌ Error searching jobs:", err);
@@ -256,6 +405,7 @@ function ComplianceManagement() {
       }
 
       setJobs(fetchedJobs);
+      setCurrentPage(1); // Reset to first page when fetching new data
       setError(null);
     } catch (err) {
       console.error("❌ Error fetching jobs:", err);
@@ -313,6 +463,32 @@ function ComplianceManagement() {
   };
 
   const filteredJobs = getFilteredAndSortedJobs();
+
+  // Pagination calculations
+  const totalItems = filteredJobs.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage + 1;
+  const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
+  const paginatedJobs = filteredJobs.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Pagination handlers
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page
+  };
+
+  // Reset current page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFilter, selectedSort, searchQuery]);
 
   // Enhanced search result display component
   const SearchMatchIndicator = ({ job }) => {
@@ -1039,7 +1215,7 @@ function ComplianceManagement() {
                       {error}
                     </td>
                   </tr>
-                ) : filteredJobs.length === 0 ? (
+                ) : paginatedJobs.length === 0 ? (
                   <tr>
                     <td
                       colSpan="6"
@@ -1052,7 +1228,7 @@ function ComplianceManagement() {
                   </tr>
                 ) : (
                   <AnimatePresence>
-                    {filteredJobs.map((job, index) => (
+                    {paginatedJobs.map((job, index) => (
                       <motion.tr
                         key={job._id}
                         initial={{ opacity: 0, y: 20 }}
@@ -1189,6 +1365,20 @@ function ComplianceManagement() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {!isLoading && !error && totalItems > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              onPageChange={handlePageChange}
+              onItemsPerPageChange={handleItemsPerPageChange}
+              startIndex={totalItems > 0 ? startIndex : 0}
+              endIndex={totalItems > 0 ? endIndex : 0}
+            />
+          )}
         </motion.div>
 
         {/* -------- JOB DETAILS MODAL -------- */}
