@@ -97,7 +97,9 @@ function AllClients() {
         return (
           client.name?.toLowerCase().includes(searchLower) ||
           client.gmail?.toLowerCase().includes(searchLower) ||
-          client.startingPoint?.toLowerCase().includes(searchLower)
+          client.startingPoint?.toLowerCase().includes(searchLower) ||
+          // Add search by latest service type
+          client.latestServiceType?.toLowerCase().includes(searchLower)
         );
       }
       return true;
@@ -130,29 +132,43 @@ function AllClients() {
       "Starting Point",
       "Total Jobs",
       "Active Jobs",
-      "Latest Job Date",
+      "All Service Types",
       "Latest Service Type",
-      "Engagement Letter",
+      "Latest Job Date",
+      "Job Details",
+      "Engagement Letters Count",
       "Client ID",
     ];
 
     const csvContent = [
       headers.join(","),
-      ...data.map((client) =>
-        [
+      ...data.map((client) => {
+        // Extract all service types from jobs array
+        const allServiceTypes = client.jobs && client.jobs.length > 0 
+          ? client.jobs.map(job => job.serviceType).filter(Boolean).join("; ")
+          : client.latestServiceType || "N/A";
+        
+        // Extract job details for additional context
+        const jobDetails = client.jobs && client.jobs.length > 0
+          ? client.jobs.map(job => `${job.serviceType} (${job.status || 'N/A'})`).join("; ")
+          : `${client.latestServiceType || 'N/A'} (Status: Unknown)`;
+
+        return [
           `"${(client.name || "").replace(/"/g, '""')}"`,
           `"${(client.gmail || "").replace(/"/g, '""')}"`,
           `"${(client.startingPoint || "").replace(/"/g, '""')}"`,
           client.jobCount || 0,
           client.activeJobCount || 0,
+          `"${allServiceTypes.replace(/"/g, '""')}"`,
+          `"${(client.latestServiceType || "N/A").replace(/"/g, '""')}"`,
           client.latestJobDate
             ? new Date(client.latestJobDate).toLocaleDateString()
             : "None",
-          `"${(client.latestServiceType || "N/A").replace(/"/g, '""')}"`,
-          client.engagementLetter ? "Yes" : "No",
+          `"${jobDetails.replace(/"/g, '""')}"`,
+          Array.isArray(client.engagementLetter) ? client.engagementLetter.length : (client.engagementLetter ? 1 : 0),
           `"${(client._id || "").replace(/"/g, '""')}"`,
-        ].join(",")
-      ),
+        ].join(",");
+      }),
     ].join("\n");
 
     return csvContent;
@@ -175,6 +191,33 @@ function AllClients() {
     }
   };
 
+  // Helper function to fetch client details with retry logic
+  const fetchClientDetails = async (client, retries = 2) => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Add small delay to avoid overwhelming the server
+        if (attempt > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Progressive delay
+        }
+        
+        const response = await axiosInstance.get(`/clients/${client.gmail}`);
+        return {
+          ...client,
+          jobs: response.data.jobs || [],
+        };
+      } catch (error) {
+        if (attempt === retries) {
+          console.error(`Final attempt failed for ${client.gmail}:`, error);
+          return {
+            ...client,
+            jobs: [],
+          };
+        }
+        console.warn(`Attempt ${attempt + 1} failed for ${client.gmail}, retrying...`);
+      }
+    }
+  };
+
   // Export clients function
   const exportClients = async () => {
     try {
@@ -183,10 +226,30 @@ function AllClients() {
       let clientsToExport;
 
       if (debouncedSearchQuery) {
-        // If searching, export the filtered results
-        clientsToExport = filteredAndSortedClients;
+        // If searching, we need to fetch detailed data for filtered results
+        console.log(`Fetching detailed information for ${filteredAndSortedClients.length} filtered clients...`);
+        const detailedClients = [];
+        
+        // Process clients in batches to avoid overwhelming the server
+        const batchSize = 5;
+        for (let i = 0; i < filteredAndSortedClients.length; i += batchSize) {
+          const batch = filteredAndSortedClients.slice(i, i + batchSize);
+          console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(filteredAndSortedClients.length/batchSize)}`);
+          
+          const batchResults = await Promise.all(
+            batch.map(client => fetchClientDetails(client))
+          );
+          
+          detailedClients.push(...batchResults);
+          
+          // Small delay between batches
+          if (i + batchSize < filteredAndSortedClients.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+        clientsToExport = detailedClients;
       } else {
-        // If not searching, fetch all clients for export
+        // If not searching, fetch all clients first, then get detailed data for each
         const response = await axiosInstance.get("/clients/all", {
           params: {
             page: 1,
@@ -194,7 +257,7 @@ function AllClients() {
           },
         });
         
-        clientsToExport = (response.data.clients || []).sort((a, b) => {
+        const allClients = (response.data.clients || []).sort((a, b) => {
           switch (sortBy) {
             case "latest":
               return (
@@ -208,10 +271,45 @@ function AllClients() {
               return 0;
           }
         });
+
+        // Fetch detailed information for each client
+        console.log(`Fetching detailed information for ${allClients.length} clients...`);
+        const detailedClients = await Promise.all(
+          allClients.map(async (client, index) => {
+            try {
+              // Log progress for large exports
+              if (index % 10 === 0) {
+                console.log(`Processing client ${index + 1}/${allClients.length}: ${client.name}`);
+              }
+              
+              // Fetch detailed client data including all jobs/services
+              const response = await axiosInstance.get(`/clients/${client.gmail}`);
+              return {
+                ...client,
+                jobs: response.data.jobs || [], // Add jobs array with all services
+              };
+            } catch (error) {
+              console.error(`Error fetching details for ${client.gmail}:`, error);
+              // Return client without detailed job info if fetch fails
+              return {
+                ...client,
+                jobs: [],
+              };
+            }
+          })
+        );
+        
+        clientsToExport = detailedClients;
       }
 
       // Convert to CSV
       const csvContent = convertToCSV(clientsToExport);
+
+      // Check if any clients failed to fetch detailed info
+      const clientsWithoutDetails = clientsToExport.filter(client => !client.jobs || client.jobs.length === 0);
+      if (clientsWithoutDetails.length > 0) {
+        console.warn(`Warning: ${clientsWithoutDetails.length} clients may have incomplete service information due to fetch errors.`);
+      }
 
       // Generate filename with current date
       const now = new Date();
@@ -223,9 +321,11 @@ function AllClients() {
       downloadCSV(csvContent, filename);
 
       // Show success message (optional)
-      console.log(
-        `Exported ${clientsToExport.length} clients to ${filename}`
-      );
+      const successMessage = clientsWithoutDetails.length > 0 
+        ? `Exported ${clientsToExport.length} clients with detailed service information to ${filename}. Note: ${clientsWithoutDetails.length} clients may have incomplete service data.`
+        : `Exported ${clientsToExport.length} clients with detailed service information to ${filename}`;
+      
+      console.log(successMessage);
     } catch (err) {
       console.error("Export failed:", err);
       setError("Failed to export clients. Please try again.");
@@ -325,7 +425,7 @@ function AllClients() {
             <div className="flex items-center">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-3"></div>
               <p className="text-blue-700 text-sm">
-                Preparing your export... This may take a few moments.
+                Fetching detailed client information for export... This may take a few moments.
               </p>
             </div>
           </motion.div>
@@ -381,7 +481,10 @@ function AllClients() {
                   Engagement Letters
                 </p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {(debouncedSearchQuery ? filteredAndSortedClients : clients).filter((client) => client.engagementLetter).length}
+                  {(debouncedSearchQuery ? filteredAndSortedClients : clients).filter((client) => 
+                    client.engagementLetter && 
+                    (Array.isArray(client.engagementLetter) ? client.engagementLetter.length > 0 : client.engagementLetter)
+                  ).length}
                 </p>
               </div>
             </div>
@@ -405,7 +508,7 @@ function AllClients() {
                   <input
                     type="text"
                     className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
-                    placeholder="Search clients by name, email, or starting point..."
+                    placeholder="Search clients by name, email, starting point, or latest service type..."
                     value={searchQuery}
                     onChange={handleSearchChange}
                   />
@@ -457,9 +560,9 @@ function AllClients() {
                     </th>
                     <th
                       scope="col"
-                      className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                      className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[200px]"
                     >
-                      Jobs
+                      Jobs & Services
                     </th>
                     <th
                       scope="col"
@@ -515,12 +618,38 @@ function AllClients() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 font-medium">
-                            {client.jobCount || 0} Total
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {client.activeJobCount || 0} Active
+                        <td className="px-6 py-4">
+                          <div className="space-y-2">
+                            {/* Job Counts */}
+                            <div className="flex items-center space-x-4">
+                              <div className="text-sm text-gray-900 font-medium">
+                                {client.jobCount || 0} Total
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {client.activeJobCount || 0} Active
+                              </div>
+                            </div>
+                            
+                            {/* Latest Service Type */}
+                            <div className="flex flex-wrap gap-1">
+                              {client.latestServiceType ? (
+                                <div className="flex items-center space-x-1">
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-blue-100 text-blue-800 border-blue-200">
+                                    <BriefcaseIcon className="h-3 w-3 mr-1" />
+                                    {client.latestServiceType}
+                                  </span>
+                                  {client.jobCount > 1 && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                                      +{client.jobCount - 1} more
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">
+                                  No services available
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -540,16 +669,24 @@ function AllClients() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {client.engagementLetter ? (
+                          {client.engagementLetter && 
+                           (Array.isArray(client.engagementLetter) ? client.engagementLetter.length > 0 : client.engagementLetter) ? (
                             <div
                               onClick={(e) => {
                                 e.stopPropagation();
-                                window.open(client.engagementLetter, "_blank");
+                                // Handle multiple engagement letters
+                                if (Array.isArray(client.engagementLetter) && client.engagementLetter.length > 0) {
+                                  window.open(client.engagementLetter[0].fileUrl, "_blank");
+                                } else if (typeof client.engagementLetter === 'string') {
+                                  window.open(client.engagementLetter, "_blank");
+                                }
                               }}
                               className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer"
                             >
                               <DocumentTextIcon className="h-4 w-4 mr-1" />
-                              View
+                              View {Array.isArray(client.engagementLetter) && client.engagementLetter.length > 1 
+                                ? `(${client.engagementLetter.length})` 
+                                : ''}
                             </div>
                           ) : (
                             <span className="text-sm text-gray-500">
