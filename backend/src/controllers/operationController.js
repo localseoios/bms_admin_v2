@@ -3644,7 +3644,166 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
 });
 
 
+const deleteEngagementLetter = asyncHandler(async (req, res) => {
+  const { jobId, letterId } = req.params;
 
+  try {
+    console.log(`Starting engagement letter deletion for job ${jobId}, letter ${letterId}`);
+    
+    // Check if job exists and if user has permission to access it
+    const job = await Job.findById(jobId);
+    if (!job) {
+      console.log(`Job not found: ${jobId}`);
+      res.status(404);
+      throw new Error("Job not found");
+    }
+
+    // Get the client's Gmail address
+    const gmail = job.gmail;
+
+    // Check if user is authorized
+    const isAdmin = req.user.role?.name === "admin";
+    const hasCompliancePermission =
+      req.user.role?.permissions?.complianceManagement;
+    const hasOperationPermission =
+      req.user.role?.permissions?.operationManagement;
+    const isAssignedPerson =
+      job.assignedPerson?.toString() === req.user._id.toString();
+
+    if (
+      !isAdmin &&
+      !hasCompliancePermission &&
+      !hasOperationPermission &&
+      !isAssignedPerson
+    ) {
+      console.log(`User ${req.user._id} not authorized to update job ${jobId}`);
+      res.status(403);
+      throw new Error("You are not authorized to update this job");
+    }
+
+    // Find company details for current job
+    let companyDetails = await CompanyDetails.findOne({ jobId });
+    if (!companyDetails || !Array.isArray(companyDetails.engagementLetters)) {
+      console.log(`No engagement letters found for job ${jobId}`);
+      res.status(404);
+      throw new Error("No engagement letters found for this job");
+    }
+
+    // Find the engagement letter to delete
+    const letterIndex = companyDetails.engagementLetters.findIndex(
+      letter => letter._id.toString() === letterId
+    );
+
+    if (letterIndex === -1) {
+      console.log(`Engagement letter not found: ${letterId}`);
+      res.status(404);
+      throw new Error("Engagement letter not found");
+    }
+
+    // Get the letter details before deletion for logging
+    const deletedLetter = companyDetails.engagementLetters[letterIndex];
+    console.log(`Deleting engagement letter: ${deletedLetter.fileName}`);
+
+    // Remove the engagement letter from the array
+    companyDetails.engagementLetters.splice(letterIndex, 1);
+    companyDetails.updatedBy = req.user._id;
+    
+    await companyDetails.save();
+    
+    console.log(`Engagement letter deleted from job ${jobId}`);
+
+    // Add a timeline entry for the job
+    job.timeline.push({
+      status: job.status,
+      description: `Engagement letter "${deletedLetter.fileName}" deleted`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    // Now delete from all other jobs for the same client
+    try {
+      // Find the client by Gmail
+      const client = await Client.findOne({ gmail });
+      if (client) {
+        // Find all jobs for this client (except the current one)
+        const otherClientJobs = await Job.find({ 
+          clientId: client._id,
+          _id: { $ne: jobId }
+        });
+        
+        if (otherClientJobs && otherClientJobs.length > 0) {
+          console.log(`Found ${otherClientJobs.length} other jobs for client ${gmail}`);
+          
+          // Remove the same engagement letter from all other jobs
+          for (const otherJob of otherClientJobs) {
+            let otherCompanyDetails = await CompanyDetails.findOne({ jobId: otherJob._id });
+            
+            if (otherCompanyDetails && Array.isArray(otherCompanyDetails.engagementLetters)) {
+              // Find and remove the same letter (matching by fileUrl)
+              const otherLetterIndex = otherCompanyDetails.engagementLetters.findIndex(
+                letter => letter.fileUrl === deletedLetter.fileUrl
+              );
+              
+              if (otherLetterIndex !== -1) {
+                otherCompanyDetails.engagementLetters.splice(otherLetterIndex, 1);
+                otherCompanyDetails.updatedBy = req.user._id;
+                await otherCompanyDetails.save();
+                
+                // Add timeline entry for the other job
+                otherJob.timeline.push({
+                  status: otherJob.status,
+                  description: `Engagement letter "${deletedLetter.fileName}" deleted from another job`,
+                  timestamp: new Date(),
+                  updatedBy: req.user._id,
+                });
+                await otherJob.save();
+                
+                console.log(`Deleted engagement letter from job ${otherJob._id}`);
+              }
+            }
+          }
+        }
+      }
+    } catch (syncError) {
+      // Log error but don't fail the request - the primary deletion was successful
+      console.error(`Error syncing engagement letter deletion: ${syncError.message}`);
+    }
+
+    // Create notification for engagement letter deletion
+    try {
+      await notificationService.createNotification(
+        {
+          title: "Engagement Letter Deleted",
+          description: `Engagement letter "${deletedLetter.fileName}" was deleted from ${job.clientName}'s ${job.serviceType} job.`,
+          type: "job",
+          relatedTo: { model: "Job", id: job._id },
+        },
+        { "role.permissions.complianceManagement": true }
+      );
+    } catch (notificationError) {
+      console.error("Error creating notification:", notificationError);
+    }
+
+    res.status(200).json({
+      message: "Engagement letter deleted successfully",
+      deletedLetter: {
+        id: deletedLetter._id,
+        fileName: deletedLetter.fileName,
+        deletedAt: new Date()
+      }
+    });
+    
+  } catch (error) {
+    console.error(`Error in deleteEngagementLetter: ${error.message}`);
+    if (!res.headersSent) {
+      res.status(500).json({
+        message: "Failed to delete engagement letter",
+        error: error.message,
+      });
+    }
+  }
+});
 
 
 module.exports = {
@@ -3668,4 +3827,5 @@ module.exports = {
   getExpiringJobsForDashboard,
   updateJobExpiryDate,
   getExpiringJobsStats,
+  deleteEngagementLetter
 };

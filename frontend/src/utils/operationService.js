@@ -10,13 +10,37 @@ const operationService = {
 
     try {
       const response = await axiosInstance.post(
-        `/operations/${jobId}/engagement-letter`,
+        `/operations/jobs/${jobId}/engagement-letter`,
         formData,
         {
           headers: {
             "Content-Type": "multipart/form-data",
           },
         }
+      );
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.message;
+    }
+  },
+
+  // Delete Engagement Letter
+  deleteEngagementLetter: async (jobId, letterId) => {
+    try {
+      const response = await axiosInstance.delete(
+        `/operations/jobs/${jobId}/engagement-letter/${letterId}`
+      );
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.message;
+    }
+  },
+
+  // Get all Engagement Letters for a job
+  getEngagementLetters: async (jobId) => {
+    try {
+      const response = await axiosInstance.get(
+        `/operations/jobs/${jobId}/engagement-letters`
       );
       return response.data;
     } catch (error) {
@@ -40,7 +64,7 @@ const operationService = {
 
     try {
       const response = await axiosInstance.put(
-        `/operations/${jobId}/company-details`,
+        `/operations/jobs/${jobId}/company-details`,
         formData,
         {
           headers: {
@@ -70,7 +94,7 @@ const operationService = {
 
     try {
       const response = await axiosInstance.put(
-        `/operations/${jobId}/person-details?section=${section}`,
+        `/operations/jobs/${jobId}/person-details?section=${section}`,
         formData,
         {
           headers: {
@@ -103,7 +127,7 @@ const operationService = {
 
     try {
       const response = await axiosInstance.put(
-        `/operations/${jobId}/kyc-details`,
+        `/operations/jobs/${jobId}/kyc-details`,
         formData,
         {
           headers: {
@@ -121,7 +145,7 @@ const operationService = {
   markJobInProgress: async (jobId) => {
     try {
       const response = await axiosInstance.put(
-        `/operations/${jobId}/in-progress`
+        `/operations/jobs/${jobId}/in-progress`
       );
       return response.data;
     } catch (error) {
@@ -133,7 +157,7 @@ const operationService = {
   markJobCompleted: async (jobId, completionNotes = "") => {
     try {
       const response = await axiosInstance.put(
-        `/operations/${jobId}/complete`,
+        `/operations/jobs/${jobId}/complete`,
         { completionNotes }
       );
       return response.data;

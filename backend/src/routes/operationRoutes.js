@@ -23,6 +23,7 @@ const {
   getExpiringJobsForDashboard,
   getExpiringJobsStats,
   updateJobExpiryDate,
+  deleteEngagementLetter,
 } = require("../controllers/operationController");
 
 
@@ -337,5 +338,13 @@ router.get(
   checkPermission("operationManagement"),
   getClientEngagementLetters
 );
+
+router.delete(
+  "/jobs/:jobId/engagement-letter/:letterId",
+  protect,
+  checkPermission("operationManagement"),
+  deleteEngagementLetter
+);
+
 
 module.exports = router;
