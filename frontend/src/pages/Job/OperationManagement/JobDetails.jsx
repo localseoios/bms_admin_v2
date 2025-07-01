@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -72,6 +72,1346 @@ function JobDetails() {
 
   // Add state for multiple CR Extract files
   const [crExtractFiles, setCrExtractFiles] = useState([]);
+
+  const DIRECTOR_SUGGESTIONS = [
+  {
+    name: "Mr Sarath Kumara Ganegoda Hitiarachchige",
+    nationality: "Sri Lankan",
+    email: "sarath@newoon.com",
+    mobileNo: "33631831",
+    qidNo: "27979201938",
+    passportNo: "P0196918"
+  }
+];
+
+// Fixed AutoSuggestInput component
+const AutoSuggestInput = ({ 
+  label, 
+  value, 
+  onChange, 
+  onSuggestionSelect, 
+  suggestions = [],
+  fieldKey,
+  placeholder,
+  className = "",
+  disabled = false,
+  showPreFilled = false
+}) => {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredSuggestions, setFilteredSuggestions] = useState([]);
+  const inputRef = useRef(null);
+  const suggestionsRef = useRef(null);
+
+  // Memoize filtered suggestions to prevent unnecessary recalculations
+  const memoizedFilteredSuggestions = useMemo(() => {
+    if (value && value.length > 0) {
+      return suggestions.filter(suggestion => 
+        suggestion[fieldKey]?.toLowerCase().includes(value.toLowerCase())
+      );
+    }
+    return suggestions;
+  }, [value, suggestions, fieldKey]);
+
+  useEffect(() => {
+    setFilteredSuggestions(memoizedFilteredSuggestions);
+    setShowSuggestions(memoizedFilteredSuggestions.length > 0 && value && value.length > 0);
+  }, [memoizedFilteredSuggestions, value]);
+
+  // CRITICAL FIX: Prevent focus loss during typing
+  const handleInputChange = useCallback((e) => {
+    const inputValue = e.target.value;
+    
+    // Store current cursor position
+    const cursorPosition = e.target.selectionStart;
+    
+    // Call the parent onChange directly - this will trigger re-render
+    onChange(e);
+    
+    // Restore focus and cursor position after state update
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(cursorPosition, cursorPosition);
+      }
+    });
+    
+    // Show suggestions if there's input and suggestions exist
+    if (inputValue.length > 0 && suggestions.length > 0) {
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  }, [onChange, suggestions.length]);
+
+  const handleSuggestionClick = useCallback((suggestion) => {
+    onSuggestionSelect(suggestion);
+    setShowSuggestions(false);
+    
+    // Maintain focus on input after selection
+    if (inputRef.current) {
+      setTimeout(() => {
+        inputRef.current.focus();
+      }, 0);
+    }
+  }, [onSuggestionSelect]);
+
+  const handleInputFocus = useCallback(() => {
+    if (suggestions.length > 0 && (!value || value.length === 0)) {
+      setFilteredSuggestions(suggestions);
+      setShowSuggestions(true);
+    }
+  }, [suggestions, value]);
+
+  // Improved click outside handler with useCallback
+  const handleClickOutside = useCallback((e) => {
+    if (
+      inputRef.current && !inputRef.current.contains(e.target) &&
+      suggestionsRef.current && !suggestionsRef.current.contains(e.target)
+    ) {
+      setShowSuggestions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [handleClickOutside]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = useCallback((e) => {
+    // Prevent form submission on Enter
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      setShowSuggestions(false);
+    }
+    // Allow normal typing and don't interfere with input
+  }, []);
+
+  return (
+    <div className="relative">
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label}
+        {showPreFilled && (
+          <span className="ml-2 text-xs text-indigo-600">
+            <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+          </span>
+        )}
+      </label>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value || ""} // Ensure controlled input
+        onChange={handleInputChange}
+        onFocus={handleInputFocus}
+        onKeyDown={handleKeyDown}
+        className={`block w-full rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors ${className}`}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoComplete="off" // Prevent browser autocomplete interference
+      />
+      
+      {showSuggestions && filteredSuggestions.length > 0 && (
+        <div 
+          ref={suggestionsRef}
+          className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+        >
+          {filteredSuggestions.map((suggestion, index) => (
+            <div
+              key={`${suggestion[fieldKey]}-${index}`} // Stable key
+              onClick={() => handleSuggestionClick(suggestion)}
+              className="px-4 py-3 cursor-pointer hover:bg-indigo-50 border-b border-gray-100 last:border-b-0 transition-colors"
+            >
+              <div className="flex items-start space-x-3">
+                <div className="p-2 bg-indigo-100 rounded-lg flex-shrink-0">
+                  <UserIcon className="h-4 w-4 text-indigo-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {suggestion.name}
+                  </p>
+                  <div className="text-xs text-gray-500 space-y-1 mt-1">
+                    <p><span className="font-medium">Nationality:</span> {suggestion.nationality}</p>
+                    <p><span className="font-medium">Email:</span> {suggestion.email}</p>
+                    <p><span className="font-medium">Mobile:</span> {suggestion.mobileNo}</p>
+                    <p><span className="font-medium">QID:</span> {suggestion.qidNo}</p>
+                    <p><span className="font-medium">Passport:</span> {suggestion.passportNo}</p>
+                  </div>
+                </div>
+                <div className="flex-shrink-0">
+                  <div className="bg-green-100 p-1 rounded-full">
+                    <CheckCircleIcon className="h-4 w-4 text-green-600" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const createFocusPreservingHandler = (index, field, details, setDetails) => {
+  return (e) => {
+    const inputValue = e.target.value;
+    const cursorPosition = e.target.selectionStart;
+    const inputElement = e.target;
+    
+    // Update state
+    const newDetails = [...details];
+    newDetails[index] = {
+      ...newDetails[index],
+      [field]: inputValue
+    };
+    setDetails(newDetails);
+    
+    // Preserve focus and cursor position
+    requestAnimationFrame(() => {
+      if (inputElement) {
+        inputElement.focus();
+        inputElement.setSelectionRange(cursorPosition, cursorPosition);
+      }
+    });
+  };
+};
+
+const createFocusPreservingHandlerForField = (index, field, details, setDetails) => {
+  return (e) => {
+    const inputValue = e.target.value;
+    const cursorPosition = e.target.selectionStart;
+    const inputElement = e.target;
+    
+    // Update state
+    const newDetails = [...details];
+    newDetails[index] = {
+      ...newDetails[index],
+      [field]: inputValue
+    };
+    setDetails(newDetails);
+    
+    // Preserve focus and cursor position
+    requestAnimationFrame(() => {
+      if (inputElement) {
+        inputElement.focus();
+        inputElement.setSelectionRange(cursorPosition, cursorPosition);
+      }
+    });
+  };
+};
+
+
+// Add this state management inside your JobDetails component (add to existing state declarations)
+const [autoFilledEntries, setAutoFilledEntries] = useState({});
+
+// Add this function to handle suggestion selection
+const handleSuggestionSelect = (section, index, suggestion) => {
+  const updateState = {
+    director: setDirectorDetails,
+    shareholder: setShareholderDetails,
+    secretary: setSecretaryDetails,
+    sef: setSefDetails,
+  }[section];
+
+  updateState((prev) => {
+    const newDetails = [...prev];
+    newDetails[index] = {
+      ...newDetails[index],
+      name: suggestion.name,
+      nationality: suggestion.nationality,
+      email: suggestion.email,
+      mobileNo: suggestion.mobileNo,
+      qidNo: suggestion.qidNo,
+      passportNo: suggestion.passportNo,
+    };
+    return newDetails;
+  });
+
+  // Track which entry was auto-filled
+  setAutoFilledEntries(prev => ({
+    ...prev,
+    [`${section}-${index}`]: suggestion
+  }));
+
+  // Show success message
+  setActionMessage({
+    type: "success",
+    message: `Director details auto-filled for "${suggestion.name}". You can edit any field as needed.`,
+  });
+
+  setTimeout(() => {
+    setActionMessage({ type: null, message: null });
+  }, 4000);
+};
+
+// Update the renderPersonDetails function to include auto-suggestion
+// Replace the Name input section in your renderPersonDetails function with this:
+// COMPLETE renderPersonDetailsWithAutoSuggest function
+// Replace the existing incomplete function with this complete version
+
+const renderPersonDetailsWithAutoSuggest = (section, details, setDetails) => (
+  <div className="space-y-6">
+    {/* Auto-suggestion notification banner */}
+    {autoFilledEntries[`${section}-0`] && (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <CheckCircleIcon className="h-5 w-5 text-green-600 mr-2" />
+            <span className="text-sm font-medium text-green-800">
+              {section.charAt(0).toUpperCase() + section.slice(1)} details auto-filled
+            </span>
+          </div>
+          <button
+            onClick={() => setAutoFilledEntries(prev => ({ ...prev, [`${section}-0`]: null }))}
+            className="text-green-600 hover:text-green-800"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="text-sm text-green-700 mt-1">
+          Details for "{autoFilledEntries[`${section}-0`]?.name}" have been populated. You can edit any field as needed.
+        </p>
+      </div>
+    )}
+
+    {/* Add this at the top of your component's return statement */}
+    {job &&
+      job.timeline?.some((event) =>
+        event.description?.includes("auto-populated")
+      ) && (
+        <div className="sticky top-0 z-50 bg-blue-100 border-l-4 border-blue-500 p-4 mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <InformationCircleIcon
+                className="h-5 w-5 text-blue-500"
+                aria-hidden="true"
+              />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-blue-700">
+                Some information has been auto-populated from other jobs for
+                the same client ({job.gmail}).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+{details.map((entry, index) => (
+  <div
+    key={entry._id || `${section}-entry-${index}`} // Use stable key
+    className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300"
+  >
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+          <div className="flex items-center">
+            <div className="bg-indigo-100 rounded-lg p-2 mr-3">
+              <UserIcon className="h-5 w-5 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">
+                Entry {index + 1}
+              </h3>
+              {autoFilledEntries[`${section}-${index}`] && (
+                <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                  Auto-filled
+                </span>
+              )}
+              {/* Auto-populated badge */}
+              {job &&
+                job.timeline?.some((event) =>
+                  event.description?.includes(
+                    `${section} details auto-populated`
+                  )
+                ) && (
+                  <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                    Auto-populated
+                  </span>
+                )}
+            </div>
+          </div>
+          {details.length > 1 && (
+            <button
+              onClick={() => handleDeletePersonEntry(section, index)}
+              className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors"
+              title="Remove entry"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Name Field with Auto-suggestion */}
+<div className="space-y-1">
+  <AutoSuggestInput
+    label="Name"
+    value={entry.name}
+    onChange={(e) => {
+      // Fixed: Use createFocusPreservingHandler pattern
+      const inputValue = e.target.value;
+      const cursorPosition = e.target.selectionStart;
+      const inputElement = e.target;
+      
+      // Update state
+      const newDetails = [...details];
+      newDetails[index].name = inputValue;
+      setDetails(newDetails);
+      
+      // Preserve focus and cursor position
+      requestAnimationFrame(() => {
+        if (inputElement) {
+          inputElement.focus();
+          inputElement.setSelectionRange(cursorPosition, cursorPosition);
+        }
+      });
+    }}
+    onSuggestionSelect={(suggestion) => handleSuggestionSelect(section, index, suggestion)}
+    suggestions={DIRECTOR_SUGGESTIONS}
+    fieldKey="name"
+    placeholder="Enter full name or start typing to see suggestions"
+    className={`mt-1 block w-full rounded-lg ${
+      autoFilledEntries[`${section}-${index}`] ||
+      (job &&
+        job.timeline?.some((event) =>
+          event.description?.includes(
+            `${section} details auto-populated`
+          )
+        ) &&
+        entry.name)
+        ? "bg-indigo-50 border-indigo-300"
+        : "border-gray-300"
+    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+    showPreFilled={!!autoFilledEntries[`${section}-${index}`] || 
+      (job &&
+        job.timeline?.some((event) =>
+          event.description?.includes(
+            `${section} details auto-populated`
+          )
+        ) &&
+        entry.name)}
+  />
+</div>
+
+
+          {/* Nationality Field with Auto-suggestion */}
+<div className="space-y-1">
+  <label className="block text-sm font-medium text-gray-700">
+    Nationality
+    {job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(
+          `${section} details auto-populated`
+        )
+      ) &&
+      entry.nationality && (
+        <span className="ml-2 text-xs text-indigo-600">
+          <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+        </span>
+      )}
+  </label>
+  <input
+    type="text"
+    value={entry.nationality || ""} // Ensure controlled input
+    onChange={(e) => {
+      const newDetails = [...details];
+      newDetails[index] = {
+        ...newDetails[index],
+        nationality: e.target.value
+      };
+      setDetails(newDetails);
+    }}
+    className={`mt-1 block w-full rounded-lg ${
+      job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(
+          `${section} details auto-populated`
+        )
+      ) &&
+      entry.nationality
+        ? "bg-indigo-50 border-indigo-300"
+        : "border-gray-300"
+    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+    placeholder="Enter nationality"
+    autoComplete="off"
+    // REMOVED: onKeyDown handler that was preventing normal typing
+  />
+</div>
+
+          {/* Visa Copy Upload */}
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+              <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
+              Visa Copy
+              {job &&
+                job.timeline?.some((event) =>
+                  event.description?.includes(
+                    `${section} details auto-populated`
+                  )
+                ) &&
+                entry.visaCopy && (
+                  <span className="ml-2 text-xs text-indigo-600">
+                    <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                  </span>
+                )}
+            </label>
+            <div
+              className={`border-2 rounded-lg p-3 transition-all duration-300 ${
+                isDragging
+                  ? "border-indigo-500 bg-indigo-50 shadow-md"
+                  : entry.visaCopy
+                  ? "border-green-400 bg-green-50/40 shadow-md"
+                  : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-md"
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handlePersonDrop(e, section, "visaCopy", index)}
+            >
+              {entry.visaCopy ? (
+                <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                  <div className="flex items-center flex-1 min-w-0">
+                    <div className="bg-indigo-100 p-2 rounded-lg mr-3">
+                      <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-900 truncate block">
+                        {entry.visaCopy instanceof File
+                          ? entry.visaCopy.name
+                          : "Visa Copy Document"}
+                      </span>
+                      <span className="text-xs text-green-600 flex items-center">
+                        <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                        {job &&
+                          job.timeline?.some((event) =>
+                            event.description?.includes(
+                              `${section} details auto-populated`
+                            )
+                          ) &&
+                          typeof entry.visaCopy === "string" && (
+                            <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                              Auto-filled
+                            </span>
+                          )}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center ml-4">
+                    {typeof entry.visaCopy === "string" && (
+                      <a
+                        href={entry.visaCopy}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                      >
+                        View Document
+                      </a>
+                    )}
+                    <button
+                      onClick={() =>
+                        handlePersonFileChange(section, "visaCopy", index, null)
+                      }
+                      className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                      title="Remove document"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="bg-gray-100/80 mx-auto rounded-full w-14 h-14 flex items-center justify-center mb-2">
+                    <CloudArrowUpIcon className="h-7 w-7 text-gray-400" />
+                  </div>
+                  <div className="mt-2">
+                    <label className="cursor-pointer block">
+                      <span className="relative px-4 py-2 rounded-md font-medium text-sm text-white bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 shadow-sm transition-all duration-200 hover:shadow-md">
+                        Choose File
+                      </span>
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(e) =>
+                          handlePersonFileChange(
+                            section,
+                            "visaCopy",
+                            index,
+                            e.target.files[0]
+                          )
+                        }
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      or drag and drop your Visa Copy document here
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* QID Details Section */}
+          <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <UserIcon className="h-4 w-4 mr-1 text-indigo-500" />
+              QID Details
+              {job &&
+                job.timeline?.some((event) =>
+                  event.description?.includes(
+                    `${section} details auto-populated`
+                  )
+                ) &&
+                entry.qidNo && (
+                  <span className="ml-2 text-xs text-indigo-600">
+                    <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                  </span>
+                )}
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div>
+  <label className="block text-xs text-gray-500 mb-1">
+    QID Number
+  </label>
+<input
+  type="text"
+  value={entry.qidNo || ""}
+  onChange={createFocusPreservingHandlerForField(index, 'qidNo', details, setDetails)}
+  className="..."
+  placeholder="QID Number"
+  autoComplete="off"
+/>
+</div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Expiry Date
+                </label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="date"
+                    value={entry.qidExpiry || ""}
+                    onChange={(e) => {
+                      const newDetails = [...details];
+                      newDetails[index].qidExpiry = e.target.value;
+                      setDetails(newDetails);
+                    }}
+                    className={`block w-full rounded-lg ${
+                      job &&
+                      job.timeline?.some((event) =>
+                        event.description?.includes(
+                          `${section} details auto-populated`
+                        )
+                      ) &&
+                      entry.qidExpiry
+                        ? "bg-indigo-50 border-indigo-300"
+                        : "border-gray-300"
+                    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+                  />
+                  <button
+                    onClick={() => handleRenewDate(section, "qidExpiry", index)}
+                    className="p-2 text-gray-400 hover:text-indigo-500 rounded-lg hover:bg-indigo-50 transition-colors"
+                    title="Renew for one year"
+                  >
+                    <ArrowPathIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  QID Document
+                </label>
+                <div
+                  className={`border-2 rounded-lg p-2 h-10 flex items-center justify-center transition-all duration-300 ${
+                    entry.qidDoc
+                      ? "border-green-400 bg-green-50/40 shadow-sm"
+                      : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handlePersonDrop(e, section, "qidDoc", index)}
+                >
+                  {entry.qidDoc ? (
+                    <div className="flex items-center justify-between w-full px-2">
+                      <div className="flex items-center text-xs text-green-600">
+                        <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                        {job &&
+                          job.timeline?.some((event) =>
+                            event.description?.includes(
+                              `${section} details auto-populated`
+                            )
+                          ) &&
+                          typeof entry.qidDoc === "string" && (
+                            <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                              Auto-filled
+                            </span>
+                          )}
+                      </div>
+                      <div className="flex items-center">
+                        {typeof entry.qidDoc === "string" && (
+                          <a
+                            href={entry.qidDoc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                          >
+                            View
+                          </a>
+                        )}
+                        <button
+                          onClick={() =>
+                            handlePersonFileChange(section, "qidDoc", index, null)
+                          }
+                          className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                          title="Remove document"
+                        >
+                          <XMarkIcon className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer text-center block w-full">
+                      <div className="flex items-center justify-center text-gray-400 hover:text-indigo-500 transition-colors">
+                        <CloudArrowUpIcon className="h-4 w-4 mr-1" />
+                        <span className="text-xs">Upload QID</span>
+                      </div>
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(e) =>
+                          handlePersonFileChange(
+                            section,
+                            "qidDoc",
+                            index,
+                            e.target.files[0]
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* National Address Section */}
+          <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <MapPinIcon className="h-4 w-4 mr-1 text-indigo-500" />
+              National Address
+              {job &&
+                job.timeline?.some((event) =>
+                  event.description?.includes(
+                    `${section} details auto-populated`
+                  )
+                ) &&
+                entry.nationalAddress && (
+                  <span className="ml-2 text-xs text-indigo-600">
+                    <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                  </span>
+                )}
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <input
+                  type="text"
+                  value={entry.nationalAddress || ""}
+                  onChange={(e) => {
+                    const newDetails = [...details];
+                    newDetails[index].nationalAddress = e.target.value;
+                    setDetails(newDetails);
+                  }}
+                  className={`block w-full rounded-lg ${
+                    job &&
+                    job.timeline?.some((event) =>
+                      event.description?.includes(
+                        `${section} details auto-populated`
+                      )
+                    ) &&
+                    entry.nationalAddress
+                      ? "bg-indigo-50 border-indigo-300"
+                      : "border-gray-300"
+                  } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+                  placeholder="Enter national address"
+                />
+              </div>
+              <div className="col-span-2">
+                <div
+                  className={`border-2 rounded-lg p-3 transition-all duration-300 ${
+                    isDragging
+                      ? "border-indigo-500 bg-indigo-50 shadow-md"
+                      : entry.nationalAddressDoc
+                      ? "border-green-400 bg-green-50/40 shadow-md"
+                      : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-md"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) =>
+                    handlePersonDrop(e, section, "nationalAddressDoc", index)
+                  }
+                >
+                  {entry.nationalAddressDoc ? (
+                    <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                      <div className="flex items-center flex-1 min-w-0">
+                        <div className="bg-indigo-100 p-2 rounded-lg mr-3">
+                          <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-900 truncate block">
+                            {entry.nationalAddressDoc instanceof File
+                              ? entry.nationalAddressDoc.name
+                              : "National Address Document"}
+                          </span>
+                          <span className="text-xs text-green-600 flex items-center">
+                            <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                            {job &&
+                              job.timeline?.some((event) =>
+                                event.description?.includes(
+                                  `${section} details auto-populated`
+                                )
+                              ) &&
+                              typeof entry.nationalAddressDoc === "string" && (
+                                <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                                  Auto-filled
+                                </span>
+                              )}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center ml-4">
+                        {typeof entry.nationalAddressDoc === "string" && (
+                          <a
+                            href={entry.nationalAddressDoc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                          >
+                            View Document
+                          </a>
+                        )}
+                        <button
+                          onClick={() =>
+                            handlePersonFileChange(
+                              section,
+                              "nationalAddressDoc",
+                              index,
+                              null
+                            )
+                          }
+                          className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                          title="Remove document"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <div className="bg-gray-100/80 mx-auto rounded-full w-12 h-12 flex items-center justify-center mb-2">
+                        <CloudArrowUpIcon className="h-6 w-6 text-gray-400" />
+                      </div>
+                      <div className="mt-1">
+                        <label className="cursor-pointer block">
+                          <span className="relative px-4 py-1.5 rounded-md font-medium text-sm text-white bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 shadow-sm transition-all duration-200 hover:shadow-md">
+                            Upload Address Document
+                          </span>
+                          <input
+                            type="file"
+                            className="sr-only"
+                            onChange={(e) =>
+                              handlePersonFileChange(
+                                section,
+                                "nationalAddressDoc",
+                                index,
+                                e.target.files[0]
+                              )
+                            }
+                          />
+                        </label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          or drag and drop here
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center">
+                <div className="w-full space-y-1">
+                  <label className="block text-xs text-gray-500">
+                    Expiry Date
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="date"
+                      value={entry.nationalAddressExpiry || ""}
+                      onChange={(e) => {
+                        const newDetails = [...details];
+                        newDetails[index].nationalAddressExpiry = e.target.value;
+                        setDetails(newDetails);
+                      }}
+                      className={`block w-full rounded-lg ${
+                        job &&
+                        job.timeline?.some((event) =>
+                          event.description?.includes(
+                            `${section} details auto-populated`
+                          )
+                        ) &&
+                        entry.nationalAddressExpiry
+                          ? "bg-indigo-50 border-indigo-300"
+                          : "border-gray-300"
+                      } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+                    />
+                    <button
+                      onClick={() =>
+                        handleRenewDate(section, "nationalAddressExpiry", index)
+                      }
+                      className="p-2 text-gray-400 hover:text-indigo-500 rounded-lg hover:bg-indigo-50 transition-colors"
+                      title="Renew for one year"
+                    >
+                      <ArrowPathIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Passport Details Section */}
+          <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <DocumentDuplicateIcon className="h-4 w-4 mr-1 text-indigo-500" />
+              Passport Details
+              {job &&
+                job.timeline?.some((event) =>
+                  event.description?.includes(
+                    `${section} details auto-populated`
+                  )
+                ) &&
+                entry.passportNo && (
+                  <span className="ml-2 text-xs text-indigo-600">
+                    <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                  </span>
+                )}
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div>
+  <label className="block text-xs text-gray-500 mb-1">
+    Passport Number
+  </label>
+  <input
+    type="text"
+    value={entry.passportNo || ""}
+    onChange={(e) => {
+      // Fixed: Use createFocusPreservingHandler pattern
+      const inputValue = e.target.value;
+      const cursorPosition = e.target.selectionStart;
+      const inputElement = e.target;
+      
+      // Update state
+      const newDetails = [...details];
+      newDetails[index] = {
+        ...newDetails[index],
+        passportNo: inputValue
+      };
+      setDetails(newDetails);
+      
+      // Preserve focus and cursor position
+      requestAnimationFrame(() => {
+        if (inputElement) {
+          inputElement.focus();
+          inputElement.setSelectionRange(cursorPosition, cursorPosition);
+        }
+      });
+    }}
+    className={`block w-full rounded-lg ${
+      job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(
+          `${section} details auto-populated`
+        )
+      ) &&
+      entry.passportNo
+        ? "bg-indigo-50 border-indigo-300"
+        : "border-gray-300"
+    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+    placeholder="Passport Number"
+    autoComplete="off"
+  />
+</div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Expiry Date
+                </label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="date"
+                    value={entry.passportExpiry || ""}
+                    onChange={(e) => {
+                      const newDetails = [...details];
+                      newDetails[index].passportExpiry = e.target.value;
+                      setDetails(newDetails);
+                    }}
+                    className={`block w-full rounded-lg ${
+                      job &&
+                      job.timeline?.some((event) =>
+                        event.description?.includes(
+                          `${section} details auto-populated`
+                        )
+                      ) &&
+                      entry.passportExpiry
+                        ? "bg-indigo-50 border-indigo-300"
+                        : "border-gray-300"
+                    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+                  />
+                  <button
+                    onClick={() =>
+                      handleRenewDate(section, "passportExpiry", index)
+                    }
+                    className="p-2 text-gray-400 hover:text-indigo-500 rounded-lg hover:bg-indigo-50 transition-colors"
+                    title="Renew for one year"
+                  >
+                    <ArrowPathIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Passport Document
+                </label>
+                <div
+                  className={`border-2 rounded-lg p-2 h-10 flex items-center justify-center transition-all duration-300 ${
+                    entry.passportDoc
+                      ? "border-green-400 bg-green-50/40 shadow-sm"
+                      : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) =>
+                    handlePersonDrop(e, section, "passportDoc", index)
+                  }
+                >
+                  {entry.passportDoc ? (
+                    <div className="flex items-center justify-between w-full px-2">
+                      <div className="flex items-center text-xs text-green-600">
+                        <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                        {job &&
+                          job.timeline?.some((event) =>
+                            event.description?.includes(
+                              `${section} details auto-populated`
+                            )
+                          ) &&
+                          typeof entry.passportDoc === "string" && (
+                            <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                              Auto-filled
+                            </span>
+                          )}
+                      </div>
+                      <div className="flex items-center">
+                        {typeof entry.passportDoc === "string" && (
+                          <a
+                            href={entry.passportDoc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                          >
+                            View
+                          </a>
+                        )}
+                        <button
+                          onClick={() =>
+                            handlePersonFileChange(
+                              section,
+                              "passportDoc",
+                              index,
+                              null
+                            )
+                          }
+                          className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                          title="Remove document"
+                        >
+                          <XMarkIcon className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer text-center block w-full">
+                      <div className="flex items-center justify-center text-gray-400 hover:text-indigo-500 transition-colors">
+                        <CloudArrowUpIcon className="h-4 w-4 mr-1" />
+                        <span className="text-xs">Upload Passport</span>
+                      </div>
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(e) =>
+                          handlePersonFileChange(
+                            section,
+                            "passportDoc",
+                            index,
+                            e.target.files[0]
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile Number with Auto-suggestion */}
+<div className="space-y-1">
+  <label className="block text-sm font-medium text-gray-700">
+    Mobile Number
+  </label>
+  <input
+    type="text"
+    value={entry.mobileNo || ""} // Ensure controlled input
+    onChange={(e) => {
+      const newDetails = [...details];
+      newDetails[index] = {
+        ...newDetails[index],
+        mobileNo: e.target.value
+      };
+      setDetails(newDetails);
+    }}
+    className={`mt-1 block w-full rounded-lg ${
+      job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(
+          `${section} details auto-populated`
+        )
+      ) &&
+      entry.mobileNo
+        ? "bg-indigo-50 border-indigo-300"
+        : "border-gray-300"
+    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+    placeholder="Enter mobile number"
+    autoComplete="off"
+    // REMOVED: onKeyDown handler
+  />
+</div>
+          {/* Email Field with Auto-suggestion */}
+<div className="space-y-1">
+  <label className="block text-sm font-medium text-gray-700">
+    Email Address
+  </label>
+  <input
+    type="email"
+    value={entry.email || ""} // Ensure controlled input
+    onChange={(e) => {
+      const newDetails = [...details];
+      newDetails[index] = {
+        ...newDetails[index],
+        email: e.target.value
+      };
+      setDetails(newDetails);
+    }}
+    className={`mt-1 block w-full rounded-lg ${
+      job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(
+          `${section} details auto-populated`
+        )
+      ) &&
+      entry.email
+        ? "bg-indigo-50 border-indigo-300"
+        : "border-gray-300"
+    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+    placeholder="Enter email address"
+    autoComplete="off"
+    // REMOVED: onKeyDown handler
+  />
+</div>
+
+
+          {/* CV Upload */}
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+              <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
+              Curriculum Vitae (CV)
+              {job &&
+                job.timeline?.some((event) =>
+                  event.description?.includes(
+                    `${section} details auto-populated`
+                  )
+                ) &&
+                entry.cv && (
+                  <span className="ml-2 text-xs text-indigo-600">
+                    <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+                  </span>
+                )}
+            </label>
+            <div
+              className={`border-2 rounded-lg p-3 transition-all duration-300 ${
+                isDragging
+                  ? "border-indigo-500 bg-indigo-50 shadow-md"
+                  : entry.cv
+                  ? "border-green-400 bg-green-50/40 shadow-md"
+                  : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-md"
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handlePersonDrop(e, section, "cv", index)}
+            >
+              {entry.cv ? (
+                <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                  <div className="flex items-center flex-1 min-w-0">
+                    <div className="bg-indigo-100 p-2 rounded-lg mr-3">
+                      <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-900 truncate block">
+                        {entry.cv instanceof File ? entry.cv.name : "CV Document"}
+                      </span>
+                      <span className="text-xs text-green-600 flex items-center">
+                        <CheckCircleIcon className="h-3 w-3 mr-1" /> Uploaded
+                        {job &&
+                          job.timeline?.some((event) =>
+                            event.description?.includes(
+                              `${section} details auto-populated`
+                            )
+                          ) &&
+                          typeof entry.cv === "string" && (
+                            <span className="ml-2 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
+                              Auto-filled
+                            </span>
+                          )}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center ml-4">
+                    {typeof entry.cv === "string" && (
+                      <a
+                        href={entry.cv}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                      >
+                        View Document
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handlePersonFileChange(section, "cv", index, null)}
+                      className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                      title="Remove document"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="bg-gray-100/80 mx-auto rounded-full w-14 h-14 flex items-center justify-center mb-2">
+                    <CloudArrowUpIcon className="h-7 w-7 text-gray-400" />
+                  </div>
+                  <div className="mt-2">
+                    <label className="cursor-pointer block">
+                      <span className="relative px-4 py-2 rounded-md font-medium text-sm text-white bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 shadow-sm transition-all duration-200 hover:shadow-md">
+                        Upload CV
+                      </span>
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(e) =>
+                          handlePersonFileChange(section, "cv", index, e.target.files[0])
+                        }
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      or drag and drop your CV document here
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Clear auto-fill button for each entry */}
+          {autoFilledEntries[`${section}-${index}`] && (
+            <div className="col-span-2">
+              <button
+                onClick={() => {
+                  setAutoFilledEntries(prev => ({ ...prev, [`${section}-${index}`]: null }));
+                  // Clear the auto-filled values
+                  const newDetails = [...details];
+                  newDetails[index] = {
+                    ...newDetails[index],
+                    name: "",
+                    nationality: "",
+                    email: "",
+                    mobileNo: "",
+                    qidNo: "",
+                    passportNo: "",
+                  };
+                  setDetails(newDetails);
+                }}
+                className="text-sm text-gray-600 hover:text-gray-800 underline"
+              >
+                Clear auto-filled data
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={() => handleSavePersonEntry(section, index)}
+            disabled={submitting}
+            className={`px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 ${
+              submitting ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          >
+            {submitting ? (
+              <>
+                <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                Saving...
+              </>
+            ) : (
+              "Save Changes"
+            )}
+          </button>
+        </div>
+      </div>
+    ))}
+
+    {/* Information note about changes affecting only current job */}
+    {job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(`${section} details auto-populated`)
+      ) && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <p className="text-xs text-gray-700 flex items-start">
+            <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
+            <span>
+              Changes made to these details will only affect this specific
+              job. The original data used for auto-population remains
+              unchanged for other jobs.
+            </span>
+          </p>
+        </div>
+      )}
+
+    {/* Add synchronization information box for person data */}
+    {job && job.gmail && (
+      <SyncInformationBox personType={section} gmail={job.gmail} />
+    )}
+
+    {/* Add entry button */}
+    <div className="flex justify-center pt-4">
+      <button
+        type="button"
+        onClick={() => handleAddEntry(section)}
+        className="inline-flex items-center px-5 py-3 border border-gray-200 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 transform hover:scale-105"
+      >
+        <PlusIcon className="h-5 w-5 mr-2 text-indigo-600" />
+        Add Another Entry
+      </button>
+    </div>
+  </div>
+);
+
+
+
+
 
   // KYC state
   const [kycDetails, setKycDetails] = useState({
@@ -1943,43 +3283,48 @@ function JobDetails() {
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Nationality
-                {job &&
-                  job.timeline?.some((event) =>
-                    event.description?.includes(
-                      `${section} details auto-populated`
-                    )
-                  ) &&
-                  entry.nationality && (
-                    <span className="ml-2 text-xs text-indigo-600">
-                      <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
-                    </span>
-                  )}
-              </label>
-              <input
-                type="text"
-                value={entry.nationality}
-                onChange={(e) => {
-                  const newDetails = [...details];
-                  newDetails[index].nationality = e.target.value;
-                  setDetails(newDetails);
-                }}
-                className={`mt-1 block w-full rounded-lg ${
-                  job &&
-                  job.timeline?.some((event) =>
-                    event.description?.includes(
-                      `${section} details auto-populated`
-                    )
-                  ) &&
-                  entry.nationality
-                    ? "bg-indigo-50 border-indigo-300"
-                    : "border-gray-300"
-                } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-                placeholder="Enter nationality"
-              />
-            </div>
+<div className="space-y-1">
+  <label className="block text-sm font-medium text-gray-700">
+    Nationality
+    {job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(
+          `${section} details auto-populated`
+        )
+      ) &&
+      entry.nationality && (
+        <span className="ml-2 text-xs text-indigo-600">
+          <CheckCircleIcon className="h-4 w-4 inline" /> Pre-filled
+        </span>
+      )}
+  </label>
+  <input
+    type="text"
+    value={entry.nationality || ""} // Ensure controlled input
+    onChange={(e) => {
+      const newDetails = [...details];
+      newDetails[index] = {
+        ...newDetails[index],
+        nationality: e.target.value
+      };
+      setDetails(newDetails);
+    }}
+    className={`mt-1 block w-full rounded-lg ${
+      job &&
+      job.timeline?.some((event) =>
+        event.description?.includes(
+          `${section} details auto-populated`
+        )
+      ) &&
+      entry.nationality
+        ? "bg-indigo-50 border-indigo-300"
+        : "border-gray-300"
+    } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+    placeholder="Enter nationality"
+    autoComplete="off"
+    // REMOVED: onKeyDown handler that was preventing normal typing
+  />
+</div>
 
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
@@ -4562,12 +5907,8 @@ function JobDetails() {
                   )}
 
                   {/* Person Details Content */}
-                  {activeTab === "director" &&
-                    renderPersonDetails(
-                      "director",
-                      directorDetails,
-                      setDirectorDetails
-                    )}
+{activeTab === "director" &&
+  renderPersonDetailsWithAutoSuggest("director", directorDetails, setDirectorDetails)}
                   {activeTab === "shareholder" &&
                     renderPersonDetails(
                       "shareholder",
