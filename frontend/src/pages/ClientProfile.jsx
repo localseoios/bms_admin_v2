@@ -2007,12 +2007,12 @@ const handleUploadInvoice = async (payment, isReplacing = false) => {
           {/* KYC Documents Section */}
           {kyc.documents && kyc.documents.length > 0 ? (
             <div>
-              <h4 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center">
+              {/* <h4 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center">
                 <DocumentTextIcon className="h-5 w-5 mr-2 text-green-600" />
                 KYC Documents
-              </h4>
+              </h4> */}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {kyc.documents.map((doc, idx) => (
                   <a
                     key={idx}
@@ -2051,11 +2051,11 @@ const handleUploadInvoice = async (payment, isReplacing = false) => {
                     </div>
                   </a>
                 ))}
-              </div>
+              </div> */}
             </div>
           ) : (
             <div className="bg-gray-50 rounded-lg border border-gray-100 p-6 text-center">
-              <div className="bg-white rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4 shadow-sm">
+              {/* <div className="bg-white rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4 shadow-sm">
                 <DocumentDuplicateIcon className="h-8 w-8 text-gray-400" />
               </div>
               <h5 className="text-base font-medium text-gray-700 mb-2">
@@ -2063,7 +2063,7 @@ const handleUploadInvoice = async (payment, isReplacing = false) => {
               </h5>
               <p className="text-sm text-gray-500">
                 No KYC documents have been uploaded yet for this client.
-              </p>
+              </p> */}
             </div>
           )}
 

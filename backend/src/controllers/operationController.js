@@ -102,6 +102,24 @@ const findEngagementLetterByGmail = async (gmail) => {
   }
 };
 
+const parseDateField = (dateValue) => {
+  // Return null for undefined, null, empty string, or "undefined" string
+  if (!dateValue || dateValue === 'undefined' || dateValue === 'null' || dateValue.trim() === '') {
+    return null;
+  }
+  
+  // Try to parse the date
+  const parsedDate = new Date(dateValue);
+  
+  // Return null if invalid date
+  if (isNaN(parsedDate.getTime())) {
+    return null;
+  }
+  
+  return parsedDate;
+};
+
+
 // Modify the getCompanyDetails function to check for existing engagement letters
 const getCompanyDetails = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
@@ -199,7 +217,9 @@ const getCompanyDetails = asyncHandler(async (req, res) => {
 });
 
 
-// Update company details - modified to synchronize across jobs
+// Complete fix for updateCompanyDetails function in operationController.js
+// Replace the entire updateCompanyDetails function with this:
+
 const updateCompanyDetails = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
   const {
@@ -213,6 +233,28 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     kycActiveStatus,
     syncAcrossJobs, // New parameter to control synchronization
   } = req.body;
+
+  // Helper function to safely parse dates
+  const parseDateField = (dateValue) => {
+    // Return null for undefined, null, empty string, or "undefined" string
+    if (!dateValue || 
+        dateValue === 'undefined' || 
+        dateValue === 'null' || 
+        dateValue === '' ||
+        (typeof dateValue === 'string' && dateValue.trim() === '')) {
+      return null;
+    }
+    
+    // Try to parse the date
+    const parsedDate = new Date(dateValue);
+    
+    // Return null if invalid date
+    if (isNaN(parsedDate.getTime())) {
+      return null;
+    }
+    
+    return parsedDate;
+  };
 
   // Check if job exists and if user has permission to access it
   const job = await Job.findById(jobId);
@@ -255,18 +297,25 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     console.log(`Updating existing company details for job ID: ${jobId}`);
   }
 
-  // Update text fields
-  companyDetails.companyName = companyName || companyDetails.companyName;
-  companyDetails.qfcNo = qfcNo || companyDetails.qfcNo;
-  companyDetails.registeredAddress =
-    registeredAddress || companyDetails.registeredAddress;
-  companyDetails.incorporationDate =
-    incorporationDate || companyDetails.incorporationDate;
-  companyDetails.serviceType = serviceType || companyDetails.serviceType;
-  companyDetails.mainPurpose = mainPurpose || companyDetails.mainPurpose;
-  companyDetails.expiryDate = expiryDate || companyDetails.expiryDate;
-  companyDetails.kycActiveStatus =
-    kycActiveStatus || companyDetails.kycActiveStatus;
+  // Update text fields with proper validation
+  if (companyName !== undefined) companyDetails.companyName = companyName;
+  if (qfcNo !== undefined) companyDetails.qfcNo = qfcNo;
+  if (registeredAddress !== undefined) companyDetails.registeredAddress = registeredAddress;
+  if (serviceType !== undefined) companyDetails.serviceType = serviceType;
+  if (mainPurpose !== undefined) companyDetails.mainPurpose = mainPurpose;
+  if (kycActiveStatus !== undefined) companyDetails.kycActiveStatus = kycActiveStatus;
+
+  // FIXED: Proper date handling
+  if (incorporationDate !== undefined) {
+    const parsedIncorporationDate = parseDateField(incorporationDate);
+    companyDetails.incorporationDate = parsedIncorporationDate;
+  }
+
+  if (expiryDate !== undefined) {
+    const parsedExpiryDate = parseDateField(expiryDate);
+    companyDetails.expiryDate = parsedExpiryDate;
+  }
+
   companyDetails.updatedBy = req.user._id;
 
   // Handle document uploads
@@ -305,7 +354,7 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
       });
     }
 
-    // UPDATE: Handle multiple CR Extract files (1-2 files)
+    // Handle multiple CR Extract files (1-2 files)
     if (req.files["crExtract"]) {
       // Initialize crExtract as array if it doesn't exist
       if (!Array.isArray(companyDetails.crExtract)) {
@@ -331,11 +380,6 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       }
-    }
-
-    // Update expiry dates
-    if (req.body.crExtractExpiry) {
-      companyDetails.crExtractExpiry = req.body.crExtractExpiry;
     }
 
     // Scope of License
@@ -372,22 +416,54 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     }
   }
 
-  // Update expiry dates
-  if (req.body.companyComputerCardExpiry) {
-    companyDetails.companyComputerCardExpiry =
-      req.body.companyComputerCardExpiry;
+  // FIXED: Update expiry dates with proper parsing
+  if (req.body.companyComputerCardExpiry !== undefined) {
+    companyDetails.companyComputerCardExpiry = parseDateField(req.body.companyComputerCardExpiry);
   }
 
-  if (req.body.taxCardExpiry) {
-    companyDetails.taxCardExpiry = req.body.taxCardExpiry;
+  if (req.body.taxCardExpiry !== undefined) {
+    companyDetails.taxCardExpiry = parseDateField(req.body.taxCardExpiry);
   }
 
-  if (req.body.crExtractExpiry) {
-    companyDetails.crExtractExpiry = req.body.crExtractExpiry;
+  if (req.body.crExtractExpiry !== undefined) {
+    companyDetails.crExtractExpiry = parseDateField(req.body.crExtractExpiry);
   }
 
-  if (req.body.scopeOfLicenseExpiry) {
-    companyDetails.scopeOfLicenseExpiry = req.body.scopeOfLicenseExpiry;
+  if (req.body.scopeOfLicenseExpiry !== undefined) {
+    companyDetails.scopeOfLicenseExpiry = parseDateField(req.body.scopeOfLicenseExpiry);
+  }
+
+  // === Validate that expiry dates exist for uploaded or existing documents ===
+  const ensureExpiry = (docField, expiryValue, label) => {
+    if (docField && !expiryValue) {
+      throw new Error(`${label} expiry date is required`);
+    }
+  };
+
+  try {
+    ensureExpiry(
+      companyDetails.companyComputerCard,
+      companyDetails.companyComputerCardExpiry,
+      'Company Computer Card'
+    );
+    ensureExpiry(
+      companyDetails.taxCard,
+      companyDetails.taxCardExpiry,
+      'Tax Card'
+    );
+    ensureExpiry(
+      Array.isArray(companyDetails.crExtract) && companyDetails.crExtract.length,
+      companyDetails.crExtractExpiry,
+      'CR Extract'
+    );
+    ensureExpiry(
+      companyDetails.scopeOfLicense,
+      companyDetails.scopeOfLicenseExpiry,
+      'Scope of License'
+    );
+  } catch (validationError) {
+    res.status(400);
+    throw validationError;
   }
 
   const updatedCompanyDetails = await companyDetails.save();
@@ -2547,25 +2623,59 @@ const getClientEngagementLetters = asyncHandler(async (req, res) => {
 
 // FIXED: Expiring jobs functions in operationController.js
 
-/**
- * Get expiring jobs with proper notification timing - CORRECTED VERSION
- * Now correctly queries CompanyDetails model where expiry dates are actually stored
- */
+
+// HELPER FUNCTION: Calculate urgency level (matches exportExpiringJobs logic exactly)
+const calculateUrgencyLevel = (actualExpiryDate, currentDate = new Date()) => {
+  const diffDays = Math.ceil((new Date(actualExpiryDate) - currentDate) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const daysOverdue = Math.abs(diffDays);
+    return { 
+      level: "expired", 
+      daysUntilExpiry: diffDays,
+      description: `Expired ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} ago`,
+      priority: 1
+    };
+  } else if (diffDays <= 7) {
+    return { 
+      level: "critical", 
+      daysUntilExpiry: diffDays,
+      description: diffDays === 0 ? "Expires today" : `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`,
+      priority: diffDays === 0 ? 2 : 3
+    };
+  } else if (diffDays <= 30) {
+    return { 
+      level: "warning", 
+      daysUntilExpiry: diffDays,
+      description: `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`,
+      priority: 4
+    };
+  }
+  return { 
+    level: "normal", 
+    daysUntilExpiry: diffDays,
+    description: `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`,
+    priority: 5
+  };
+};
+
+// FIXED: Main getExpiringJobs function (for modal "View All") 
+// Replace the existing getExpiringJobs function in operationController.js
+
 const getExpiringJobs = async (req, res) => {
   try {
-    console.log("📋 Fetching expiring jobs from CompanyDetails...");
+    console.log("📋 Fetching ALL expiring jobs with COMPLETE document breakdown...");
 
-    // Get current date for calculations
     const now = new Date();
-    const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     console.log("📅 Date calculations:");
     console.log("Now:", now.toISOString());
     console.log("One week from now:", oneWeekFromNow.toISOString());
     console.log("One month from now:", oneMonthFromNow.toISOString());
 
-    // FIXED: Query CompanyDetails instead of Job model for expiry dates
+    // STEP 1: Get CompanyDetails with expiring documents
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
         { expiryDate: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
@@ -2583,129 +2693,183 @@ const getExpiringJobs = async (req, res) => {
         select: 'name email' 
       },
       match: { 
-        status: { $nin: ['completed', 'fully_completed_bra', 'cancelled'] } 
+        status: { $nin: ['cancelled'] } // Only exclude cancelled jobs
       }
     })
     .sort({ expiryDate: 1 });
 
     console.log(`📊 Found ${expiringCompanyDetails.length} company details with expiry dates within range`);
 
-    // Process each company detail to find the earliest expiring document
-    const processedJobs = expiringCompanyDetails
-      .filter(detail => detail.jobId) // Only include records with valid job references
-      .map(detail => {
+    // STEP 2: Get PersonDetails with expiring documents  
+    const expiringPersonDetails = await PersonDetails.find({
+      $or: [
+        { qidExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { passportExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+      ],
+    })
+    .populate({
+      path: 'jobId',
+      select: 'jobNumber clientName serviceType status gmail createdAt assignedPerson',
+      populate: { path: 'assignedPerson', select: 'name email' },
+      match: { status: { $nin: ['cancelled'] } }, // Only exclude cancelled jobs
+    })
+    .lean();
+
+    console.log(`📊 Found ${expiringPersonDetails.length} person details with expiry dates within range`);
+
+    // STEP 3: Process CompanyDetails results - CREATE INDIVIDUAL ENTRIES FOR EACH DOCUMENT
+    const companyDetailJobs = [];
+    
+    expiringCompanyDetails
+      .filter(detail => detail && detail.jobId)
+      .forEach(detail => {
         const job = detail.jobId;
-        
-        // Find all expiry dates for this company
-        const expiryDates = [
-          { date: detail.expiryDate, type: 'Main Expiry Date' },
+
+        // Process each document type individually
+        const documentTypes = [
+          { date: detail.expiryDate, type: 'Main Document' },
           { date: detail.companyComputerCardExpiry, type: 'Company Computer Card' },
           { date: detail.taxCardExpiry, type: 'Tax Card' },
           { date: detail.crExtractExpiry, type: 'CR Extract' },
           { date: detail.scopeOfLicenseExpiry, type: 'Scope of License' },
-        ]
-          .filter(item => item.date && item.date <= oneMonthFromNow)
-          .sort((a, b) => new Date(a.date) - new Date(b.date));
+        ];
 
-        if (expiryDates.length === 0) return null;
+        documentTypes.forEach(docType => {
+          // Only include if expiry date exists and is within our timeframe
+          if (docType.date && docType.date <= oneMonthFromNow) {
+            const urgencyData = calculateUrgencyLevel(docType.date, now);
+            
+            companyDetailJobs.push({
+              jobId: job._id,
+              jobNumber: job.jobNumber || 'N/A',
+              clientName: job.clientName || 'Unknown Client',
+              companyName: detail.companyName || job.clientName || 'Unknown Company',
+              serviceType: job.serviceType || 'Unknown Service',
+              status: job.status || 'unknown',
+              expiryDate: docType.date,
+              expiryType: docType.type,
+              daysUntilExpiry: urgencyData.daysUntilExpiry,
+              urgencyLevel: urgencyData.level,
+              urgencyDescription: urgencyData.description,
+              priority: urgencyData.priority,
+              assignedPerson: {
+                name: job.assignedPerson?.name || 'Unassigned',
+                email: job.assignedPerson?.email
+              },
+              createdAt: job.createdAt,
+              updatedAt: job.updatedAt || detail.updatedAt,
+              isServiceCompleted: job.status === 'fully_completed_bra' || job.status === 'completed'
+            });
+          }
+        });
+      });
 
-        // Use the earliest expiring document
-        const earliestExpiry = expiryDates[0];
-        const expiryDate = new Date(earliestExpiry.date);
-        const diffTime = expiryDate - now;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // STEP 4: Process PersonDetails results - CREATE INDIVIDUAL ENTRIES FOR EACH DOCUMENT
+    const personDetailJobs = [];
+    
+    expiringPersonDetails
+      .filter(pd => pd.jobId)
+      .forEach(pd => {
+        const documentTypes = [
+          { date: pd.qidExpiry, type: `${pd.personType} QID (${pd.name})` },
+          { date: pd.nationalAddressExpiry, type: `${pd.personType} National Address (${pd.name})` },
+          { date: pd.passportExpiry, type: `${pd.personType} Passport (${pd.name})` },
+        ];
 
-        // Determine urgency level based on days until expiry
-        let urgencyLevel, urgencyDescription, priority;
+        documentTypes.forEach(docType => {
+          if (docType.date && docType.date <= oneMonthFromNow) {
+            const urgencyData = calculateUrgencyLevel(docType.date, now);
+            
+            personDetailJobs.push({
+              jobId: pd.jobId._id,
+              jobNumber: pd.jobId.jobNumber || 'N/A',
+              clientName: pd.jobId.clientName || 'Unknown Client',
+              companyName: pd.jobId.clientName || 'Unknown Company',
+              serviceType: pd.jobId.serviceType || 'Unknown Service',
+              status: pd.jobId.status || 'unknown',
+              expiryDate: docType.date,
+              expiryType: docType.type,
+              daysUntilExpiry: urgencyData.daysUntilExpiry,
+              urgencyLevel: urgencyData.level,
+              urgencyDescription: urgencyData.description,
+              priority: urgencyData.priority,
+              assignedPerson: {
+                name: pd.jobId.assignedPerson?.name || 'Unassigned',
+                email: pd.jobId.assignedPerson?.email
+              },
+              createdAt: pd.jobId.createdAt,
+              updatedAt: pd.jobId.updatedAt,
+              isServiceCompleted: pd.jobId.status === 'fully_completed_bra' || pd.jobId.status === 'completed'
+            });
+          }
+        });
+      });
 
-        if (diffDays < 0) {
-          // Expired
-          const daysOverdue = Math.abs(diffDays);
-          urgencyLevel = "expired";
-          urgencyDescription = `Expired ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} ago`;
-          priority = 1; // Highest priority
-        } else if (diffDays === 0) {
-          // Expires today
-          urgencyLevel = "critical";
-          urgencyDescription = "Expires today";
-          priority = 2;
-        } else if (diffDays <= 7) {
-          // Critical: 1-7 days (1 week notification)
-          urgencyLevel = "critical";
-          urgencyDescription = `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
-          priority = 3;
-        } else if (diffDays <= 30) {
-          // Warning: 8-30 days (1 month notification)
-          urgencyLevel = "warning";
-          urgencyDescription = `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
-          priority = 4;
-        } else {
-          // This shouldn't happen given our query, but just in case
-          urgencyLevel = "normal";
-          urgencyDescription = `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
-          priority = 5;
-        }
+    // STEP 5: Combine all results
+    const allJobs = [...companyDetailJobs, ...personDetailJobs];
 
-        return {
-          jobId: job._id,
-          jobNumber: job.jobNumber,
-          clientName: job.clientName || 'Unknown Client',
-          companyName: detail.companyName || job.clientName || 'Unknown Company',
-          serviceType: job.serviceType,
-          status: job.status,
-          expiryDate: earliestExpiry.date,
-          expiryType: earliestExpiry.type,
-          daysUntilExpiry: diffDays,
-          urgencyLevel,
-          urgencyDescription,
-          priority,
-          assignedPerson: {
-            id: job.assignedPerson?._id,
-            name: job.assignedPerson?.name || 'Unassigned',
-            email: job.assignedPerson?.email
-          },
-          clientContact: {
-            email: job.gmail
-          },
-          createdAt: job.createdAt,
-          updatedAt: job.updatedAt || detail.updatedAt
-        };
-      })
-      .filter(job => job !== null); // Remove null entries
+    // STEP 6: Remove duplicates based on jobId + expiryType + expiryDate combination
+    const uniqueJobs = allJobs.filter((job, index, self) =>
+      index === self.findIndex(j => 
+        j.jobId.toString() === job.jobId.toString() && 
+        j.expiryType === job.expiryType &&
+        j.expiryDate.getTime() === job.expiryDate.getTime()
+      )
+    );
 
-    // Sort by priority (expired first, then by days until expiry)
-    processedJobs.sort((a, b) => {
+    // STEP 7: Sort by priority (expired first, then by days until expiry)
+    uniqueJobs.sort((a, b) => {
       if (a.priority !== b.priority) {
         return a.priority - b.priority;
       }
       return a.daysUntilExpiry - b.daysUntilExpiry;
     });
 
-    // Group jobs by urgency level for summary
+    // STEP 8: Calculate comprehensive summary statistics
     const summary = {
-      expired: processedJobs.filter(job => job.urgencyLevel === 'expired').length,
-      critical: processedJobs.filter(job => job.urgencyLevel === 'critical').length,
-      warning: processedJobs.filter(job => job.urgencyLevel === 'warning').length,
-      total: processedJobs.length
+      total: uniqueJobs.length,
+      expired: uniqueJobs.filter(job => job.urgencyLevel === 'expired').length,
+      critical: uniqueJobs.filter(job => job.urgencyLevel === 'critical').length,
+      warning: uniqueJobs.filter(job => job.urgencyLevel === 'warning').length,
+      normal: uniqueJobs.filter(job => job.urgencyLevel === 'normal').length,
+      fromCompletedServices: uniqueJobs.filter(job => job.isServiceCompleted).length,
+      // ADDED: Show unique jobs count and document breakdown
+      uniqueJobs: [...new Set(uniqueJobs.map(job => job.jobId.toString()))].length,
+      documentTypes: {
+        companyDocuments: uniqueJobs.filter(job => 
+          ['Main Document', 'Company Computer Card', 'Tax Card', 'CR Extract', 'Scope of License'].includes(job.expiryType)
+        ).length,
+        personalDocuments: uniqueJobs.filter(job => 
+          job.expiryType.includes('QID') || job.expiryType.includes('National Address') || job.expiryType.includes('Passport')
+        ).length
+      }
     };
 
-    console.log("📈 Expiring jobs summary:", summary);
+    console.log("📈 COMPLETE expiring jobs summary:", summary);
+    console.log("📋 Document breakdown:");
+    console.log(`  - Company documents: ${summary.documentTypes.companyDocuments}`);
+    console.log(`  - Personal documents: ${summary.documentTypes.personalDocuments}`);
+    console.log(`  - From completed services: ${summary.fromCompletedServices}`);
+    console.log(`  - Unique jobs affected: ${summary.uniqueJobs}`);
 
-    // Log details for debugging
-    processedJobs.slice(0, 5).forEach(job => {
-      console.log(`🔔 ${job.urgencyLevel.toUpperCase()}: ${job.clientName} - ${job.serviceType} - ${job.expiryType} (${job.urgencyDescription})`);
+    // Log sample of most urgent items
+    const mostUrgent = uniqueJobs.slice(0, 5);
+    console.log("🚨 Most urgent documents:");
+    mostUrgent.forEach(job => {
+      console.log(`  - ${job.clientName}: ${job.expiryType} (${job.urgencyDescription})`);
     });
 
     res.status(200).json({
       success: true,
-      data: processedJobs,
+      data: uniqueJobs,
       summary,
-      message: `Found ${processedJobs.length} expiring jobs`,
+      message: `Found ${uniqueJobs.length} expiring documents from ${summary.uniqueJobs} unique jobs (${summary.fromCompletedServices} from completed services)`,
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error("❌ Error fetching expiring jobs:", error);
+    console.error("❌ Error fetching ALL expiring jobs:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch expiring jobs",
@@ -2714,17 +2878,15 @@ const getExpiringJobs = async (req, res) => {
   }
 };
 
-/**
- * Get expiring jobs for dashboard (CORRECTED VERSION)
- */
+// 2. FIXED: getExpiringJobsForDashboard function
 const getExpiringJobsForDashboard = async (req, res) => {
   try {
-    console.log("📊 Fetching expiring jobs for dashboard - ENHANCED VERSION");
+    console.log("📊 Fetching ALL expiring documents for dashboard (no limits per job)");
 
     const now = new Date();
     const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // APPROACH 1: Check CompanyDetails for document expiry dates
+    // Get CompanyDetails with expiring documents
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
         { expiryDate: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
@@ -2742,135 +2904,160 @@ const getExpiringJobsForDashboard = async (req, res) => {
         select: 'name email' 
       },
       match: { 
-        status: { $nin: ['completed', 'fully_completed_bra', 'cancelled'] } 
+        status: { $nin: ['cancelled'] } // Only exclude cancelled jobs
       }
     })
     .lean();
 
-    // APPROACH 2: Also check Jobs directly if they have expiryDate
-    const directExpiringJobs = await Job.find({
-      expiryDate: { $exists: true, $ne: null, $lte: oneMonthFromNow },
-      status: { $nin: ['completed', 'fully_completed_bra', 'cancelled'] }
+    // Get PersonDetails with expiring documents
+    const expiringPersonDetails = await PersonDetails.find({
+      $or: [
+        { qidExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { passportExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+      ],
     })
-    .populate('assignedPerson', 'name email')
+    .populate({
+      path: 'jobId',
+      select: 'jobNumber clientName serviceType status gmail createdAt assignedPerson',
+      populate: { path: 'assignedPerson', select: 'name email' },
+      match: { status: { $nin: ['cancelled'] } },
+    })
     .lean();
 
-    console.log(`Found ${expiringCompanyDetails.length} from CompanyDetails`);
-    console.log(`Found ${directExpiringJobs.length} from Jobs directly`);
+    console.log(`Found ${expiringCompanyDetails.length} company details + ${expiringPersonDetails.length} person details`);
 
-    // Process CompanyDetails results
-    const companyDetailsJobs = expiringCompanyDetails
+    const allJobs = [];
+
+    // Process CompanyDetails - CREATE SEPARATE ENTRY FOR EACH EXPIRED DOCUMENT
+    expiringCompanyDetails
       .filter(detail => detail && detail.jobId)
-      .map(detail => {
+      .forEach(detail => {
         const job = detail.jobId;
-        
-        // Find earliest expiring document
-        const expiryDates = [
+
+        // IMPORTANT: Create separate entries for EACH expiring document type
+        const expiryChecks = [
           { date: detail.expiryDate, type: 'Main Document' },
-          { date: detail.companyComputerCardExpiry, type: 'Computer Card' },
+          { date: detail.companyComputerCardExpiry, type: 'Company Computer Card' },
           { date: detail.taxCardExpiry, type: 'Tax Card' },
           { date: detail.crExtractExpiry, type: 'CR Extract' },
-          { date: detail.scopeOfLicenseExpiry, type: 'License Scope' },
-        ]
-          .filter(item => item.date && item.date <= oneMonthFromNow)
-          .sort((a, b) => new Date(a.date) - new Date(b.date));
+          { date: detail.scopeOfLicenseExpiry, type: 'Scope of License' },
+        ];
 
-        if (expiryDates.length === 0) return null;
+        // Check each document type separately
+        expiryChecks.forEach(check => {
+          // Only include if the document has an expiry date and it's within our range
+          if (check.date && check.date <= oneMonthFromNow) {
+            const urgencyData = calculateUrgencyLevel(check.date, now);
+            
+            allJobs.push({
+              jobId: job._id,
+              jobNumber: job.jobNumber || 'N/A',
+              clientName: job.clientName || 'Unknown Client',
+              companyName: detail.companyName || job.clientName || 'Unknown Company',
+              serviceType: job.serviceType || 'Unknown Service',
+              status: job.status || 'unknown',
+              expiryDate: check.date,
+              expiryType: check.type,
+              daysUntilExpiry: urgencyData.daysUntilExpiry,
+              urgencyLevel: urgencyData.level,
+              urgencyDescription: urgencyData.description,
+              priority: urgencyData.priority,
+              assignedPerson: {
+                name: job.assignedPerson?.name || 'Unassigned',
+                email: job.assignedPerson?.email
+              },
+              isServiceCompleted: job.status === 'fully_completed_bra' || job.status === 'completed'
+            });
+          }
+        });
+      });
 
-        const earliestExpiry = expiryDates[0];
-        const expiryDate = new Date(earliestExpiry.date);
-        const diffTime = expiryDate - now;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // Process PersonDetails - CREATE SEPARATE ENTRY FOR EACH EXPIRED DOCUMENT
+    expiringPersonDetails
+      .filter(pd => pd.jobId)
+      .forEach(pd => {
+        const expiryChecks = [
+          { date: pd.qidExpiry, type: `${pd.personType} QID (${pd.name})` },
+          { date: pd.nationalAddressExpiry, type: `${pd.personType} National Address (${pd.name})` },
+          { date: pd.passportExpiry, type: `${pd.personType} Passport (${pd.name})` },
+        ];
 
-        return createJobExpiryObject(job, detail, earliestExpiry, diffDays);
-      })
-      .filter(job => job !== null);
+        // Check each document type separately
+        expiryChecks.forEach(check => {
+          if (check.date && check.date <= oneMonthFromNow) {
+            const urgencyData = calculateUrgencyLevel(check.date, now);
+            
+            allJobs.push({
+              jobId: pd.jobId._id,
+              jobNumber: pd.jobId.jobNumber || 'N/A',
+              clientName: pd.jobId.clientName || 'Unknown Client',
+              companyName: pd.jobId.clientName || 'Unknown Company',
+              serviceType: pd.jobId.serviceType || 'Unknown Service',
+              status: pd.jobId.status || 'unknown',
+              expiryDate: check.date,
+              expiryType: check.type,
+              daysUntilExpiry: urgencyData.daysUntilExpiry,
+              urgencyLevel: urgencyData.level,
+              urgencyDescription: urgencyData.description,
+              priority: urgencyData.priority,
+              assignedPerson: {
+                name: pd.jobId.assignedPerson?.name || 'Unassigned',
+                email: pd.jobId.assignedPerson?.email
+              },
+              isServiceCompleted: pd.jobId.status === 'fully_completed_bra' || pd.jobId.status === 'completed'
+            });
+          }
+        });
+      });
 
-    // Process direct Job results
-    const directJobs = directExpiringJobs.map(job => {
-      const expiryDate = new Date(job.expiryDate);
-      const diffTime = expiryDate - now;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      return createJobExpiryObject(job, null, { date: job.expiryDate, type: 'Job Expiry' }, diffDays);
-    });
-
-    // APPROACH 3: If no results, create sample/test data to help with debugging
-    let allJobs = [...companyDetailsJobs, ...directJobs];
-    
-    // Remove duplicates based on jobId
-    const uniqueJobs = allJobs.filter((job, index, self) => 
-      index === self.findIndex(j => j.jobId.toString() === job.jobId.toString())
+    // IMPORTANT: Remove duplicates based on jobId + expiryType + expiryDate combination
+    // This ensures that the same document with the same expiry date isn't duplicated
+    const uniqueJobs = allJobs.filter((job, index, self) =>
+      index === self.findIndex(j => 
+        j.jobId.toString() === job.jobId.toString() && 
+        j.expiryType === job.expiryType &&
+        j.expiryDate.getTime() === job.expiryDate.getTime()
+      )
     );
 
-    // If still no results, let's check what data actually exists
-    if (uniqueJobs.length === 0) {
-      console.log("🔍 No expiring jobs found, checking available data...");
-      
-      // Count total active jobs
-      const totalActiveJobs = await Job.countDocuments({
-        status: { $nin: ['completed', 'fully_completed_bra', 'cancelled'] }
-      });
-      
-      // Count company details with any expiry date
-      const companyDetailsWithExpiry = await CompanyDetails.countDocuments({
-        $or: [
-          { expiryDate: { $exists: true, $ne: null } },
-          { companyComputerCardExpiry: { $exists: true, $ne: null } },
-          { taxCardExpiry: { $exists: true, $ne: null } },
-          { crExtractExpiry: { $exists: true, $ne: null } },
-          { scopeOfLicenseExpiry: { $exists: true, $ne: null } },
-        ]
-      });
-
-      console.log(`📊 Total active jobs: ${totalActiveJobs}`);
-      console.log(`📊 Company details with expiry dates: ${companyDetailsWithExpiry}`);
-
-      // Create a few sample entries for testing if nothing exists
-      if (totalActiveJobs > 0 && companyDetailsWithExpiry === 0) {
-        console.log("🔧 Creating sample expiry data for existing jobs...");
-        
-        // Get first few active jobs and add sample expiry dates
-        const sampleJobs = await Job.find({
-          status: { $nin: ['completed', 'fully_completed_bra', 'cancelled'] }
-        })
-        .populate('assignedPerson', 'name email')
-        .limit(3)
-        .lean();
-
-        uniqueJobs.push(...sampleJobs.map((job, index) => {
-          const daysFromNow = [5, 15, 25][index]; // Different urgency levels
-          const sampleExpiryDate = new Date(now.getTime() + daysFromNow * 24 * 60 * 60 * 1000);
-          
-          return createJobExpiryObject(job, null, { 
-            date: sampleExpiryDate, 
-            type: 'Sample Document (Set Expiry Dates)' 
-          }, daysFromNow);
-        }));
-      }
-    }
-
-    // Sort by urgency and expiry date
+    // Sort by priority (expired first, then critical, then warning)
     uniqueJobs.sort((a, b) => {
-      const urgencyOrder = { expired: 0, critical: 1, warning: 2, normal: 3 };
-      if (urgencyOrder[a.urgencyLevel] !== urgencyOrder[b.urgencyLevel]) {
-        return urgencyOrder[a.urgencyLevel] - urgencyOrder[b.urgencyLevel];
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
       }
+      // If same priority, sort by days until expiry (most urgent first)
       return a.daysUntilExpiry - b.daysUntilExpiry;
     });
 
-    console.log(`✅ Final result: ${uniqueJobs.length} expiring jobs for dashboard`);
+    // REMOVED: No artificial limits - show ALL expired documents
+    // Previously was: const finalJobs = uniqueJobs.slice(0, 15);
+    // Now we show all expired/expiring documents
+    const finalJobs = uniqueJobs;
+
+    const summary = {
+      total: finalJobs.length,
+      expired: finalJobs.filter(j => j.urgencyLevel === 'expired').length,
+      critical: finalJobs.filter(j => j.urgencyLevel === 'critical').length,
+      warning: finalJobs.filter(j => j.urgencyLevel === 'warning').length,
+      fromCompletedServices: finalJobs.filter(j => j.isServiceCompleted).length,
+      // ADDED: Count of unique jobs (to show how many jobs have expired docs)
+      uniqueJobs: [...new Set(finalJobs.map(j => j.jobId.toString()))].length,
+    };
+
+    console.log(`✅ Dashboard result - Showing ${finalJobs.length} expired documents from ${summary.uniqueJobs} jobs`);
+    console.log("📊 Breakdown by urgency:", {
+      expired: summary.expired,
+      critical: summary.critical, 
+      warning: summary.warning,
+      fromCompleted: summary.fromCompletedServices
+    });
 
     res.status(200).json({
       success: true,
-      data: uniqueJobs,
-      summary: {
-        total: uniqueJobs.length,
-        expired: uniqueJobs.filter(j => j.urgencyLevel === 'expired').length,
-        critical: uniqueJobs.filter(j => j.urgencyLevel === 'critical').length,
-        warning: uniqueJobs.filter(j => j.urgencyLevel === 'warning').length,
-      },
-      message: `Found ${uniqueJobs.length} expiring jobs for dashboard`,
+      data: finalJobs,
+      summary,
+      message: `Found ${finalJobs.length} expiring documents from ${summary.uniqueJobs} unique jobs`,
       timestamp: new Date().toISOString()
     });
 
@@ -2884,76 +3071,7 @@ const getExpiringJobsForDashboard = async (req, res) => {
   }
 };
 
-// Helper function to create standardized job expiry objects
-function createJobExpiryObject(job, companyDetail, expiryInfo, diffDays) {
-  let urgencyLevel, urgencyDescription;
-  
-  if (diffDays < 0) {
-    const daysOverdue = Math.abs(diffDays);
-    urgencyLevel = "expired";
-    urgencyDescription = `Expired ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} ago`;
-  } else if (diffDays <= 7) {
-    urgencyLevel = "critical";
-    urgencyDescription = diffDays === 0 ? "Expires today" : `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
-  } else if (diffDays <= 30) {
-    urgencyLevel = "warning";
-    urgencyDescription = `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
-  } else {
-    urgencyLevel = "normal";
-    urgencyDescription = `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
-  }
-
-  return {
-    jobId: job._id,
-    jobNumber: job.jobNumber || 'N/A',
-    clientName: job.clientName || 'Unknown Client',
-    companyName: companyDetail?.companyName || job.clientName || 'Unknown Company',
-    serviceType: job.serviceType || 'Unknown Service',
-    status: job.status || 'unknown',
-    expiryDate: expiryInfo.date,
-    expiryType: expiryInfo.type,
-    daysUntilExpiry: diffDays,
-    urgencyLevel,
-    urgencyDescription,
-    assignedPerson: {
-      name: job.assignedPerson?.name || 'Unassigned',
-      email: job.assignedPerson?.email
-    },
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt || companyDetail?.updatedAt
-  };
-}
-
-// DASHBOARD FRONTEND FIX - Update this in your Dashboard.jsx
-// Replace the existing renderExpiringJobsSection condition for the "View all" button:
-
-// BEFORE (in your Dashboard.jsx):
-// {expiringJobs.length > 5 && (
-//   <div className="text-center pt-4">
-//     <button onClick={() => setShowAllExpiringJobs(true)}>
-//       View all {expiringJobs.length} expiring documents
-//     </button>
-//   </div>
-// )}
-
-// AFTER - Always show the "View all" button when there are any jobs:
-// {expiringJobs.length > 0 && (
-//   <div className="text-center pt-4">
-//     <button
-//       onClick={() => setShowAllExpiringJobs(true)}
-//       className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline transition-all duration-200"
-//     >
-//       {expiringJobs.length > 5 
-//         ? `View all ${expiringJobs.length} expiring documents`
-//         : `View expiring documents (${expiringJobs.length})`
-//       }
-//     </button>
-//   </div>
-// )}
-
-/**
- * FIXED: Get expiring jobs statistics - now correctly queries CompanyDetails
- */
+// 3. FIXED: getExpiringJobsStats function
 const getExpiringJobsStats = async (req, res) => {
   try {
     console.log("📊 Calculating expiring jobs statistics from CompanyDetails...");
@@ -2962,7 +3080,11 @@ const getExpiringJobsStats = async (req, res) => {
     const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // FIXED: Count from CompanyDetails instead of Job model
+    // Get active job IDs (exclude only cancelled jobs)
+    const activeJobIds = await Job.find({ 
+      status: { $nin: ["cancelled"] } // FIXED: Include fully_completed_bra
+    }).distinct('_id');
+
     const [expired, expiringSoon, expiringThisMonth, total] = await Promise.all([
       // Expired documents
       CompanyDetails.countDocuments({
@@ -2973,11 +3095,7 @@ const getExpiringJobsStats = async (req, res) => {
           { crExtractExpiry: { $exists: true, $ne: null, $lt: now } },
           { scopeOfLicenseExpiry: { $exists: true, $ne: null, $lt: now } },
         ],
-        jobId: { 
-          $in: await Job.find({ 
-            status: { $nin: ["completed", "fully_completed_bra", "cancelled"] } 
-          }).distinct('_id') 
-        }
+        jobId: { $in: activeJobIds }
       }),
 
       // Expiring within 7 days
@@ -2989,11 +3107,7 @@ const getExpiringJobsStats = async (req, res) => {
           { crExtractExpiry: { $exists: true, $ne: null, $gte: now, $lte: oneWeekFromNow } },
           { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gte: now, $lte: oneWeekFromNow } },
         ],
-        jobId: { 
-          $in: await Job.find({ 
-            status: { $nin: ["completed", "fully_completed_bra", "cancelled"] } 
-          }).distinct('_id') 
-        }
+        jobId: { $in: activeJobIds }
       }),
 
       // Expiring within 30 days
@@ -3005,11 +3119,7 @@ const getExpiringJobsStats = async (req, res) => {
           { crExtractExpiry: { $exists: true, $ne: null, $gte: now, $lte: oneMonthFromNow } },
           { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gte: now, $lte: oneMonthFromNow } },
         ],
-        jobId: { 
-          $in: await Job.find({ 
-            status: { $nin: ["completed", "fully_completed_bra", "cancelled"] } 
-          }).distinct('_id') 
-        }
+        jobId: { $in: activeJobIds }
       }),
 
       // Total active company details with expiry dates
@@ -3021,19 +3131,32 @@ const getExpiringJobsStats = async (req, res) => {
           { crExtractExpiry: { $exists: true, $ne: null } },
           { scopeOfLicenseExpiry: { $exists: true, $ne: null } },
         ],
-        jobId: { 
-          $in: await Job.find({ 
-            status: { $nin: ["completed", "fully_completed_bra", "cancelled"] } 
-          }).distinct('_id') 
-        }
+        jobId: { $in: activeJobIds }
       }),
     ]);
+
+    // ADDED: Get count of completed services
+    const completedServicesWithExpiry = await CompanyDetails.countDocuments({
+      $or: [
+        { expiryDate: { $exists: true, $ne: null } },
+        { companyComputerCardExpiry: { $exists: true, $ne: null } },
+        { taxCardExpiry: { $exists: true, $ne: null } },
+        { crExtractExpiry: { $exists: true, $ne: null } },
+        { scopeOfLicenseExpiry: { $exists: true, $ne: null } },
+      ],
+      jobId: { 
+        $in: await Job.find({ 
+          status: { $in: ["completed", "fully_completed_bra"] }
+        }).distinct('_id') 
+      }
+    });
 
     const stats = {
       expired,
       expiringSoon, // 7 days
       expiringThisMonth, // 30 days
       total,
+      fromCompletedServices: completedServicesWithExpiry, // ADDED
       lastUpdated: new Date().toISOString(),
     };
 
@@ -3042,7 +3165,7 @@ const getExpiringJobsStats = async (req, res) => {
     res.status(200).json({
       success: true,
       data: stats,
-      message: "Expiring jobs statistics retrieved successfully",
+      message: "Expiring jobs statistics retrieved successfully (including completed services)",
     });
   } catch (error) {
     console.error("❌ Error calculating expiring jobs statistics:", error);
@@ -3054,16 +3177,13 @@ const getExpiringJobsStats = async (req, res) => {
   }
 };
 
-/**
- * FIXED: Send expiry notifications - now queries CompanyDetails correctly
- */
+// 4. FIXED: sendExpiryNotifications function
 const sendExpiryNotifications = asyncHandler(async (req, res) => {
   try {
     const currentDate = new Date();
     const warningDate = new Date();
     warningDate.setDate(currentDate.getDate() + 7); // 7 days warning for notifications
 
-    // FIXED: This function already correctly queries CompanyDetails
     const criticallyExpiringCompanyDetails = await CompanyDetails.find({
       $or: [
         { expiryDate: { $exists: true, $ne: null, $lte: warningDate } },
@@ -3076,8 +3196,9 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
       path: "jobId",
       select: "jobNumber clientName serviceType assignedPerson status",
       populate: { path: "assignedPerson", select: "_id name email" },
+      // FIXED: Include fully_completed_bra jobs for notifications
       match: { 
-        status: { $nin: ["completed", "fully_completed_bra", "cancelled"] } 
+        status: { $nin: ["cancelled"] } // Only exclude cancelled jobs
       }
     });
 
@@ -3091,10 +3212,10 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
       // Find the earliest expiring document
       const expiryDates = [
         { date: companyDetail.expiryDate, type: 'Main Document' },
-        { date: companyDetail.companyComputerCardExpiry, type: 'Computer Card' },
+        { date: companyDetail.companyComputerCardExpiry, type: 'Company Computer Card' },
         { date: companyDetail.taxCardExpiry, type: 'Tax Card' },
         { date: companyDetail.crExtractExpiry, type: 'CR Extract' },
-        { date: companyDetail.scopeOfLicenseExpiry, type: 'License Scope' },
+        { date: companyDetail.scopeOfLicenseExpiry, type: 'Scope of License' },
       ]
         .filter(item => item.date && item.date <= warningDate)
         .sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -3107,13 +3228,18 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
       );
 
       const urgencyText = daysUntilExpiry <= 0 ? 'has expired' : `expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}`;
+      
+      // ADDED: Include service status in notification
+      const serviceStatus = job.status === 'fully_completed_bra' || job.status === 'completed' 
+        ? ' (Service Completed - Document Renewal Required)' 
+        : '';
 
       // Send notification to assigned person
       if (job.assignedPerson) {
         await notificationService.createNotification(
           {
             title: "Document Expiry Alert",
-            description: `${earliestExpiry.type} for ${job.clientName} (Job #${job.jobNumber}) ${urgencyText}. Please take immediate action.`,
+            description: `${earliestExpiry.type} for ${job.clientName} (Job #${job.jobNumber}) ${urgencyText}${serviceStatus}. Please take immediate action.`,
             type: "expiry_alert",
             priority: daysUntilExpiry <= 0 ? "high" : daysUntilExpiry <= 3 ? "medium" : "normal",
             relatedTo: { model: "Job", id: job._id },
@@ -3127,7 +3253,7 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
       await notificationService.createNotification(
         {
           title: "Document Expiry Alert",
-          description: `${earliestExpiry.type} for ${job.clientName} (Job #${job.jobNumber}) ${urgencyText}. Assigned to: ${job.assignedPerson?.name || 'Unassigned'}`,
+          description: `${earliestExpiry.type} for ${job.clientName} (Job #${job.jobNumber}) ${urgencyText}${serviceStatus}. Assigned to: ${job.assignedPerson?.name || 'Unassigned'}`,
           type: "expiry_alert",
           priority: daysUntilExpiry <= 0 ? "high" : daysUntilExpiry <= 3 ? "medium" : "normal",
           relatedTo: { model: "Job", id: job._id },
@@ -3138,7 +3264,7 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
     }
 
     res.status(200).json({
-      message: `Expiry notifications sent successfully`,
+      message: `Expiry notifications sent successfully (including completed services)`,
       notificationsSent,
       jobsChecked: criticallyExpiringCompanyDetails.length,
     });
@@ -3151,7 +3277,6 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
     });
   }
 });
-
 
 
 
@@ -3395,230 +3520,372 @@ const updateJobExpiryDate = async (req, res) => {
 };
 
 
-// Export expiring jobs to Excel - UPDATED with forced expiry logic
+// FIXED: exportExpiringJobs function to show ALL expired documents per job
+// Replace the existing exportExpiringJobs function in operationController.js
+
 const exportExpiringJobs = asyncHandler(async (req, res) => {
   try {
-    // Get current date and calculate date ranges
+    console.log("📊 Exporting ALL expiring documents to Excel (no limits per job)");
+
     const currentDate = new Date();
-    
-    // Look 67 days ahead to account for forced expiry (37 days early)
-    const warningDate = new Date();
-    warningDate.setDate(currentDate.getDate() + 67);
+    const oneMonthFromNow = new Date(currentDate.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // Helper function to calculate forced expiry (37 days before actual expiry)
-    const getForcedExpiryDate = (actualExpiryDate) => {
-      const forcedExpiry = new Date(actualExpiryDate);
-      forcedExpiry.setDate(forcedExpiry.getDate() - 37);
-      return forcedExpiry;
-    };
-
-    // Helper function to calculate urgency based on forced expiry
-    const calculateUrgencyLevel = (actualExpiryDate) => {
-      const forcedExpiry = getForcedExpiryDate(actualExpiryDate);
-      const diffDays = Math.ceil((forcedExpiry - currentDate) / (1000 * 60 * 60 * 24));
-      const actualDiffDays = Math.ceil((new Date(actualExpiryDate) - currentDate) / (1000 * 60 * 60 * 24));
-
-      if (diffDays <= 0) {
-        return {
-          level: "EXPIRED",
-          daysUntilExpiry: actualDiffDays,
-          forcedDaysUntilExpiry: diffDays
-        };
-      } else if (diffDays <= 7) {
-        return {
-          level: "CRITICAL",
-          daysUntilExpiry: actualDiffDays,
-          forcedDaysUntilExpiry: diffDays
-        };
-      } else if (diffDays <= 30) {
-        return {
-          level: "WARNING",
-          daysUntilExpiry: actualDiffDays,
-          forcedDaysUntilExpiry: diffDays
-        };
-      } else {
-        return {
-          level: "NORMAL",
-          daysUntilExpiry: actualDiffDays,
-          forcedDaysUntilExpiry: diffDays
-        };
-      }
-    };
-
+    // Get CompanyDetails with expiring documents
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
-        { expiryDate: { $exists: true, $ne: null, $lte: warningDate } },
-        { companyComputerCardExpiry: { $exists: true, $ne: null, $lte: warningDate } },
-        { taxCardExpiry: { $exists: true, $ne: null, $lte: warningDate } },
-        { crExtractExpiry: { $exists: true, $ne: null, $lte: warningDate } },
-        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $lte: warningDate } },
+        { expiryDate: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { companyComputerCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { taxCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { crExtractExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
       ],
     })
-      .populate({
-        path: "jobId",
-        select: "jobNumber clientName serviceType status gmail createdAt",
-        populate: { path: "assignedPerson", select: "name email" },
-      })
-      .sort({ expiryDate: 1 });
+    .populate({
+      path: "jobId",
+      select: "jobNumber clientName serviceType status gmail createdAt assignedPerson",
+      populate: { path: "assignedPerson", select: "name email" },
+      match: { 
+        status: { $nin: ['cancelled'] } // Only exclude cancelled jobs
+      }
+    })
+    .lean();
 
-    // Process the data with forced expiry logic
-    const expiringJobs = expiringCompanyDetails
-      .filter(detail => detail.jobId)
-      .map(detail => {
+    // Get PersonDetails with expiring documents
+    const expiringPersonDetails = await PersonDetails.find({
+      $or: [
+        { qidExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { passportExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+      ],
+    })
+    .populate({
+      path: "jobId",
+      select: "jobNumber clientName serviceType status gmail createdAt assignedPerson",
+      populate: { path: "assignedPerson", select: "name email" },
+      match: { 
+        status: { $nin: ['cancelled'] }
+      }
+    })
+    .lean();
+
+    console.log(`📋 Found ${expiringCompanyDetails.length} company details + ${expiringPersonDetails.length} person details for export`);
+
+    const allExpiringJobs = [];
+
+    // Process CompanyDetails - CREATE SEPARATE ENTRY FOR EACH EXPIRED DOCUMENT
+    expiringCompanyDetails
+      .filter(detail => detail && detail.jobId)
+      .forEach(detail => {
         const job = detail.jobId;
-        
-        const expiryDates = [
-          { date: detail.expiryDate, type: 'Main Expiry' },
-          { date: detail.companyComputerCardExpiry, type: 'Computer Card' },
-          { date: detail.taxCardExpiry, type: 'Tax Card' },
-          { date: detail.crExtractExpiry, type: 'CR Extract' },
-          { date: detail.scopeOfLicenseExpiry, type: 'License Scope' },
-        ]
-          .filter(item => item.date && item.date <= warningDate)
-          .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-        if (expiryDates.length === 0) return null;
+        // Check each document type separately and create individual entries
+        const documentChecks = [
+          { 
+            date: detail.expiryDate, 
+            type: 'Main Document',
+            hasDocument: detail.expiryDate 
+          },
+          { 
+            date: detail.companyComputerCardExpiry, 
+            type: 'Company Computer Card',
+            hasDocument: detail.companyComputerCard 
+          },
+          { 
+            date: detail.taxCardExpiry, 
+            type: 'Tax Card',
+            hasDocument: detail.taxCard 
+          },
+          { 
+            date: detail.crExtractExpiry, 
+            type: 'CR Extract',
+            hasDocument: Array.isArray(detail.crExtract) && detail.crExtract.length > 0 
+          },
+          { 
+            date: detail.scopeOfLicenseExpiry, 
+            type: 'Scope of License',
+            hasDocument: detail.scopeOfLicense 
+          },
+        ];
 
-        const earliestExpiry = expiryDates[0];
-        const urgencyData = calculateUrgencyLevel(earliestExpiry.date);
+        // Process each document type individually
+        documentChecks.forEach(check => {
+          // Include if expiry date exists and is within range
+          if (check.date && check.date <= oneMonthFromNow) {
+            const urgencyData = calculateUrgencyLevel(check.date, currentDate);
 
-        return {
-          jobNumber: job.jobNumber,
-          clientName: job.clientName,
-          companyName: detail.companyName || '',
-          serviceType: job.serviceType,
-          status: job.status,
-          gmail: job.gmail,
-          actualExpiryDate: earliestExpiry.date,
-          forcedExpiryDate: getForcedExpiryDate(earliestExpiry.date),
-          expiryType: earliestExpiry.type,
-          actualDaysUntilExpiry: urgencyData.daysUntilExpiry,
-          forcedDaysUntilExpiry: urgencyData.forcedDaysUntilExpiry,
-          assignedPersonName: job.assignedPerson?.name || 'Unassigned',
-          assignedPersonEmail: job.assignedPerson?.email || '',
-          urgencyLevel: urgencyData.level,
-          createdAt: job.createdAt,
-        };
-      })
-      .filter(job => job !== null && job.forcedDaysUntilExpiry <= 30) // Only include jobs flagged by forced expiry
-      .sort((a, b) => {
-        const urgencyOrder = { EXPIRED: 0, CRITICAL: 1, WARNING: 2, NORMAL: 3 };
-        if (urgencyOrder[a.urgencyLevel] !== urgencyOrder[b.urgencyLevel]) {
-          return urgencyOrder[a.urgencyLevel] - urgencyOrder[b.urgencyLevel];
-        }
-        return a.forcedDaysUntilExpiry - b.forcedDaysUntilExpiry;
+            allExpiringJobs.push({
+              jobNumber: job.jobNumber || 'N/A',
+              clientName: job.clientName || 'Unknown Client',
+              companyName: detail.companyName || job.clientName || 'Unknown Company',
+              serviceType: job.serviceType || 'Unknown Service',
+              status: job.status || 'unknown',
+              gmail: job.gmail || '',
+              expiryDate: check.date,
+              expiryType: check.type,
+              daysUntilExpiry: urgencyData.daysUntilExpiry,
+              urgencyLevel: urgencyData.level.toUpperCase(),
+              urgencyDescription: urgencyData.description,
+              assignedPersonName: job.assignedPerson?.name || 'Unassigned',
+              assignedPersonEmail: job.assignedPerson?.email || '',
+              createdAt: job.createdAt,
+              hasDocumentFile: check.hasDocument ? 'Yes' : 'No',
+              isServiceCompleted: job.status === 'fully_completed_bra' || job.status === 'completed' ? 'Yes' : 'No'
+            });
+          }
+        });
       });
+
+    // Process PersonDetails - CREATE SEPARATE ENTRY FOR EACH EXPIRED DOCUMENT
+    expiringPersonDetails
+      .filter(pd => pd && pd.jobId)
+      .forEach(pd => {
+        const documentChecks = [
+          { 
+            date: pd.qidExpiry, 
+            type: `${pd.personType} QID (${pd.name})`,
+            hasDocument: pd.qidDoc 
+          },
+          { 
+            date: pd.nationalAddressExpiry, 
+            type: `${pd.personType} National Address (${pd.name})`,
+            hasDocument: pd.nationalAddressDoc 
+          },
+          { 
+            date: pd.passportExpiry, 
+            type: `${pd.personType} Passport (${pd.name})`,
+            hasDocument: pd.passportDoc 
+          },
+        ];
+
+        // Process each document type individually
+        documentChecks.forEach(check => {
+          if (check.date && check.date <= oneMonthFromNow) {
+            const urgencyData = calculateUrgencyLevel(check.date, currentDate);
+
+            allExpiringJobs.push({
+              jobNumber: pd.jobId.jobNumber || 'N/A',
+              clientName: pd.jobId.clientName || 'Unknown Client',
+              companyName: pd.jobId.clientName || 'Unknown Company',
+              serviceType: pd.jobId.serviceType || 'Unknown Service',
+              status: pd.jobId.status || 'unknown',
+              gmail: pd.jobId.gmail || '',
+              expiryDate: check.date,
+              expiryType: check.type,
+              daysUntilExpiry: urgencyData.daysUntilExpiry,
+              urgencyLevel: urgencyData.level.toUpperCase(),
+              urgencyDescription: urgencyData.description,
+              assignedPersonName: pd.jobId.assignedPerson?.name || 'Unassigned',
+              assignedPersonEmail: pd.jobId.assignedPerson?.email || '',
+              createdAt: pd.jobId.createdAt,
+              hasDocumentFile: check.hasDocument ? 'Yes' : 'No',
+              isServiceCompleted: pd.jobId.status === 'fully_completed_bra' || pd.jobId.status === 'completed' ? 'Yes' : 'No'
+            });
+          }
+        });
+      });
+
+    // Remove duplicates based on jobId + expiryType + expiryDate combination
+    const uniqueExpiringJobs = allExpiringJobs.filter((job, index, self) =>
+      index === self.findIndex(j => 
+        j.jobNumber === job.jobNumber && 
+        j.expiryType === job.expiryType &&
+        j.expiryDate.getTime() === job.expiryDate.getTime()
+      )
+    );
+
+    // Sort by urgency level first, then by days until expiry
+    uniqueExpiringJobs.sort((a, b) => {
+      const urgencyOrder = { EXPIRED: 0, CRITICAL: 1, WARNING: 2, NORMAL: 3 };
+      
+      if (urgencyOrder[a.urgencyLevel] !== urgencyOrder[b.urgencyLevel]) {
+        return urgencyOrder[a.urgencyLevel] - urgencyOrder[b.urgencyLevel];
+      }
+      
+      // If same urgency, sort by days until expiry (most urgent first)
+      return a.daysUntilExpiry - b.daysUntilExpiry;
+    });
+
+    console.log(`📈 Exporting ${uniqueExpiringJobs.length} individual document expiries`);
+
+    // Calculate statistics for summary
+    const stats = {
+      total: uniqueExpiringJobs.length,
+      expired: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'EXPIRED').length,
+      critical: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'CRITICAL').length,
+      warning: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'WARNING').length,
+      normal: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'NORMAL').length,
+      uniqueJobs: [...new Set(uniqueExpiringJobs.map(j => j.jobNumber))].length,
+      fromCompletedServices: uniqueExpiringJobs.filter(j => j.isServiceCompleted === 'Yes').length
+    };
 
     // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Expiring Jobs (Forced Expiry)');
+    const worksheet = workbook.addWorksheet('All Expiring Documents');
 
-    // Define columns - UPDATED with forced expiry columns
+    // ENHANCED: Better column structure
     worksheet.columns = [
       { header: 'Job Number', key: 'jobNumber', width: 15 },
       { header: 'Client Name', key: 'clientName', width: 25 },
       { header: 'Company Name', key: 'companyName', width: 25 },
       { header: 'Service Type', key: 'serviceType', width: 20 },
-      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Job Status', key: 'status', width: 15 },
+      { header: 'Service Completed', key: 'isServiceCompleted', width: 18 },
       { header: 'Email', key: 'gmail', width: 30 },
-      { header: 'Actual Expiry Date', key: 'actualExpiryDate', width: 18 },
-      { header: 'Forced Expiry Date', key: 'forcedExpiryDate', width: 18 },
-      { header: 'Document Type', key: 'expiryType', width: 18 },
-      { header: 'Actual Days Until Expiry', key: 'actualDaysUntilExpiry', width: 22 },
-      { header: 'Forced Days Until Expiry', key: 'forcedDaysUntilExpiry', width: 22 },
+      { header: 'Document Type', key: 'expiryType', width: 25 }, // Wider for better readability
+      { header: 'Expiry Date', key: 'expiryDate', width: 15 },
+      { header: 'Days Until Expiry', key: 'daysUntilExpiry', width: 18 },
       { header: 'Urgency Level', key: 'urgencyLevel', width: 15 },
+      { header: 'Urgency Description', key: 'urgencyDescription', width: 25 },
+      { header: 'Has Document File', key: 'hasDocumentFile', width: 18 },
       { header: 'Assigned To', key: 'assignedPersonName', width: 20 },
       { header: 'Assigned Email', key: 'assignedPersonEmail', width: 30 },
-      { header: 'Job Created', key: 'createdAt', width: 15 },
+      { header: 'Job Created Date', key: 'createdAt', width: 18 },
     ];
 
     // Style the header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
+    worksheet.getRow(2).font = { bold: true, size: 11 };
+    worksheet.getRow(2).fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFE6F3FF' }
+      fgColor: { argb: 'FF4472C4' } // Blue header
     };
+    worksheet.getRow(2).font = { bold: true, color: { argb: 'FFFFFFFF' } }; // White text
 
-    // Add data rows
-    expiringJobs.forEach((job, index) => {
-      const row = worksheet.addRow({
-        ...job,
-        actualExpiryDate: job.actualExpiryDate.toLocaleDateString(),
-        forcedExpiryDate: job.forcedExpiryDate.toLocaleDateString(),
-        createdAt: job.createdAt.toLocaleDateString(),
-      });
-
-      // Color code rows based on urgency
-      let fillColor;
-      switch (job.urgencyLevel) {
-        case 'EXPIRED':
-          fillColor = 'FFFEF2F2'; // Light red
-          break;
-        case 'CRITICAL':
-          fillColor = 'FFFEF3E2'; // Light orange
-          break;
-        case 'WARNING':
-          fillColor = 'FFFFFAEB'; // Light yellow
-          break;
-        default:
-          fillColor = 'FFF0FDF4'; // Light green
-      }
-
-      row.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: fillColor }
-      };
-
-      // Bold the urgency level column
-      row.getCell('urgencyLevel').font = { bold: true };
-    });
-
-    // Add filters to the header row
-    worksheet.autoFilter = 'A1:O1';
-
-    // Add summary at the top - UPDATED with forced expiry explanation
+    // Add summary row at the top
     const summaryRow = worksheet.insertRow(1, [
-      'EXPIRING JOBS REPORT - FORCED EXPIRY (37 DAYS EARLY)',
-      `Generated on: ${new Date().toLocaleDateString()}`,
-      `Total Jobs: ${expiringJobs.length}`,
-      `Expired: ${expiringJobs.filter(j => j.urgencyLevel === 'EXPIRED').length}`,
-      `Critical: ${expiringJobs.filter(j => j.urgencyLevel === 'CRITICAL').length}`,
-      `Warning: ${expiringJobs.filter(j => j.urgencyLevel === 'WARNING').length}`,
-      'Jobs are flagged 37 days before actual expiry date',
+      'COMPLETE EXPIRING DOCUMENTS REPORT',
+      `Generated: ${new Date().toLocaleDateString()}`,
+      `Total Documents: ${stats.total}`,
+      `From ${stats.uniqueJobs} Jobs`,
+      `Expired: ${stats.expired}`,
+      `Critical: ${stats.critical}`,
+      `Warning: ${stats.warning}`,
+      `Completed Services: ${stats.fromCompletedServices}`,
     ]);
     
     summaryRow.font = { bold: true, size: 12 };
     summaryRow.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFD1E7DD' }
+      fgColor: { argb: 'FFD5E8D4' } // Light green
     };
 
     // Merge cells for the summary
-    worksheet.mergeCells('A1:O1');
+    worksheet.mergeCells('A1:P1');
 
-    // Add an empty row for spacing
+    // Add data rows with enhanced formatting
+uniqueExpiringJobs.forEach((job, index) => {
+  const row = worksheet.addRow({
+    ...job,
+    expiryDate: job.expiryDate.toLocaleDateString(),
+    createdAt: job.createdAt.toLocaleDateString(),
+  });
+
+  // CORRECTED: Better color scheme with visible WARNING background
+  let fillColor;
+  let fontColor = { argb: 'FF000000' }; // Default black
+
+  switch (job.urgencyLevel) {
+    case 'EXPIRED':
+      fillColor = 'FFFFE6E6'; // Light red - more visible
+      fontColor = { argb: 'FF8B0000' }; // Dark red text
+      break;
+    case 'CRITICAL':
+      fillColor = 'FFFFD4B3'; // Light orange - more saturated
+      fontColor = { argb: 'FFCC4400' }; // Dark orange text
+      break;
+    case 'WARNING':
+      fillColor = 'FFFFFF99'; // FIXED: Better yellow - more visible than before
+      fontColor = { argb: 'FF996600' }; // FIXED: Dark yellow/brown text for better contrast
+      break;
+    default:
+      fillColor = 'FFE6F7E6'; // Light green
+      fontColor = { argb: 'FF006400' }; // Dark green text
+  }
+
+  // Apply the background color
+  row.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: fillColor }
+  };
+
+  // Apply font colors to important columns
+  row.getCell('urgencyLevel').font = { bold: true, color: fontColor };
+  row.getCell('daysUntilExpiry').font = { bold: true, color: fontColor };
+  row.getCell('urgencyDescription').font = { bold: true, color: fontColor }; // ADDED: Color the description too
+  
+  // Highlight completed services
+  if (job.isServiceCompleted === 'Yes') {
+    row.getCell('isServiceCompleted').font = { bold: true, color: { argb: 'FF0066CC' } };
+  }
+
+  // Add conditional formatting for document files
+  if (job.hasDocumentFile === 'No') {
+    row.getCell('hasDocumentFile').font = { bold: true, color: { argb: 'FFCC0000' } };
+  }
+
+  // ADDED: Apply borders for better visibility
+  row.eachCell((cell) => {
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+      left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+      bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+      right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+    };
+  });
+});
+
+    // Add a separator row
     worksheet.insertRow(2, []);
 
-    // Add explanation row
-    const explanationRow = worksheet.insertRow(3, [
-      'FORCED EXPIRY POLICY: Jobs are flagged for renewal 37 days (1 month + 1 week) before their actual expiry date to ensure timely processing.'
-    ]);
-    explanationRow.font = { italic: true, size: 10 };
-    explanationRow.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFFF9E6' }
+    // Apply borders to all cells
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 2) { // Skip summary and separator rows
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        });
+      }
+    });
+
+    // Add autofilter to headers
+    worksheet.autoFilter = 'A3:P3';
+
+    // Add a legend at the bottom
+const lastRow = worksheet.rowCount + 2;
+worksheet.addRow([]);
+worksheet.addRow(['COLOR LEGEND:']);
+
+// FIXED: Create colored legend cells
+const legendRow = worksheet.addRow(['', 'EXPIRED = Light Red', 'CRITICAL = Light Orange', 'WARNING = Bright Yellow', 'NORMAL = Light Green']);
+
+// Apply colors to legend
+legendRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE6E6' } };
+legendRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD4B3' } };
+legendRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF99' } }; // Fixed WARNING color
+legendRow.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F7E6' } };
+
+// Make legend text bold
+legendRow.eachCell((cell, colNumber) => {
+  if (colNumber > 1) {
+    cell.font = { bold: true };
+    cell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
     };
-    worksheet.mergeCells('A3:O3');
+  }
+});
 
-    // Add another empty row
-    worksheet.insertRow(4, []);
+worksheet.getRow(lastRow + 1).font = { bold: true };
 
-    // Adjust the autoFilter to account for the new rows
-    worksheet.autoFilter = 'A5:O5';
+    console.log(`✅ Excel export ready with ${uniqueExpiringJobs.length} document entries from ${stats.uniqueJobs} unique jobs`);
 
     // Set response headers for file download
     res.setHeader(
@@ -3627,7 +3894,7 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename=expiring-jobs-forced-expiry-${new Date().toISOString().split('T')[0]}.xlsx`
+      `attachment; filename=all-expiring-documents-${new Date().toISOString().split('T')[0]}.xlsx`
     );
 
     // Write the workbook to the response
@@ -3635,9 +3902,9 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
     res.end();
 
   } catch (error) {
-    console.error('Error exporting expiring jobs:', error);
+    console.error('❌ Error exporting expiring documents:', error);
     res.status(500).json({
-      message: 'Failed to export expiring jobs',
+      message: 'Failed to export expiring documents',
       error: error.message,
     });
   }
@@ -3804,6 +4071,9 @@ const deleteEngagementLetter = asyncHandler(async (req, res) => {
     }
   }
 });
+
+
+
 
 
 module.exports = {

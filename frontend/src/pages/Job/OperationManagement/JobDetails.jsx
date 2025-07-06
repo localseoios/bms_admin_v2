@@ -445,6 +445,10 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
 
 
 
+
+
+
+
   // Update the renderPersonDetails function to include auto-suggestion
   // Replace the Name input section in your renderPersonDetails function with this:
   // COMPLETE renderPersonDetailsWithAutoSuggest function
@@ -2070,21 +2074,81 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
   }, [jobId]);
 
   // Add this utility function to JobDetails.jsx
-  const formatDateForInput = (dateString) => {
-    if (!dateString) return "";
-    try {
-      // Handle both ISO strings and Date objects
-      const date = new Date(dateString);
-      // Check if date is valid before formatting
-      if (isNaN(date.getTime())) return "";
+// Replace the existing formatDateForInput function in JobDetails.jsx with this:
 
-      // Format as YYYY-MM-DD for HTML date inputs
-      return date.toISOString().split("T")[0];
-    } catch (error) {
-      console.error("Error formatting date:", error);
+const formatDateForInput = (dateString) => {
+  // Return empty string for null, undefined, or "undefined" string
+  if (!dateString || 
+      dateString === 'undefined' || 
+      dateString === 'null' || 
+      dateString === null || 
+      dateString === undefined) {
+    return "";
+  }
+  
+  try {
+    // Handle both ISO strings and Date objects
+    const date = new Date(dateString);
+    // Check if date is valid before formatting
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date provided to formatDateForInput:', dateString);
       return "";
     }
+
+    // Format as YYYY-MM-DD for HTML date inputs
+    return date.toISOString().split("T")[0];
+  } catch (error) {
+    console.error("Error formatting date:", error, "Input was:", dateString);
+    return "";
+  }
+};
+
+// Also update the useEffect that fetches company details to use the improved formatting:
+
+useEffect(() => {
+  const fetchCompanyDetails = async () => {
+    if (!jobId || !job) return;
+
+    try {
+      const response = await axiosInstance.get(
+        `/operations/jobs/${jobId}/company-details`
+      );
+
+      // Log the raw response to check date formats
+      console.log("Raw company details response:", response.data);
+
+      // Process company details data with improved date handling
+      const formattedDetails = {
+        ...response.data,
+        incorporationDate: formatDateForInput(response.data.incorporationDate),
+        expiryDate: formatDateForInput(response.data.expiryDate),
+        companyComputerCardExpiry: formatDateForInput(response.data.companyComputerCardExpiry),
+        taxCardExpiry: formatDateForInput(response.data.taxCardExpiry),
+        crExtractExpiry: formatDateForInput(response.data.crExtractExpiry),
+        scopeOfLicenseExpiry: formatDateForInput(response.data.scopeOfLicenseExpiry),
+      };
+
+      // Log the formatted dates for debugging
+      console.log("Formatted dates:", {
+        incorporationDate: formattedDetails.incorporationDate,
+        expiryDate: formattedDetails.expiryDate,
+        companyComputerCardExpiry: formattedDetails.companyComputerCardExpiry,
+        taxCardExpiry: formattedDetails.taxCardExpiry,
+        crExtractExpiry: formattedDetails.crExtractExpiry,
+        scopeOfLicenseExpiry: formattedDetails.scopeOfLicenseExpiry,
+      });
+
+      setCompanyDetails((prevDetails) => ({
+        ...prevDetails,
+        ...formattedDetails,
+      }));
+    } catch (err) {
+      console.error("Error fetching company details:", err);
+    }
   };
+
+  fetchCompanyDetails();
+}, [jobId, job]);
 
   // Fetch company details
   // Enhance the useEffect that fetches company details
@@ -2372,112 +2436,124 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
 
   // Company details form submission
   // In the handleSaveCompanyDetails function, update the FormData handling for crExtract:
-  const handleSaveCompanyDetails = async () => {
-    try {
-      setSubmitting(true);
+const handleSaveCompanyDetails = async () => {
+  try {
+    setSubmitting(true);
 
-      const formData = new FormData();
+    const formData = new FormData();
 
-      // Add text fields
-      formData.append("companyName", companyDetails.companyName);
-      formData.append("qfcNo", companyDetails.qfcNo);
-      formData.append("registeredAddress", companyDetails.registeredAddress);
-      formData.append("incorporationDate", companyDetails.incorporationDate);
-      formData.append("serviceType", companyDetails.serviceType);
-      formData.append("mainPurpose", companyDetails.mainPurpose);
-      formData.append("expiryDate", companyDetails.expiryDate);
-      formData.append("kycActiveStatus", companyDetails.kycActiveStatus);
-      formData.append("syncAcrossJobs", "true");
-
-      // Add expiry dates
-      if (companyDetails.companyComputerCardExpiry) {
-        formData.append(
-          "companyComputerCardExpiry",
-          companyDetails.companyComputerCardExpiry
-        );
+    // Helper function to safely append form data
+    const appendIfValid = (key, value) => {
+      if (value !== null && value !== undefined && value !== 'undefined') {
+        formData.append(key, value);
       }
-      if (companyDetails.taxCardExpiry) {
-        formData.append("taxCardExpiry", companyDetails.taxCardExpiry);
-      }
-      if (companyDetails.crExtractExpiry) {
-        formData.append("crExtractExpiry", companyDetails.crExtractExpiry);
-      }
-      if (companyDetails.scopeOfLicenseExpiry) {
-        formData.append(
-          "scopeOfLicenseExpiry",
-          companyDetails.scopeOfLicenseExpiry
-        );
-      }
+    };
 
-      // Add files if they exist and are File objects (not URLs)
-      const fileFields = [
-        "engagementLetters",
-        "companyComputerCard",
-        "taxCard",
-        "scopeOfLicense",
-        "articleOfAssociate",
-        "certificateOfIncorporate",
-      ];
+    // Add text fields with validation
+    appendIfValid("companyName", companyDetails.companyName);
+    appendIfValid("qfcNo", companyDetails.qfcNo);
+    appendIfValid("registeredAddress", companyDetails.registeredAddress);
+    appendIfValid("serviceType", companyDetails.serviceType);
+    appendIfValid("mainPurpose", companyDetails.mainPurpose);
+    appendIfValid("kycActiveStatus", companyDetails.kycActiveStatus);
+    formData.append("syncAcrossJobs", "true");
 
-      fileFields.forEach((field) => {
-        if (companyDetails[field] && companyDetails[field] instanceof File) {
-          formData.append(field, companyDetails[field]);
-        }
-      });
-
-      // Handle multiple CR Extract files
-      if (crExtractFiles.length > 0) {
-        crExtractFiles.forEach((file) => {
-          formData.append("crExtract", file);
-        });
-      }
-
-      // Send the update
-      const response = await axiosInstance.put(
-        `/operations/jobs/${jobId}/company-details`,
-        formData
-      );
-
-      // Success handling...
-      let successMessage = "Company details saved successfully";
-      if (
-        response.data &&
-        response.data.syncResult &&
-        response.data.syncResult.updatedRecords > 0
-      ) {
-        successMessage += ` and synchronized across ${response.data.syncResult.updatedRecords} other job(s) for this client`;
-      }
-
-      setActionMessage({
-        type: "success",
-        message: successMessage,
-      });
-
-      // Clear the CR Extract files after successful save
-      setCrExtractFiles([]);
-
-      // Refresh company details to get updated data
-      const updatedResponse = await axiosInstance.get(
-        `/operations/jobs/${jobId}/company-details`
-      );
-      setCompanyDetails(updatedResponse.data);
-
-      setEditingCompanyDetails(false);
-
-      setTimeout(() => {
-        setActionMessage({ type: null, message: null });
-      }, 3000);
-    } catch (err) {
-      console.error("Error saving company details:", err);
-      setActionMessage({
-        type: "error",
-        message:
-          err.response?.data?.message || "Failed to save company details",
-      });
-    } finally {
-      setSubmitting(false);
+    // Handle dates with proper formatting
+    const formattedIncorporationDate = formatDateForFormData(companyDetails.incorporationDate);
+    const formattedExpiryDate = formatDateForFormData(companyDetails.expiryDate);
+    
+    if (formattedIncorporationDate) {
+      formData.append("incorporationDate", formattedIncorporationDate);
     }
-  };
+    
+    if (formattedExpiryDate) {
+      formData.append("expiryDate", formattedExpiryDate);
+    }
+
+    // Add expiry dates with validation
+    const expiries = [
+      { key: "companyComputerCardExpiry", value: companyDetails.companyComputerCardExpiry },
+      { key: "taxCardExpiry", value: companyDetails.taxCardExpiry },
+      { key: "crExtractExpiry", value: companyDetails.crExtractExpiry },
+      { key: "scopeOfLicenseExpiry", value: companyDetails.scopeOfLicenseExpiry },
+    ];
+
+    expiries.forEach(({ key, value }) => {
+      const formattedDate = formatDateForFormData(value);
+      if (formattedDate) {
+        formData.append(key, formattedDate);
+      }
+    });
+
+    // Add files if they exist and are File objects (not URLs)
+    const fileFields = [
+      "engagementLetters",
+      "companyComputerCard",
+      "taxCard",
+      "scopeOfLicense",
+      "articleOfAssociate",
+      "certificateOfIncorporate",
+    ];
+
+    fileFields.forEach((field) => {
+      if (companyDetails[field] && companyDetails[field] instanceof File) {
+        formData.append(field, companyDetails[field]);
+      }
+    });
+
+    // Handle multiple CR Extract files
+    if (crExtractFiles.length > 0) {
+      crExtractFiles.forEach((file) => {
+        formData.append("crExtract", file);
+      });
+    }
+
+    // Send the update
+    const response = await axiosInstance.put(
+      `/operations/jobs/${jobId}/company-details`,
+      formData
+    );
+
+    // Success handling...
+    let successMessage = "Company details saved successfully";
+    if (
+      response.data &&
+      response.data.syncResult &&
+      response.data.syncResult.updatedRecords > 0
+    ) {
+      successMessage += ` and synchronized across ${response.data.syncResult.updatedRecords} other job(s) for this client`;
+    }
+
+    setActionMessage({
+      type: "success",
+      message: successMessage,
+    });
+
+    // Clear the CR Extract files after successful save
+    setCrExtractFiles([]);
+
+    // Refresh company details to get updated data
+    const updatedResponse = await axiosInstance.get(
+      `/operations/jobs/${jobId}/company-details`
+    );
+    setCompanyDetails(updatedResponse.data);
+
+    setEditingCompanyDetails(false);
+
+    setTimeout(() => {
+      setActionMessage({ type: null, message: null });
+    }, 3000);
+  } catch (err) {
+    console.error("Error saving company details:", err);
+    setActionMessage({
+      type: "error",
+      message:
+        err.response?.data?.message || "Failed to save company details",
+    });
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   // Save KYC Details
   const handleSaveKycDetails = async () => {
@@ -4342,7 +4418,326 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
     </div>
   );
 
-  const renderCompanyDetailsSection = () => (
+const sanitizeDateValue = (dateValue) => {
+  // Return empty string for display if date is null, undefined, or invalid
+  if (!dateValue || dateValue === 'undefined' || dateValue === 'null') {
+    return '';
+  }
+  
+  // If it's already in YYYY-MM-DD format, return as is
+  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    return dateValue;
+  }
+  
+  // Try to parse and format the date
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return '';
+  }
+};
+
+// Helper function to safely format date for form data
+const formatDateForFormData = (dateValue) => {
+  if (!dateValue || dateValue === 'undefined' || dateValue === 'null' || dateValue.trim() === '') {
+    return null;
+  }
+  
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+    return dateValue; // Return the original string if it's valid
+  } catch (error) {
+    return null;
+  }
+};
+
+// Add text fields with proper validation
+const appendFormDataField = (formData, fieldName, value) => {
+  // Only append if value exists and is not empty
+  if (value && value !== 'undefined' && value !== 'null' && value.trim() !== '') {
+    formData.append(fieldName, value);
+  }
+};
+
+// Add date fields with proper validation  
+const appendFormDataDate = (formData, fieldName, dateValue) => {
+  // Only append valid dates
+  if (dateValue && dateValue !== 'undefined' && dateValue !== 'null' && dateValue.trim() !== '') {
+    const parsedDate = new Date(dateValue);
+    if (!isNaN(parsedDate.getTime())) {
+      formData.append(fieldName, dateValue);
+    }
+  }
+};
+
+// Enhanced renderCompanyDetailsSection function with document update/replace options
+
+const renderCompanyDetailsSection = () => {
+  // Helper function to check if a document is expired
+  const isDocumentExpired = (expiryDate) => {
+    if (!expiryDate) return false;
+    return new Date(expiryDate) < new Date();
+  };
+
+  // Helper function to get expiry status styling
+  const getExpiryStatusStyle = (expiryDate) => {
+    if (!expiryDate) return "";
+    
+    const today = new Date();
+    const expiry = new Date(expiryDate);
+    const daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+    
+    if (daysUntilExpiry < 0) {
+      return "border-red-500 bg-red-50"; // Expired
+    } else if (daysUntilExpiry <= 30) {
+      return "border-yellow-500 bg-yellow-50"; // Expiring soon
+    }
+    return "border-green-500 bg-green-50"; // Valid
+  };
+
+  // Helper function to render document upload section with replace option
+  const renderDocumentSection = (documentField, expiryField, label, fieldName) => {
+    const hasDocument = companyDetails[documentField];
+    const expiryDate = companyDetails[expiryField];
+    const isExpired = isDocumentExpired(expiryDate);
+    const expiryStyle = getExpiryStatusStyle(expiryDate);
+
+    return (
+      <div className={`grid grid-cols-5 items-center p-4 rounded-lg shadow-sm border-2 ${
+        isExpired ? 'border-red-300 bg-red-50' : 'bg-yellow-50 border-yellow-200'
+      }`}>
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {label}
+            {isExpired && (
+              <span className="ml-2 px-2 py-1 text-xs font-bold text-red-800 bg-red-200 rounded-full animate-pulse">
+                EXPIRED
+              </span>
+            )}
+          </label>
+          
+          <div
+            className={`border-2 border-dashed rounded-lg p-3 transition-all duration-300 ${
+              isDragging && editingCompanyDetails
+                ? "border-indigo-500 bg-indigo-50 shadow-md"
+                : hasDocument
+                ? `${expiryStyle} shadow-md`
+                : editingCompanyDetails
+                ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
+                : "border-gray-300"
+            }`}
+            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
+            onDrop={(e) => {
+              if (!editingCompanyDetails) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) handleCompanyFileChange(documentField, file);
+            }}
+          >
+            {hasDocument ? (
+              <div className="space-y-3">
+                {/* Document Info */}
+                <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                  <div className="flex items-center">
+                    <DocumentTextIcon className={`h-5 w-5 mr-2 ${
+                      isExpired ? 'text-red-600' : 'text-green-600'
+                    }`} />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900 truncate max-w-[120px] block">
+                        {hasDocument instanceof File
+                          ? hasDocument.name
+                          : `${label} Document`}
+                      </span>
+                      {isExpired && (
+                        <span className="text-xs text-red-600 font-medium">
+                          Document Expired!
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    {/* View Document Button */}
+                    {typeof hasDocument === "string" && (
+                      <a
+                        href={hasDocument}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                      >
+                        View
+                      </a>
+                    )}
+
+                    {/* Replace Document Button */}
+                    {editingCompanyDetails && (
+                      <label className="cursor-pointer px-3 py-1 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 rounded-lg shadow-sm border border-blue-200 hover:shadow-md transition-all duration-200">
+                        {isExpired ? "Re-upload" : "Replace"}
+                        <input
+                          type="file"
+                          className="sr-only"
+                          onChange={(e) =>
+                            handleCompanyFileChange(documentField, e.target.files?.[0])
+                          }
+                        />
+                      </label>
+                    )}
+
+                    {/* Remove Document Button */}
+                    {editingCompanyDetails && (
+                      <button
+                        onClick={() => handleCompanyFileChange(documentField, null)}
+                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                        title="Remove document"
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expired Document Warning */}
+                {isExpired && (
+                  <div className="bg-red-100 border border-red-300 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <ExclamationTriangleIcon className="h-5 w-5 text-red-500 mr-2" />
+                      <div>
+                        <p className="text-sm font-medium text-red-800">
+                          This document has expired and needs to be renewed
+                        </p>
+                        <p className="text-xs text-red-600 mt-1">
+                          Please upload a new document to maintain compliance
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {editingCompanyDetails && (
+                      <div className="mt-3">
+                        <label className="cursor-pointer inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm">
+                          <CloudArrowUpIcon className="h-4 w-4 mr-2" />
+                          Upload New Document
+                          <input
+                            type="file"
+                            className="sr-only"
+                            onChange={(e) =>
+                              handleCompanyFileChange(documentField, e.target.files?.[0])
+                            }
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* No Document Uploaded */
+              <div className="text-center py-3">
+                <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                <span className="text-xs text-gray-500 block mb-2">
+                  (attached document)
+                </span>
+                {editingCompanyDetails ? (
+                  <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                    Upload Document
+                    <input
+                      type="file"
+                      className="sr-only"
+                      onChange={(e) =>
+                        handleCompanyFileChange(documentField, e.target.files?.[0])
+                      }
+                    />
+                  </label>
+                ) : (
+                  <span className="text-xs text-gray-500">No document uploaded</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Expiry Date Column */}
+        <div className="col-span-3">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Expiry Date
+            {isExpired && (
+              <span className="ml-2 text-xs text-red-600 font-bold">
+                EXPIRED
+              </span>
+            )}
+          </label>
+          <div className="flex items-center space-x-2">
+            <input
+              type="date"
+              value={companyDetails[expiryField] || ""}
+              onChange={(e) =>
+                setCompanyDetails({
+                  ...companyDetails,
+                  [expiryField]: e.target.value,
+                })
+              }
+              className={`block w-full rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors ${
+                editingCompanyDetails
+                  ? "border-indigo-500 ring-1 ring-indigo-500"
+                  : "border-gray-300"
+              } ${isExpired ? "border-red-500 bg-red-50" : ""}`}
+              disabled={!editingCompanyDetails}
+            />
+            
+            {editingCompanyDetails && (
+              <button
+                onClick={() => {
+                  const newDate = new Date();
+                  newDate.setFullYear(newDate.getFullYear() + 1);
+                  setCompanyDetails({
+                    ...companyDetails,
+                    [expiryField]: newDate.toISOString().split("T")[0],
+                  });
+                }}
+                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                title="Renew for one year"
+              >
+                <ArrowPathIcon className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+
+          {/* Expiry Status Indicator */}
+          {expiryDate && (
+            <div className="mt-2">
+              {isExpired ? (
+                <div className="flex items-center text-red-600">
+                  <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
+                  <span className="text-xs font-medium">
+                    Expired {Math.abs(Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24)))} days ago
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center text-green-600">
+                  <CheckCircleIcon className="h-4 w-4 mr-1" />
+                  <span className="text-xs">
+                    Valid for {Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24))} more days
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-100">
         <h3 className="text-lg font-bold text-gray-900">a. Company Details</h3>
@@ -4374,8 +4769,10 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
           )}
         </div>
       </div>
+
       {/* Add the synchronization component */}
       {job && job.gmail && <CompanySyncInformationBox gmail={job.gmail} />}
+
       {/* Auto-population notification */}
       {job &&
         job.timeline?.some((event) =>
@@ -4390,6 +4787,8 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
             </p>
           </div>
         )}
+
+      {/* Basic Company Information */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
@@ -4478,31 +4877,27 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
           />
         </div>
 
-        {/* Fix for Incorporation Date input */}
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Incorporation Date
-            {companyDetails.incorporationDate
-              ? ` (Value: ${companyDetails.incorporationDate})`
-              : " (Empty)"}
           </label>
           <div className="flex items-center space-x-2">
-            <input
-              type="date"
-              value={companyDetails.incorporationDate || ""}
-              onChange={(e) =>
-                setCompanyDetails({
-                  ...companyDetails,
-                  incorporationDate: e.target.value,
-                })
-              }
-              className={`block w-full rounded-lg ${
-                editingCompanyDetails
-                  ? "border-indigo-500 ring-1 ring-indigo-500"
-                  : "border-gray-300"
-              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-              disabled={!editingCompanyDetails}
-            />
+<input
+  type="date"
+  value={sanitizeDateValue(companyDetails.incorporationDate)}
+  onChange={(e) =>
+    setCompanyDetails({
+      ...companyDetails,
+      incorporationDate: e.target.value || null,
+    })
+  }
+  className={`block w-full rounded-lg ${
+    editingCompanyDetails
+      ? "border-indigo-500 ring-1 ring-indigo-500"
+      : "border-gray-300"
+  } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+  disabled={!editingCompanyDetails}
+/>
             {editingCompanyDetails && (
               <button
                 onClick={() => {
@@ -4553,90 +4948,6 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
 
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Engagement Letters
-          </label>
-          <div
-            className={`border-2 border-dashed rounded-lg p-4 transition-colors ${
-              isDragging && editingCompanyDetails
-                ? "border-indigo-500 bg-indigo-50"
-                : companyDetails.engagementLetters
-                ? "border-green-500 bg-green-50"
-                : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-            }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
-            onDrop={(e) => {
-              if (!editingCompanyDetails) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file)
-                setCompanyDetails({
-                  ...companyDetails,
-                  engagementLetters: file,
-                });
-            }}
-          >
-            {companyDetails.engagementLetters ? (
-              <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm">
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-sm text-gray-900 font-medium">
-                    {companyDetails.engagementLetters instanceof File
-                      ? companyDetails.engagementLetters.name
-                      : "Engagement Letter Document"}
-                  </span>
-                </div>
-
-                {editingCompanyDetails && (
-                  <button
-                    onClick={() =>
-                      setCompanyDetails({
-                        ...companyDetails,
-                        engagementLetters: null,
-                      })
-                    }
-                    className="text-red-500 hover:text-red-700 transition-colors"
-                  >
-                    <XMarkIcon className="h-5 w-5" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="text-center">
-                <CloudArrowUpIcon className="mx-auto h-10 w-10 text-gray-400" />
-                <div className="mt-2">
-                  <span className="text-xs text-gray-500 block">
-                    (attached sign letters)
-                  </span>
-                  {editingCompanyDetails ? (
-                    <label className="cursor-pointer block mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                      Upload file
-                      <input
-                        type="file"
-                        className="sr-only"
-                        onChange={(e) =>
-                          handleCompanyFileChange(
-                            "engagementLetters",
-                            e.target.files?.[0]
-                          )
-                        }
-                      />
-                    </label>
-                  ) : (
-                    <span className="block mt-1 text-sm text-gray-500">
-                      No document uploaded
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
             Main purpose
           </label>
           <input
@@ -4663,22 +4974,22 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
             Expiry Date
           </label>
           <div className="flex items-center space-x-2">
-            <input
-              type="date"
-              value={companyDetails.expiryDate}
-              onChange={(e) =>
-                setCompanyDetails({
-                  ...companyDetails,
-                  expiryDate: e.target.value,
-                })
-              }
-              className={`block w-full rounded-lg ${
-                editingCompanyDetails
-                  ? "border-indigo-500 ring-1 ring-indigo-500"
-                  : "border-gray-300"
-              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-              disabled={!editingCompanyDetails}
-            />
+<input
+  type="date"
+  value={sanitizeDateValue(companyDetails.expiryDate)}
+  onChange={(e) =>
+    setCompanyDetails({
+      ...companyDetails,
+      expiryDate: e.target.value || null,
+    })
+  }
+  className={`block w-full rounded-lg ${
+    editingCompanyDetails
+      ? "border-indigo-500 ring-1 ring-indigo-500"
+      : "border-gray-300"
+  } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+  disabled={!editingCompanyDetails}
+/>
             {editingCompanyDetails && (
               <button
                 onClick={() => {
@@ -4698,723 +5009,459 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
           </div>
         </div>
       </div>
-      {/* Documents with expiry dates */}
-      <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-        <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Company Computer card
-          </label>
-          <div
-            className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
-              companyDetails.companyComputerCard
-                ? "border-green-500 bg-green-50"
-                : editingCompanyDetails
-                ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-                : "border-gray-300"
-            }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
-            onDrop={(e) => {
-              if (!editingCompanyDetails) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) handleCompanyFileChange("companyComputerCard", file);
-            }}
-          >
-            {companyDetails.companyComputerCard ? (
-              <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
-                    {companyDetails.companyComputerCard instanceof File
-                      ? companyDetails.companyComputerCard.name
-                      : "Computer Card Document"}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  {typeof companyDetails.companyComputerCard === "string" && (
-                    <a
-                      href={companyDetails.companyComputerCard}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-                    >
-                      View
-                    </a>
-                  )}
-                  {editingCompanyDetails && (
-                    <button
-                      onClick={() =>
-                        handleCompanyFileChange("companyComputerCard", null)
-                      }
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <span className="text-xs text-gray-500 block">
-                  (attached document)
-                </span>
-                {editingCompanyDetails ? (
-                  <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                    Upload
-                    <input
-                      type="file"
-                      className="sr-only"
-                      onChange={(e) =>
-                        handleCompanyFileChange(
-                          "companyComputerCard",
-                          e.target.files?.[0]
-                        )
-                      }
-                    />
-                  </label>
-                ) : (
-                  <span className="text-xs text-gray-500">No document</span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="col-span-3">
-          <label className="block text-sm font-medium text-gray-700">
-            Expiry Date
-          </label>
-          <div className="flex items-center space-x-2 mt-1">
-            <input
-              type="date"
-              value={companyDetails.companyComputerCardExpiry}
-              onChange={(e) =>
-                setCompanyDetails({
-                  ...companyDetails,
-                  companyComputerCardExpiry: e.target.value,
-                })
-              }
-              className={`block w-full rounded-lg ${
-                editingCompanyDetails
-                  ? "border-indigo-500 ring-1 ring-indigo-500"
+
+      {/* Document Sections with Enhanced Upload/Replace Options */}
+      <div className="space-y-6">
+        {/* Company Computer Card */}
+        {renderDocumentSection(
+          "companyComputerCard",
+          "companyComputerCardExpiry", 
+          "Company Computer Card",
+          "companyComputerCard"
+        )}
+
+        {/* Tax Card */}
+        {renderDocumentSection(
+          "taxCard",
+          "taxCardExpiry",
+          "Tax Card", 
+          "taxCard"
+        )}
+
+        {/* CR Extract - Special handling for multiple files */}
+        <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700">
+              CR Extract (Max 2 files)
+            </label>
+            <div
+              className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
+                (Array.isArray(companyDetails.crExtract) &&
+                  companyDetails.crExtract.length > 0) ||
+                crExtractFiles.length > 0
+                  ? "border-green-500 bg-green-50"
+                  : editingCompanyDetails
+                  ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                   : "border-gray-300"
-              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-              disabled={!editingCompanyDetails}
-            />
-            {editingCompanyDetails && (
-              <button
-                onClick={() => {
-                  const newDate = new Date();
-                  newDate.setFullYear(newDate.getFullYear() + 1);
-                  setCompanyDetails({
-                    ...companyDetails,
-                    companyComputerCardExpiry: newDate
-                      .toISOString()
-                      .split("T")[0],
-                  });
-                }}
-                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
-                title="Renew date"
-              >
-                <ArrowPathIcon className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-        <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Tax card
-          </label>
-          <div
-            className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
-              companyDetails.taxCard
-                ? "border-green-500 bg-green-50"
-                : editingCompanyDetails
-                ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-                : "border-gray-300"
-            }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
-            onDrop={(e) => {
-              if (!editingCompanyDetails) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) handleCompanyFileChange("taxCard", file);
-            }}
-          >
-            {companyDetails.taxCard ? (
-              <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
-                    {companyDetails.taxCard instanceof File
-                      ? companyDetails.taxCard.name
-                      : "Tax Card Document"}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  {typeof companyDetails.taxCard === "string" && (
-                    <a
-                      href={companyDetails.taxCard}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-                    >
-                      View
-                    </a>
-                  )}
-                  {editingCompanyDetails && (
-                    <button
-                      onClick={() => handleCompanyFileChange("taxCard", null)}
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <span className="text-xs text-gray-500 block">
-                  (attached document)
-                </span>
-                {editingCompanyDetails ? (
-                  <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                    Upload
-                    <input
-                      type="file"
-                      className="sr-only"
-                      onChange={(e) =>
-                        handleCompanyFileChange("taxCard", e.target.files?.[0])
-                      }
-                    />
-                  </label>
-                ) : (
-                  <span className="text-xs text-gray-500">No document</span>
+              }`}
+              onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+              onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
+              onDrop={(e) => {
+                if (!editingCompanyDetails) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+                const files = Array.from(e.dataTransfer.files).slice(0, 2);
+                if (files.length > 0) {
+                  setCrExtractFiles(files);
+                }
+              }}
+            >
+              {/* Show existing documents */}
+              {Array.isArray(companyDetails.crExtract) &&
+                companyDetails.crExtract.length > 0 && (
+                  <div className="space-y-2 mb-2">
+                    {companyDetails.crExtract.map((doc, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm"
+                      >
+                        <div className="flex items-center">
+                          <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
+                          <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
+                            {doc.fileName || `CR Extract ${index + 1}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <a
+                            href={doc.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                          >
+                            View
+                          </a>
+                          {editingCompanyDetails && (
+                            <button
+                              onClick={() => {
+                                // Remove specific document from array
+                                const newCrExtract = [...companyDetails.crExtract];
+                                newCrExtract.splice(index, 1);
+                                setCompanyDetails({
+                                  ...companyDetails,
+                                  crExtract: newCrExtract
+                                });
+                              }}
+                              className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                              title="Remove document"
+                            >
+                              <XMarkIcon className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Replace All Documents Button */}
+                    {editingCompanyDetails && (
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <label className="cursor-pointer inline-flex items-center px-3 py-1 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 rounded-lg shadow-sm border border-blue-200 hover:shadow-md transition-all duration-200">
+                          <ArrowPathIcon className="h-3 w-3 mr-1" />
+                          Replace All Documents
+                          <input
+                            type="file"
+                            className="sr-only"
+                            multiple
+                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            onChange={(e) => {
+                              const newFiles = Array.from(e.target.files);
+                              const filesToAdd = newFiles.slice(0, 2);
+                              setCrExtractFiles(filesToAdd);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="col-span-3">
-          <label className="block text-sm font-medium text-gray-700">
-            Expiry Date
-          </label>
-          <div className="flex items-center space-x-2 mt-1">
-            <input
-              type="date"
-              value={companyDetails.taxCardExpiry}
-              onChange={(e) =>
-                setCompanyDetails({
-                  ...companyDetails,
-                  taxCardExpiry: e.target.value,
-                })
-              }
-              className={`block w-full rounded-lg ${
-                editingCompanyDetails
-                  ? "border-indigo-500 ring-1 ring-indigo-500"
-                  : "border-gray-300"
-              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-              disabled={!editingCompanyDetails}
-            />
-            {editingCompanyDetails && (
-              <button
-                onClick={() => {
-                  const newDate = new Date();
-                  newDate.setFullYear(newDate.getFullYear() + 1);
-                  setCompanyDetails({
-                    ...companyDetails,
-                    taxCardExpiry: newDate.toISOString().split("T")[0],
-                  });
-                }}
-                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
-                title="Renew date"
-              >
-                <ArrowPathIcon className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-        <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700">
-            CR Extract (Max 2 files)
-          </label>
-          <div
-            className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
-              (Array.isArray(companyDetails.crExtract) &&
-                companyDetails.crExtract.length > 0) ||
-              crExtractFiles.length > 0
-                ? "border-green-500 bg-green-50"
-                : editingCompanyDetails
-                ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-                : "border-gray-300"
-            }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
-            onDrop={(e) => {
-              if (!editingCompanyDetails) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              const files = Array.from(e.dataTransfer.files).slice(0, 2);
-              if (files.length > 0) {
-                setCrExtractFiles(files);
-              }
-            }}
-          >
-            {/* Show existing documents */}
-            {Array.isArray(companyDetails.crExtract) &&
-              companyDetails.crExtract.length > 0 && (
+
+              {/* Show newly selected files for upload */}
+              {crExtractFiles.length > 0 && (
                 <div className="space-y-2 mb-2">
-                  {companyDetails.crExtract.map((doc, index) => (
+                  {crExtractFiles.map((file, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm"
+                      className="flex items-center justify-between bg-blue-50 p-2 rounded-lg shadow-sm border border-blue-200"
                     >
                       <div className="flex items-center">
-                        <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
+                        <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2" />
                         <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
-                          {doc.fileName || `CR Extract ${index + 1}`}
+                          {file.name}
                         </span>
+                        <span className="text-xs text-blue-600 ml-1">(New)</span>
                       </div>
                       <div className="flex items-center">
-                        <a
-                          href={doc.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-                        >
-                          View
-                        </a>
+                        {editingCompanyDetails && (
+                          <button
+                            onClick={() => removeCrExtractFile(index)}
+                            className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                            title="Remove file"
+                          >
+                            <XMarkIcon className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-            {/* Show newly selected files for upload */}
-            {crExtractFiles.length > 0 && (
-              <div className="space-y-2 mb-2">
-                {crExtractFiles.map((file, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between bg-blue-50 p-2 rounded-lg shadow-sm border border-blue-200"
-                  >
-                    <div className="flex items-center">
-                      <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2" />
-                      <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
-                        {file.name}
-                      </span>
-                      <span className="text-xs text-blue-600 ml-1">(New)</span>
-                    </div>
-                    <div className="flex items-center">
-                      {editingCompanyDetails && (
-                        <button
-                          onClick={() => removeCrExtractFile(index)}
-                          className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                          title="Remove file"
-                        >
-                          <XMarkIcon className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Upload area */}
-            {editingCompanyDetails && crExtractFiles.length < 2 && (
-              <div className="text-center">
-                <span className="text-xs text-gray-500 block">
-                  {crExtractFiles.length === 0
-                    ? "(Upload 1-2 documents)"
-                    : "(Upload 1 more document)"}
-                </span>
-                <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                  Upload{" "}
-                  {crExtractFiles.length === 0
-                    ? "Documents"
-                    : "Another Document"}
-                  <input
-                    type="file"
-                    className="sr-only"
-                    multiple
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                    onChange={(e) => {
-                      const newFiles = Array.from(e.target.files);
-                      const remainingSlots = 2 - crExtractFiles.length;
-                      const filesToAdd = newFiles.slice(0, remainingSlots);
-                      setCrExtractFiles((prev) => [...prev, ...filesToAdd]);
-                    }}
-                  />
-                </label>
-              </div>
-            )}
-
-            {/* Show message when not editing and no documents */}
-            {!editingCompanyDetails &&
-              (!Array.isArray(companyDetails.crExtract) ||
-                companyDetails.crExtract.length === 0) &&
-              crExtractFiles.length === 0 && (
+              {/* Upload area */}
+              {editingCompanyDetails && crExtractFiles.length < 2 && (
                 <div className="text-center">
-                  <span className="text-xs text-gray-500">
-                    No documents uploaded
+                  <span className="text-xs text-gray-500 block">
+                    {crExtractFiles.length === 0
+                      ? "(Upload 1-2 documents)"
+                      : "(Upload 1 more document)"}
                   </span>
+                  <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                    Upload{" "}
+                    {crExtractFiles.length === 0
+                      ? "Documents"
+                      : "Another Document"}
+                    <input
+                      type="file"
+                      className="sr-only"
+                      multiple
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const newFiles = Array.from(e.target.files);
+                        const remainingSlots = 2 - crExtractFiles.length;
+                        const filesToAdd = newFiles.slice(0, remainingSlots);
+                        setCrExtractFiles((prev) => [...prev, ...filesToAdd]);
+                      }}
+                    />
+                  </label>
                 </div>
               )}
+
+              {/* Show message when not editing and no documents */}
+              {!editingCompanyDetails &&
+                (!Array.isArray(companyDetails.crExtract) ||
+                  companyDetails.crExtract.length === 0) &&
+                crExtractFiles.length === 0 && (
+                  <div className="text-center">
+                    <span className="text-xs text-gray-500">
+                      No documents uploaded
+                    </span>
+                  </div>
+                )}
+            </div>
+          </div>
+
+          {/* CR Extract Expiry date section */}
+          <div className="col-span-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Expiry Date
+            </label>
+            <div className="flex items-center space-x-2 mt-1">
+              <input
+                type="date"
+                value={companyDetails.crExtractExpiry}
+                onChange={(e) =>
+                  setCompanyDetails({
+                    ...companyDetails,
+                    crExtractExpiry: e.target.value,
+                  })
+                }
+                className={`block w-full rounded-lg ${
+                  editingCompanyDetails
+                    ? "border-indigo-500 ring-1 ring-indigo-500"
+                    : "border-gray-300"
+                } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+                disabled={!editingCompanyDetails}
+              />
+              {editingCompanyDetails && (
+                <button
+                  onClick={() => {
+                    const newDate = new Date();
+                    newDate.setFullYear(newDate.getFullYear() + 1);
+                    setCompanyDetails({
+                      ...companyDetails,
+                      crExtractExpiry: newDate.toISOString().split("T")[0],
+                    });
+                  }}
+                  className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                  title="Renew date"
+                >
+                  <ArrowPathIcon className="h-5 w-5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Expiry date section remains the same */}
-        <div className="col-span-3">
-          <label className="block text-sm font-medium text-gray-700">
-            Expiry Date
-          </label>
-          <div className="flex items-center space-x-2 mt-1">
-            <input
-              type="date"
-              value={companyDetails.crExtractExpiry}
-              onChange={(e) =>
-                setCompanyDetails({
-                  ...companyDetails,
-                  crExtractExpiry: e.target.value,
-                })
-              }
-              className={`block w-full rounded-lg ${
-                editingCompanyDetails
-                  ? "border-indigo-500 ring-1 ring-indigo-500"
+        {/* Scope of License */}
+        {renderDocumentSection(
+          "scopeOfLicense",
+          "scopeOfLicenseExpiry",
+          "Scope of License",
+          "scopeOfLicense"
+        )}
+
+        {/* Article of Associate */}
+        <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+          <div className="col-span-5">
+            <label className="block text-sm font-medium text-gray-700">
+              Article of Associate (AOA)
+            </label>
+            <div
+              className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
+                companyDetails.articleOfAssociate
+                  ? "border-green-500 bg-green-50"
+                  : editingCompanyDetails
+                  ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                   : "border-gray-300"
-              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-              disabled={!editingCompanyDetails}
-            />
-            {editingCompanyDetails && (
-              <button
-                onClick={() => {
-                  const newDate = new Date();
-                  newDate.setFullYear(newDate.getFullYear() + 1);
-                  setCompanyDetails({
-                    ...companyDetails,
-                    crExtractExpiry: newDate.toISOString().split("T")[0],
-                  });
-                }}
-                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
-                title="Renew date"
-              >
-                <ArrowPathIcon className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-        <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Scope of License
-          </label>
-          <div
-            className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
-              companyDetails.scopeOfLicense
-                ? "border-green-500 bg-green-50"
-                : editingCompanyDetails
-                ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-                : "border-gray-300"
-            }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
-            onDrop={(e) => {
-              if (!editingCompanyDetails) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) handleCompanyFileChange("scopeOfLicense", file);
-            }}
-          >
-            {companyDetails.scopeOfLicense ? (
-              <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
-                    {companyDetails.scopeOfLicense instanceof File
-                      ? companyDetails.scopeOfLicense.name
-                      : "Scope of License Document"}
+              }`}
+              onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+              onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
+              onDrop={(e) => {
+                if (!editingCompanyDetails) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) handleCompanyFileChange("articleOfAssociate", file);
+              }}
+            >
+              {companyDetails.articleOfAssociate ? (
+                <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
+                  <div className="flex items-center">
+                    <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
+                    <span className="text-sm text-gray-900 font-medium">
+                      {companyDetails.articleOfAssociate instanceof File
+                        ? companyDetails.articleOfAssociate.name
+                        : "Article of Associate Document"}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {typeof companyDetails.articleOfAssociate === "string" && (
+                      <a
+                        href={companyDetails.articleOfAssociate}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                      >
+                        View Document
+                      </a>
+                    )}
+                    
+                    {/* Replace Document Button */}
+                    {editingCompanyDetails && (
+                      <label className="cursor-pointer px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 rounded-lg shadow-sm border border-blue-200 hover:shadow-md transition-all duration-200">
+                        Replace
+                        <input
+                          type="file"
+                          className="sr-only"
+                          onChange={(e) =>
+                            handleCompanyFileChange("articleOfAssociate", e.target.files?.[0])
+                          }
+                        />
+                      </label>
+                    )}
+
+                    {editingCompanyDetails && (
+                      <button
+                        onClick={() =>
+                          handleCompanyFileChange("articleOfAssociate", null)
+                        }
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <span className="text-xs text-gray-500 block">
+                    (attached document)
                   </span>
-                </div>
-                <div className="flex items-center">
-                  {typeof companyDetails.scopeOfLicense === "string" && (
-                    <a
-                      href={companyDetails.scopeOfLicense}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-                    >
-                      View
-                    </a>
-                  )}
-                  {editingCompanyDetails && (
-                    <button
-                      onClick={() =>
-                        handleCompanyFileChange("scopeOfLicense", null)
-                      }
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
+                  {editingCompanyDetails ? (
+                    <label className="cursor-pointer block mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                      Upload AOA Document
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(e) =>
+                          handleCompanyFileChange(
+                            "articleOfAssociate",
+                            e.target.files?.[0]
+                          )
+                        }
+                      />
+                    </label>
+                  ) : (
+                    <span className="text-sm text-gray-500">
+                      No document uploaded
+                    </span>
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <span className="text-xs text-gray-500 block">
-                  (attached document)
-                </span>
-                {editingCompanyDetails ? (
-                  <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                    Upload
-                    <input
-                      type="file"
-                      className="sr-only"
-                      onChange={(e) =>
-                        handleCompanyFileChange(
-                          "scopeOfLicense",
-                          e.target.files?.[0]
-                        )
-                      }
-                    />
-                  </label>
-                ) : (
-                  <span className="text-xs text-gray-500">No document</span>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-        <div className="col-span-3">
-          <label className="block text-sm font-medium text-gray-700">
-            Expiry Date
-          </label>
-          <div className="flex items-center space-x-2 mt-1">
-            <input
-              type="date"
-              value={companyDetails.scopeOfLicenseExpiry}
-              onChange={(e) =>
-                setCompanyDetails({
-                  ...companyDetails,
-                  scopeOfLicenseExpiry: e.target.value,
-                })
-              }
-              className={`block w-full rounded-lg ${
-                editingCompanyDetails
-                  ? "border-indigo-500 ring-1 ring-indigo-500"
+
+        {/* Certificate of Incorporate */}
+        <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+          <div className="col-span-5">
+            <label className="block text-sm font-medium text-gray-700">
+              Certificate of Incorporate (COI)
+            </label>
+            <div
+              className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
+                companyDetails.certificateOfIncorporate
+                  ? "border-green-500 bg-green-50"
+                  : editingCompanyDetails
+                  ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
                   : "border-gray-300"
-              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-              disabled={!editingCompanyDetails}
-            />
-            {editingCompanyDetails && (
-              <button
-                onClick={() => {
-                  const newDate = new Date();
-                  newDate.setFullYear(newDate.getFullYear() + 1);
-                  setCompanyDetails({
-                    ...companyDetails,
-                    scopeOfLicenseExpiry: newDate.toISOString().split("T")[0],
-                  });
-                }}
-                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
-                title="Renew date"
-              >
-                <ArrowPathIcon className="h-5 w-5" />
-              </button>
-            )}
+              }`}
+              onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+              onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
+              onDrop={(e) => {
+                if (!editingCompanyDetails) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file)
+                  handleCompanyFileChange("certificateOfIncorporate", file);
+              }}
+            >
+              {companyDetails.certificateOfIncorporate ? (
+                <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
+                  <div className="flex items-center">
+                    <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
+                    <span className="text-sm text-gray-900 font-medium">
+                      {companyDetails.certificateOfIncorporate instanceof File
+                        ? companyDetails.certificateOfIncorporate.name
+                        : "Certificate of Incorporate Document"}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {typeof companyDetails.certificateOfIncorporate ===
+                      "string" && (
+                      <a
+                        href={companyDetails.certificateOfIncorporate}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                      >
+                        View Document
+                      </a>
+                    )}
+                    
+                    {/* Replace Document Button */}
+                    {editingCompanyDetails && (
+                      <label className="cursor-pointer px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 rounded-lg shadow-sm border border-blue-200 hover:shadow-md transition-all duration-200">
+                        Replace
+                        <input
+                          type="file"
+                          className="sr-only"
+                          onChange={(e) =>
+                            handleCompanyFileChange("certificateOfIncorporate", e.target.files?.[0])
+                          }
+                        />
+                      </label>
+                    )}
+
+                    {editingCompanyDetails && (
+                      <button
+                        onClick={() =>
+                          handleCompanyFileChange(
+                            "certificateOfIncorporate",
+                            null
+                          )
+                        }
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <span className="text-xs text-gray-500 block">
+                    (attached document)
+                  </span>
+                  {editingCompanyDetails ? (
+                    <label className="cursor-pointer block mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                      Upload COI Document
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(e) =>
+                          handleCompanyFileChange(
+                            "certificateOfIncorporate",
+                            e.target.files?.[0]
+                          )
+                        }
+                      />
+                    </label>
+                  ) : (
+                    <span className="text-sm text-gray-500">
+                      No document uploaded
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-        <div className="col-span-5">
-          <label className="block text-sm font-medium text-gray-700">
-            Article of Associate (AOA)
-          </label>
-          <div
-            className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
-              companyDetails.articleOfAssociate
-                ? "border-green-500 bg-green-50"
-                : editingCompanyDetails
-                ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-                : "border-gray-300"
-            }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
-            onDrop={(e) => {
-              if (!editingCompanyDetails) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) handleCompanyFileChange("articleOfAssociate", file);
-            }}
-          >
-            {companyDetails.articleOfAssociate ? (
-              <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-sm text-gray-900 font-medium">
-                    {companyDetails.articleOfAssociate instanceof File
-                      ? companyDetails.articleOfAssociate.name
-                      : "Article of Associate Document"}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  {typeof companyDetails.articleOfAssociate === "string" && (
-                    <a
-                      href={companyDetails.articleOfAssociate}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-                    >
-                      View Document
-                    </a>
-                  )}
-                  {editingCompanyDetails && (
-                    <button
-                      onClick={() =>
-                        handleCompanyFileChange("articleOfAssociate", null)
-                      }
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <span className="text-xs text-gray-500 block">
-                  (attached document)
-                </span>
-                {editingCompanyDetails ? (
-                  <label className="cursor-pointer block mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                    Upload AOA Document
-                    <input
-                      type="file"
-                      className="sr-only"
-                      onChange={(e) =>
-                        handleCompanyFileChange(
-                          "articleOfAssociate",
-                          e.target.files?.[0]
-                        )
-                      }
-                    />
-                  </label>
-                ) : (
-                  <span className="text-sm text-gray-500">
-                    No document uploaded
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-        <div className="col-span-5">
-          <label className="block text-sm font-medium text-gray-700">
-            Certificate of Incorporate (COI)
-          </label>
-          <div
-            className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
-              companyDetails.certificateOfIncorporate
-                ? "border-green-500 bg-green-50"
-                : editingCompanyDetails
-                ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
-                : "border-gray-300"
-            }`}
-            onDragOver={editingCompanyDetails ? handleDragOver : undefined}
-            onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
-            onDrop={(e) => {
-              if (!editingCompanyDetails) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file)
-                handleCompanyFileChange("certificateOfIncorporate", file);
-            }}
-          >
-            {companyDetails.certificateOfIncorporate ? (
-              <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-sm text-gray-900 font-medium">
-                    {companyDetails.certificateOfIncorporate instanceof File
-                      ? companyDetails.certificateOfIncorporate.name
-                      : "Certificate of Incorporate Document"}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  {typeof companyDetails.certificateOfIncorporate ===
-                    "string" && (
-                    <a
-                      href={companyDetails.certificateOfIncorporate}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-                    >
-                      View Document
-                    </a>
-                  )}
-                  {editingCompanyDetails && (
-                    <button
-                      onClick={() =>
-                        handleCompanyFileChange(
-                          "certificateOfIncorporate",
-                          null
-                        )
-                      }
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <span className="text-xs text-gray-500 block">
-                  (attached document)
-                </span>
-                {editingCompanyDetails ? (
-                  <label className="cursor-pointer block mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                    Upload COI Document
-                    <input
-                      type="file"
-                      className="sr-only"
-                      onChange={(e) =>
-                        handleCompanyFileChange(
-                          "certificateOfIncorporate",
-                          e.target.files?.[0]
-                        )
-                      }
-                    />
-                  </label>
-                ) : (
-                  <span className="text-sm text-gray-500">
-                    No document uploaded
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+
+      {/* Company Info Message */}
       {companyDetails &&
         (companyDetails.companyName || companyDetails.qfcNo) && (
           <div className="mt-6 mb-6 p-3 bg-blue-50 rounded-lg border border-blue-100">
@@ -5427,6 +5474,7 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
             </p>
           </div>
         )}
+
       {/* Save buttons - only shown in edit mode */}
       {editingCompanyDetails && (
         <div className="mt-8 flex justify-end space-x-4">
@@ -5458,6 +5506,7 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
       )}
     </div>
   );
+};
 
   const getStatusColor = (status) => {
     switch (status) {

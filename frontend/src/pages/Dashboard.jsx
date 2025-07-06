@@ -69,7 +69,11 @@ const Dashboard = () => {
   // Helper function to get urgency display info based on backend data
   // UPDATED: Helper function to get urgency display info with new expiryType
   const getUrgencyDisplayInfo = (job) => {
-    const urgencyLevel = job.urgencyLevel;
+    // Normalize urgency level to lowercase to match expected keys
+    const urgencyLevel =
+      job.urgencyLevel && typeof job.urgencyLevel === "string"
+        ? job.urgencyLevel.toLowerCase()
+        : job.urgencyLevel;
     const urgencyText = job.urgencyDescription || job.urgencyText;
     const expiryType = job.expiryType || "Document";
 
@@ -103,130 +107,161 @@ const Dashboard = () => {
   };
 
   // UPDATED: Expiring Jobs section in the Dashboard render with expiryType display
-  const renderExpiringJobsSection = () => {
-    return (
-      <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100/50 hover:shadow-xl transition-all duration-300 lg:col-span-1">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-            Expiring Documents
-          </h2>
-          <div className="flex items-center space-x-2">
-            <ExclamationTriangleIcon className="h-5 w-5 text-orange-500" />
-            <span className="text-sm font-medium text-orange-600">
-              {expiringJobs.length} alerts
-            </span>
-          </div>
+const renderExpiringJobsSection = () => {
+  return (
+    <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100/50 hover:shadow-xl transition-all duration-300 lg:col-span-1">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+          Expiring Documents
+        </h2>
+        <div className="flex items-center space-x-2">
+          <ExclamationTriangleIcon className="h-5 w-5 text-orange-500" />
+          <span className="text-sm font-medium text-orange-600">
+            {expiringJobs.length} alerts
+          </span>
         </div>
+      </div>
 
-        {isLoading ? (
-          <div className="animate-pulse space-y-4">
-            {Array(3)
-              .fill(0)
-              .map((_, index) => (
-                <div key={index} className="p-4 bg-gray-50 rounded-lg">
-                  <div className="h-4 w-3/4 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-3 w-1/2 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-3 w-1/4 bg-gray-200 rounded"></div>
-                </div>
-              ))}
-          </div>
-        ) : expiringJobsError ? (
-          <div className="text-center py-8">
-            <ExclamationTriangleIcon className="h-12 w-12 text-orange-500 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 mb-2">
-              Cannot load expiring jobs
-            </p>
-            <p className="text-xs text-gray-400">{expiringJobsError}</p>
-            <button
-              onClick={() => {
-                setExpiringJobsError(null);
-                fetchExpiringJobs().then(setExpiringJobs);
-              }}
-              className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : expiringJobs && expiringJobs.length > 0 ? (
-          <div className="space-y-4">
-            {expiringJobs.slice(0, 5).map((job) => {
-              const UrgencyIcon = job.urgencyIcon;
+      {isLoading ? (
+        <div className="animate-pulse space-y-4">
+          {Array(3).fill(0).map((_, index) => (
+            <div key={index} className="p-4 bg-gray-50 rounded-lg">
+              <div className="h-4 w-3/4 bg-gray-200 rounded mb-2"></div>
+              <div className="h-3 w-1/2 bg-gray-200 rounded mb-2"></div>
+              <div className="h-3 w-1/4 bg-gray-200 rounded"></div>
+            </div>
+          ))}
+        </div>
+      ) : expiringJobsError ? (
+        <div className="text-center py-8">
+          <ExclamationTriangleIcon className="h-12 w-12 text-orange-500 mx-auto mb-3" />
+          <p className="text-sm text-gray-500 mb-2">Cannot load expiring jobs</p>
+          <p className="text-xs text-gray-400">{expiringJobsError}</p>
+          <button
+            onClick={() => {
+              setExpiringJobsError(null);
+              fetchExpiringJobs().then(setExpiringJobs);
+            }}
+            className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : expiringJobs && expiringJobs.length > 0 ? (
+        <div className="space-y-4">
+          {/* CHANGED: Show more documents instead of limiting to 5 */}
+          {expiringJobs.slice(0, 10).map((job, index) => {
+            const UrgencyIcon = job.urgencyIcon;
 
-              return (
-                <div
-                  key={job.jobId}
-                  className={`p-4 rounded-lg border-2 hover:shadow-md transition-all duration-200 ${
-                    job.urgencyLevel === "expired"
-                      ? "bg-gradient-to-r from-red-50 to-red-100 border-red-200"
-                      : job.urgencyLevel === "critical"
-                      ? "bg-gradient-to-r from-red-50 to-orange-50 border-red-200"
-                      : "bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          {job.clientName}
-                        </h3>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${job.urgencyColor}`}
-                        >
-                          <UrgencyIcon className="h-3 w-3 mr-1" />
-                          {job.urgencyText}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600 mb-2">
+            return (
+              <div
+                key={`${job.jobId}-${job.expiryType}-${index}`} // Better key for multiple docs per job
+                className={`p-4 rounded-lg border-2 hover:shadow-md transition-all duration-200 ${
+                  job.urgencyLevel === "expired"
+                    ? "bg-gradient-to-r from-red-50 to-red-100 border-red-200"
+                    : job.urgencyLevel === "critical"
+                    ? "bg-gradient-to-r from-red-50 to-orange-50 border-red-200"
+                    : "bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200"
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-semibold text-gray-900">
+                        {job.clientName}
+                      </h3>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${job.urgencyColor}`}
+                      >
+                        <UrgencyIcon className="h-3 w-3 mr-1" />
+                        {job.urgencyText}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-600">
                         {job.serviceType} • Job #{job.jobNumber || "N/A"}
                       </p>
-                      {/* NEW: Display expiry type */}
-                      <p className="text-xs text-gray-500 mb-2">
-                        Document: {job.expiryType}
-                      </p>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500">
-                          Expires: {formatExpiryDate(job.expiryDate)}
+                      {job.isServiceCompleted && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                          <CheckCircleIcon className="h-3 w-3 mr-1" />
+                          Service Complete
                         </span>
-                        {job.urgencyLevel === "expired" && (
-                          <span className="text-red-600 font-medium">
-                            ACTION REQUIRED
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
+                    
+                    {/* ENHANCED: Better document type display */}
+                    <p className="text-xs font-medium text-blue-700 mb-2">
+                      📄 {job.expiryType}
+                    </p>
+                    
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">
+                        Expires: {formatExpiryDate(job.expiryDate)}
+                      </span>
+                      {job.urgencyLevel === "expired" && (
+                        <span className="text-red-600 font-medium">
+                          {job.isServiceCompleted ? "RENEWAL REQUIRED" : "ACTION REQUIRED"}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {job.isServiceCompleted && job.urgencyLevel !== "normal" && (
+                      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                        <div className="flex items-center">
+                          <DocumentTextIcon className="h-3 w-3 mr-1" />
+                          Document renewal required for completed service
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              );
-            })}
-            {expiringJobs.length > 5 && (
-              <div className="text-center pt-4">
-                <button
-                  onClick={() => setShowAllExpiringJobs(true)}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline transition-all duration-200"
-                >
-                  View all {expiringJobs.length} expiring documents
-                </button>
               </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <CheckCircleIcon className="h-12 w-12 text-green-500 mx-auto mb-3" />
-            <p className="text-sm text-gray-500">No documents expiring soon</p>
-            <p className="text-xs text-gray-400 mt-1">
-              All your documents are up to date
-            </p>
-            <button
-              onClick={() => setShowAllExpiringJobs(true)}
-              className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline transition-all duration-200"
-            >
-              View all expiring documents
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
+            );
+          })}
+          
+          {/* UPDATED: Better summary display */}
+          {expiringJobs.length > 0 && (
+            <div className="text-center pt-4">
+              <button
+                onClick={() => setShowAllExpiringJobs(true)}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline transition-all duration-200"
+              >
+                {expiringJobs.length > 10
+                  ? `View all ${expiringJobs.length} expiring documents`
+                  : expiringJobs.length === 1
+                  ? "View document details"
+                  : `View all ${expiringJobs.length} expiring documents`}
+              </button>
+              
+              {/* ADDED: Show unique jobs count */}
+              {(() => {
+                const uniqueJobIds = [...new Set(expiringJobs.map(job => job.jobId))];
+                return uniqueJobIds.length < expiringJobs.length ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    From {uniqueJobIds.length} unique job{uniqueJobIds.length !== 1 ? 's' : ''}
+                  </p>
+                ) : null;
+              })()}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="text-center py-8">
+          <CheckCircleIcon className="h-12 w-12 text-green-500 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">No documents expiring soon</p>
+          <p className="text-xs text-gray-400 mt-1">All your documents are up to date</p>
+          <button
+            onClick={() => setShowAllExpiringJobs(true)}
+            className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline transition-all duration-200"
+          >
+            View all documents
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
   // Helper function to format expiry date for display
   const formatExpiryDate = (expiryDate) => {
@@ -278,98 +313,91 @@ const Dashboard = () => {
 
   // Fixed fetchExpiringJobs function for Dashboard.jsx
 
-  const fetchExpiringJobs = async () => {
-    try {
-      setExpiringJobsError(null);
-      console.log("Fetching expiring jobs for dashboard...");
+// FIXED: fetchExpiringJobs function in Dashboard.jsx
+const fetchExpiringJobs = async () => {
+  try {
+    setExpiringJobsError(null);
+    console.log("🔍 Fetching ALL expiring jobs from dashboard...");
 
-      // Try the corrected dashboard endpoint first
-      const endpoints = [
-        "/operations/dashboard/expiring-jobs", // Dashboard-specific endpoint (now corrected)
-        "/operations/expiring-jobs", // Full endpoint as fallback
-      ];
+    const response = await axiosInstance.get("/operations/expiring-jobs");
+    console.log("📋 Dashboard API response:", response.data);
 
-      let lastError = null;
+    let jobsData = [];
 
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying endpoint: ${endpoint}`);
-          const response = await axiosInstance.get(endpoint);
-
-          console.log(`Response from ${endpoint}:`, response.data);
-
-          // FIXED: Handle the corrected backend response structure
-          let jobsData = [];
-
-          if (response.data) {
-            if (response.data.success && Array.isArray(response.data.data)) {
-              // Backend API response structure: { success: true, data: [...] }
-              jobsData = response.data.data;
-            } else if (Array.isArray(response.data)) {
-              // Direct array response
-              jobsData = response.data;
-            } else {
-              console.warn(
-                `Invalid data format from ${endpoint}:`,
-                response.data
-              );
-              continue;
-            }
-          }
-
-          console.log(`✅ Success with ${endpoint}:`, jobsData.length, "jobs");
-
-          // Process jobs and add urgency display info
-          const processedJobs = jobsData
-            .filter((job) => job && job.clientName) // Filter out invalid jobs
-            .map((job) => {
-              // Ensure job has all required fields with the new structure
-              const processedJob = {
-                jobId: job.jobId || job._id,
-                jobNumber: job.jobNumber || "N/A",
-                clientName: job.clientName || "Unknown Client",
-                companyName:
-                  job.companyName || job.clientName || "Unknown Company",
-                serviceType: job.serviceType || "Unknown Service",
-                status: job.status || "unknown",
-                expiryDate: job.expiryDate,
-                expiryType: job.expiryType || "Document", // NEW: Type of expiring document
-                daysUntilExpiry: job.daysUntilExpiry || 0,
-                urgencyLevel: job.urgencyLevel || "normal",
-                urgencyDescription: job.urgencyDescription || "No description",
-                assignedPerson: job.assignedPerson || { name: "Unassigned" },
-                createdAt: job.createdAt,
-                updatedAt: job.updatedAt,
-              };
-
-              // Add urgency display info
-              return {
-                ...processedJob,
-                ...getUrgencyDisplayInfo(processedJob),
-              };
-            });
-
-          // Return limited data for dashboard
-          return processedJobs.slice(0, 10);
-        } catch (error) {
-          console.warn(
-            `Failed with ${endpoint}:`,
-            error.response?.status,
-            error.response?.data?.message || error.message
-          );
-          lastError = error;
-          continue;
+    if (response.data) {
+      if (response.data.success && Array.isArray(response.data.data)) {
+        jobsData = response.data.data;
+        console.log(`✅ Successfully received ${jobsData.length} expiring jobs`);
+        
+        if (response.data.summary) {
+          console.log("📊 Backend summary:", response.data.summary);
         }
+      } else if (Array.isArray(response.data)) {
+        jobsData = response.data;
+      } else {
+        console.warn("❌ Unexpected response structure:", response.data);
+        jobsData = [];
       }
-
-      // If all endpoints fail, throw the last error
-      throw lastError || new Error("All endpoints failed");
-    } catch (error) {
-      console.error("Error in fetchExpiringJobs:", error);
-      setExpiringJobsError("Failed to load expiring jobs.");
-      return []; // Always return empty array to prevent crashes
     }
-  };
+
+    const validJobs = jobsData.filter((job) => job && job.clientName);
+    if (validJobs.length !== jobsData.length) {
+      console.warn(`⚠️ Filtered out ${jobsData.length - validJobs.length} invalid jobs`);
+    }
+
+    const processedJobs = validJobs.map((job) => {
+      const processedJob = {
+        jobId: job.jobId || job._id,
+        jobNumber: job.jobNumber || "N/A",
+        clientName: job.clientName || "Unknown Client",
+        companyName: job.companyName || job.clientName || "Unknown Company",
+        serviceType: job.serviceType || "Unknown Service",
+        status: job.status || "unknown",
+        expiryDate: job.expiryDate,
+        expiryType: job.expiryType || "Document",
+        daysUntilExpiry: job.daysUntilExpiry || 0,
+        urgencyLevel: (job.urgencyLevel && job.urgencyLevel.toLowerCase()) || "normal",
+        urgencyDescription: job.urgencyDescription || "No description",
+        assignedPerson: job.assignedPerson || { name: "Unassigned" },
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      };
+
+      const urgencyDisplayInfo = getUrgencyDisplayInfo(processedJob);
+      return {
+        ...processedJob,
+        ...urgencyDisplayInfo,
+      };
+    });
+
+    // REMOVED: Artificial grouping and limiting that was hiding multiple expired docs per job
+    // Previously was creating "balanced" display that limited expired docs
+    // Now we show ALL expired documents
+
+    console.log(`📋 Dashboard showing ${processedJobs.length} total expired/expiring documents`);
+    
+    // Group by urgency for logging
+    const urgencyBreakdown = {
+      expired: processedJobs.filter(job => job.urgencyLevel === 'expired').length,
+      critical: processedJobs.filter(job => job.urgencyLevel === 'critical').length,
+      warning: processedJobs.filter(job => job.urgencyLevel === 'warning').length,
+      normal: processedJobs.filter(job => job.urgencyLevel === 'normal').length,
+    };
+    
+    console.log("📊 Dashboard urgency breakdown:", urgencyBreakdown);
+
+    // Show breakdown by unique jobs
+    const uniqueJobIds = [...new Set(processedJobs.map(job => job.jobId))];
+    console.log(`📈 ${processedJobs.length} documents from ${uniqueJobIds.length} unique jobs`);
+
+    return processedJobs; // Return ALL processed jobs, no artificial limits
+    
+  } catch (error) {
+    console.error("❌ Error fetching all expiring jobs:", error);
+    setExpiringJobsError(`Failed to load expiring jobs: ${error.message}`);
+    return [];
+  }
+};
 
   // Fetch and calculate statistics
   const fetchStats = async () => {

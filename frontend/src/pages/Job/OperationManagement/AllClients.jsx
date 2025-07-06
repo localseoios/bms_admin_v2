@@ -125,54 +125,211 @@ function AllClients() {
     : filteredAndSortedClients;
 
   // Convert clients data to CSV format
-  const convertToCSV = (data) => {
-    const headers = [
-      "Client Name",
-      "Email",
-      "Starting Point",
-      "Total Jobs",
-      "Active Jobs",
-      "All Service Types",
-      "Latest Service Type",
-      "Latest Job Date",
-      "Job Details",
-      "Engagement Letters Count",
-      "Client ID",
-    ];
+// Modified convertToCSV function - QFC Number, Client Name, Services only
+const convertToCSV = (data) => {
+  const headers = [
+    "QFC Number", 
+    "Client Name", 
+    "Services"
+  ];
 
+  const csvContent = [
+    headers.join(","),
+    ...data.map((client) => {
+      // Extract all service types from jobs array
+      let services = "N/A";
+      
+      if (client.jobs && client.jobs.length > 0) {
+        // Get all unique service types from client's jobs
+        const allServices = client.jobs
+          .map(job => job.serviceType)
+          .filter(Boolean)
+          .join("; ");
+        services = allServices || client.latestServiceType || "N/A";
+      } else if (client.latestServiceType) {
+        services = client.latestServiceType;
+      }
+
+      // For QFC Number, we'll use job numbers from jobs array or create a general client reference
+      let qfcNumbers = "N/A";
+      if (client.jobs && client.jobs.length > 0) {
+        qfcNumbers = client.jobs
+          .map(job => job.jobNumber || job._id)
+          .filter(Boolean)
+          .join("; ");
+      }
+
+      return [
+        `"${qfcNumbers.replace(/"/g, '""')}"`,
+        `"${(client.name || "").replace(/"/g, '""')}"`,
+        `"${services.replace(/"/g, '""')}"`
+      ].join(",");
+    }),
+  ].join("\n");
+
+  return csvContent;
+};
+
+// Modified exportClients function for QFC data export
+const exportQFCData = async () => {
+  try {
+    setExporting(true);
+
+    let clientsToExport;
+
+    if (debouncedSearchQuery) {
+      // If searching, fetch detailed data for filtered results
+      console.log(`Fetching QFC data for ${filteredAndSortedClients.length} filtered clients...`);
+      const detailedClients = [];
+      
+      // Process clients in batches
+      const batchSize = 5;
+      for (let i = 0; i < filteredAndSortedClients.length; i += batchSize) {
+        const batch = filteredAndSortedClients.slice(i, i + batchSize);
+        console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(filteredAndSortedClients.length/batchSize)}`);
+        
+        const batchResults = await Promise.all(
+          batch.map(client => fetchClientDetails(client))
+        );
+        
+        detailedClients.push(...batchResults);
+        
+        // Small delay between batches
+        if (i + batchSize < filteredAndSortedClients.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      clientsToExport = detailedClients;
+    } else {
+      // Fetch all clients with their job details
+      const response = await axiosInstance.get("/clients/all", {
+        params: {
+          page: 1,
+          limit: 1000, // Get all clients
+        },
+      });
+      
+      const allClients = (response.data.clients || []).sort((a, b) => {
+        switch (sortBy) {
+          case "latest":
+            return (
+              new Date(b.latestJobDate || 0) - new Date(a.latestJobDate || 0)
+            );
+          case "name":
+            return (a.name || "").localeCompare(b.name || "");
+          case "jobCount":
+            return (b.jobCount || 0) - (a.jobCount || 0);
+          default:
+            return 0;
+        }
+      });
+
+      // Fetch detailed information for each client
+      console.log(`Fetching QFC data for ${allClients.length} clients...`);
+      const detailedClients = [];
+      
+      // Process in batches to avoid server overload
+      const batchSize = 10;
+      for (let i = 0; i < allClients.length; i += batchSize) {
+        const batch = allClients.slice(i, i + batchSize);
+        console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(allClients.length/batchSize)}`);
+        
+        const batchResults = await Promise.all(
+          batch.map(async (client) => {
+            try {
+              const response = await axiosInstance.get(`/clients/${client.gmail}`);
+              return {
+                ...client,
+                jobs: response.data.jobs || [],
+              };
+            } catch (error) {
+              console.error(`Error fetching details for ${client.gmail}:`, error);
+              return {
+                ...client,
+                jobs: [],
+              };
+            }
+          })
+        );
+        
+        detailedClients.push(...batchResults);
+        
+        // Small delay between batches
+        if (i + batchSize < allClients.length) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      clientsToExport = detailedClients;
+    }
+
+    // Convert to CSV with simplified format
+    const csvContent = convertToCSV(clientsToExport);
+
+    // Generate filename with current date
+    const now = new Date();
+    const timestamp = now.toISOString().split("T")[0]; // YYYY-MM-DD format
+    const searchSuffix = debouncedSearchQuery ? `_filtered_${debouncedSearchQuery.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+    const filename = `QFC_Data_${timestamp}${searchSuffix}.csv`;
+
+    // Download the file
+    downloadCSV(csvContent, filename);
+
+    console.log(`QFC Data exported successfully: ${clientsToExport.length} records exported to ${filename}`);
+    
+  } catch (err) {
+    console.error("QFC Export failed:", err);
+    setError("Failed to export QFC data. Please try again.");
+  } finally {
+    setExporting(false);
+  }
+};
+
+// Alternative version if you want to export ALL jobs separately (not grouped by client)
+const exportAllJobsQFC = async () => {
+  try {
+    setExporting(true);
+    
+    // Fetch all jobs directly from jobs endpoint (if available)
+    const response = await axiosInstance.get("/jobs/all", {
+      params: {
+        page: 1,
+        limit: 1000,
+      },
+    });
+    
+    const allJobs = response.data.jobs || [];
+    
+    const headers = ["QFC Number", "Client Name", "Services"];
+    
     const csvContent = [
       headers.join(","),
-      ...data.map((client) => {
-        // Extract all service types from jobs array
-        const allServiceTypes = client.jobs && client.jobs.length > 0 
-          ? client.jobs.map(job => job.serviceType).filter(Boolean).join("; ")
-          : client.latestServiceType || "N/A";
-        
-        // Extract job details for additional context
-        const jobDetails = client.jobs && client.jobs.length > 0
-          ? client.jobs.map(job => `${job.serviceType} (${job.status || 'N/A'})`).join("; ")
-          : `${client.latestServiceType || 'N/A'} (Status: Unknown)`;
-
+      ...allJobs.map((job) => {
         return [
-          `"${(client.name || "").replace(/"/g, '""')}"`,
-          `"${(client.gmail || "").replace(/"/g, '""')}"`,
-          `"${(client.startingPoint || "").replace(/"/g, '""')}"`,
-          client.jobCount || 0,
-          client.activeJobCount || 0,
-          `"${allServiceTypes.replace(/"/g, '""')}"`,
-          `"${(client.latestServiceType || "N/A").replace(/"/g, '""')}"`,
-          client.latestJobDate
-            ? new Date(client.latestJobDate).toLocaleDateString()
-            : "None",
-          `"${jobDetails.replace(/"/g, '""')}"`,
-          Array.isArray(client.engagementLetter) ? client.engagementLetter.length : (client.engagementLetter ? 1 : 0),
-          `"${(client._id || "").replace(/"/g, '""')}"`,
+          `"${(job.jobNumber || job._id || "").replace(/"/g, '""')}"`,
+          `"${(job.clientName || "").replace(/"/g, '""')}"`,
+          `"${(job.serviceType || "").replace(/"/g, '""')}"`
         ].join(",");
       }),
     ].join("\n");
 
-    return csvContent;
-  };
+    // Generate filename
+    const now = new Date();
+    const timestamp = now.toISOString().split("T")[0];
+    const filename = `QFC_Jobs_${timestamp}.csv`;
+
+    // Download the file
+    downloadCSV(csvContent, filename);
+
+    console.log(`QFC Jobs exported: ${allJobs.length} jobs exported to ${filename}`);
+    
+  } catch (err) {
+    console.error("QFC Jobs Export failed:", err);
+    setError("Failed to export QFC jobs data. Please try again.");
+  } finally {
+    setExporting(false);
+  }
+};
 
   // Download CSV file
   const downloadCSV = (csvContent, filename) => {
