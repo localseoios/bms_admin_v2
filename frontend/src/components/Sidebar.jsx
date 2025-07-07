@@ -25,7 +25,7 @@ const navigation = [
     name: "Overview",
     items: [
       { name: "Dashboard", href: "/dashboard", icon: HomeIcon },
-      { name: "Reports", href: "/reports", icon: ChartBarIcon },
+      { name: "Financial report", href: "/reports", icon: ChartBarIcon }, // Now functional
     ],
   },
   {

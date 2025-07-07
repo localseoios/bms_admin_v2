@@ -216,6 +216,9 @@ app.use("/api/bra", braRoutes);
 app.use("/api/monthlypayment", monthlyPaymentRoutes);
 app.use("/api/account", require("./src/routes/accountManagementRoutes"));
 app.use("/api/services", serviceRoutes);
+// Add this line with your other route definitions
+app.use("/api/financial-documents", require("./src/routes/financialDocumentRoutes"));
+
 
 // Add a catch-all route AFTER all your API routes to debug 404s
 app.all("/api/*", (req, res) => {

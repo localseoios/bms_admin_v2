@@ -20,6 +20,7 @@ import AllServices from "./pages/AdminService/AllServices";
 import AddService from "./pages/AdminService/AddService";
 import Dashboard from "./pages/Dashboard";
 import AllClients from "./pages/Job/OperationManagement/AllClients";
+import Reports from "./pages/Reports/Reports";
 
 function App() {
   return (
@@ -37,7 +38,7 @@ function App() {
             <Route path="compliance" element={<ComplianceManagement />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="reports" element={<div>Reports (Coming Soon)</div>} />
+            <Route path="reports" element={<Reports />} />
             <Route
               path="documents"
               element={<div>Documents (Coming Soon)</div>}
