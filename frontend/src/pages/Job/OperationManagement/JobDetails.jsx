@@ -81,6 +81,10 @@ function JobDetails() {
   // Add state for multiple CR Extract files
   const [crExtractFiles, setCrExtractFiles] = useState([]);
 
+  const [companyMemoFiles, setCompanyMemoFiles] = useState([]);
+const [deletedCompanyMemoIds, setDeletedCompanyMemoIds] = useState([]); // ADD THIS
+
+
   const DIRECTOR_SUGGESTIONS = [
     {
       name: "Mr Sarath Kumara Ganegoda Hitiarachchige",
@@ -444,8 +448,66 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
   }
 };
 
+const handleCompanyMemoFileChange = (files) => {
+  const fileArray = Array.from(files);
+  // Limit to 5 files maximum
+  const limitedFiles = fileArray.slice(0, 5);
+  setCompanyMemoFiles(limitedFiles);
+};
 
+// Add function to remove Company Memo file
+const removeCompanyMemoFile = (index) => {
+  setCompanyMemoFiles((prev) => prev.filter((_, i) => i !== index));
+};
 
+// ADD THIS FUNCTION to handle individual Company Memo deletion
+const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
+  // Show confirmation dialog
+  if (!window.confirm(`Are you sure you want to delete "${memoFileName}"? This action cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    setSubmitting(true);
+    setActionMessage({
+      type: "info",
+      message: "Deleting company memo...",
+    });
+
+    // Remove from local state immediately for better UX
+    const newCompanyMemo = [...companyDetails.companyMemo];
+    newCompanyMemo.splice(index, 1);
+    setCompanyDetails({
+      ...companyDetails,
+      companyMemo: newCompanyMemo
+    });
+
+    // Track the deleted ID to send to backend
+    setDeletedCompanyMemoIds(prev => [...prev, memoId]);
+
+    setActionMessage({
+      type: "success",
+      message: `Company memo "${memoFileName}" will be deleted when you save`,
+    });
+
+    setTimeout(() => {
+      setActionMessage({ type: null, message: null });
+    }, 3000);
+
+  } catch (error) {
+    console.error("Error marking company memo for deletion:", error);
+    setActionMessage({
+      type: "error",
+      message: "Failed to mark company memo for deletion",
+    });
+
+    setTimeout(() => {
+      setActionMessage({ type: null, message: null });
+    }, 5000);
+  } finally {
+    setSubmitting(false);
+  }
+};
 
 
 
@@ -2509,6 +2571,18 @@ const handleSaveCompanyDetails = async () => {
       });
     }
 
+    // Handle multiple Company Memo files
+    if (companyMemoFiles.length > 0) {
+      companyMemoFiles.forEach((file) => {
+        formData.append("companyMemo", file);
+      });
+    }
+
+    // ADD THIS: Send deleted Company Memo IDs to backend
+    if (deletedCompanyMemoIds.length > 0) {
+      formData.append("deletedCompanyMemoIds", JSON.stringify(deletedCompanyMemoIds));
+    }
+
     // Send the update
     const response = await axiosInstance.put(
       `/operations/jobs/${jobId}/company-details`,
@@ -2532,6 +2606,12 @@ const handleSaveCompanyDetails = async () => {
 
     // Clear the CR Extract files after successful save
     setCrExtractFiles([]);
+
+    // Clear the Company Memo files after successful save
+    setCompanyMemoFiles([]);
+
+    // Clear the deleted Company Memo IDs after successful save
+    setDeletedCompanyMemoIds([]);
 
     // Refresh company details to get updated data
     const updatedResponse = await axiosInstance.get(
@@ -5492,6 +5572,190 @@ const renderCompanyDetailsSection = () => {
             </div>
           </div>
         </div>
+
+        {/* Company Memo - Multiple files support */}
+<div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+  <div className="lg:col-span-5">
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Company Memo (Max 5 files)
+    </label>
+    <div
+      className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
+        (Array.isArray(companyDetails.companyMemo) &&
+          companyDetails.companyMemo.length > 0) ||
+        companyMemoFiles.length > 0
+          ? "border-green-500 bg-green-50"
+          : editingCompanyDetails
+          ? "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
+          : "border-gray-300"
+      }`}
+      onDragOver={editingCompanyDetails ? handleDragOver : undefined}
+      onDragLeave={editingCompanyDetails ? handleDragLeave : undefined}
+      onDrop={(e) => {
+        if (!editingCompanyDetails) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const files = Array.from(e.dataTransfer.files).slice(0, 5);
+        if (files.length > 0) {
+          setCompanyMemoFiles(files);
+        }
+      }}
+    >
+      {/* Show existing documents */}
+      {Array.isArray(companyDetails.companyMemo) &&
+        companyDetails.companyMemo.length > 0 && (
+          <div className="space-y-2 mb-2">
+            {companyDetails.companyMemo.map((doc, index) => (
+              <div
+                key={doc._id || index}
+                className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm"
+              >
+                <div className="flex items-center flex-1 min-w-0">
+                  <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2 flex-shrink-0" />
+                  <span className="text-xs text-gray-900 font-medium truncate">
+                    {doc.fileName || `Company Memo ${index + 1}`}
+                  </span>
+                  {doc.uploadedAt && (
+                    <span className="text-xs text-gray-400 ml-2">
+                      ({new Date(doc.uploadedAt).toLocaleDateString()})
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
+                  <a
+                    href={doc.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                  >
+                    View
+                  </a>
+                  {editingCompanyDetails && (
+                    <button
+                      onClick={() => handleDeleteCompanyMemo(doc._id, doc.fileName, index)}
+                      disabled={submitting}
+                      className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                        submitting ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      title="Delete document"
+                    >
+                      {submitting ? (
+                        <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></span>
+                      ) : (
+                        <XMarkIcon className="h-3 w-3" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            
+            {/* Replace All Documents Button */}
+            {editingCompanyDetails && (
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <label className="cursor-pointer inline-flex items-center px-3 py-1 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 rounded-lg shadow-sm border border-blue-200 hover:shadow-md transition-all duration-200">
+                  <ArrowPathIcon className="h-3 w-3 mr-1" />
+                  Replace All Documents
+                  <input
+                    type="file"
+                    className="sr-only"
+                    multiple
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files);
+                      const filesToAdd = newFiles.slice(0, 5);
+                      setCompanyMemoFiles(filesToAdd);
+                      // Clear existing files when replacing all
+                      const allExistingIds = companyDetails.companyMemo.map(doc => doc._id);
+                      setDeletedCompanyMemoIds(prev => [...prev, ...allExistingIds]);
+                      setCompanyDetails({
+                        ...companyDetails,
+                        companyMemo: []
+                      });
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        )}
+
+      {/* Show newly selected files for upload */}
+      {companyMemoFiles.length > 0 && (
+        <div className="space-y-2 mb-2">
+          {companyMemoFiles.map((file, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between bg-blue-50 p-2 rounded-lg shadow-sm border border-blue-200"
+            >
+              <div className="flex items-center flex-1 min-w-0">
+                <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2 flex-shrink-0" />
+                <span className="text-xs text-gray-900 font-medium truncate">
+                  {file.name}
+                </span>
+                <span className="text-xs text-blue-600 ml-1">(New)</span>
+              </div>
+              <div className="flex items-center ml-2 flex-shrink-0">
+                {editingCompanyDetails && (
+                  <button
+                    onClick={() => removeCompanyMemoFile(index)}
+                    className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                    title="Remove file"
+                  >
+                    <XMarkIcon className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload area */}
+      {editingCompanyDetails && companyMemoFiles.length < 5 && (
+        <div className="text-center py-3">
+          <span className="text-xs text-gray-500 block mb-2">
+            {companyMemoFiles.length === 0
+              ? "(Upload 1-5 documents)"
+              : `(Upload ${5 - companyMemoFiles.length} more document${5 - companyMemoFiles.length !== 1 ? 's' : ''})`}
+          </span>
+          <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+            Upload{" "}
+            {companyMemoFiles.length === 0
+              ? "Documents"
+              : "More Documents"}
+            <input
+              type="file"
+              className="sr-only"
+              multiple
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              onChange={(e) => {
+                const newFiles = Array.from(e.target.files);
+                const remainingSlots = 5 - companyMemoFiles.length;
+                const filesToAdd = newFiles.slice(0, remainingSlots);
+                setCompanyMemoFiles((prev) => [...prev, ...filesToAdd]);
+              }}
+            />
+          </label>
+        </div>
+      )}
+
+      {/* Show message when not editing and no documents */}
+      {!editingCompanyDetails &&
+        (!Array.isArray(companyDetails.companyMemo) ||
+          companyDetails.companyMemo.length === 0) &&
+        companyMemoFiles.length === 0 && (
+          <div className="text-center py-3">
+            <span className="text-xs text-gray-500">
+              No documents uploaded
+            </span>
+          </div>
+        )}
+    </div>
+  </div>
+</div>
+
       </div>
 
       {/* Company Info Message */}

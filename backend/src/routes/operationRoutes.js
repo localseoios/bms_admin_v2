@@ -160,6 +160,7 @@ router.put(
     { name: "scopeOfLicense", maxCount: 1 },
     { name: "articleOfAssociate", maxCount: 1 },
     { name: "certificateOfIncorporate", maxCount: 1 },
+    { name: "companyMemo", maxCount: 5 }, // ADD THIS LINE - supports up to 5 files
   ]),
   updateCompanyDetails
 );
@@ -268,6 +269,7 @@ router.post(
       { name: "scopeOfLicense", maxCount: 1 },
       { name: "articleOfAssociate", maxCount: 1 },
       { name: "certificateOfIncorporate", maxCount: 1 },
+      { name: "companyMemo", maxCount: 5 }, // ADD THIS LINE
 
       // Director documents (supporting multiple directors)
       { name: "directorVisaCopy", maxCount: 5 },

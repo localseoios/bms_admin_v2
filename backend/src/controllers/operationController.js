@@ -231,7 +231,8 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     mainPurpose,
     expiryDate,
     kycActiveStatus,
-    syncAcrossJobs, // New parameter to control synchronization
+    syncAcrossJobs, 
+    deletedCompanyMemoIds,
   } = req.body;
 
   // Helper function to safely parse dates
@@ -404,7 +405,7 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
       });
     }
 
-    // Certificate of Incorporate
+// Certificate of Incorporate
     if (req.files["certificateOfIncorporate"]) {
       const uploadResult = await safeCloudinaryUpload(
         req.files["certificateOfIncorporate"][0].path
@@ -414,7 +415,56 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     }
+
+    // ADD THIS NEW SECTION FOR COMPANY MEMO (supports multiple files like CR Extract)
+    if (req.files["companyMemo"]) {
+      // Initialize companyMemo as array if it doesn't exist
+if (!Array.isArray(companyDetails.companyMemo)) {
+        companyDetails.companyMemo = [];
+      }
+
+      // Process each uploaded Company Memo file
+// Process each uploaded Company Memo file
+      for (const file of req.files["companyMemo"]) {
+        const uploadResult = await safeCloudinaryUpload(file.path, {
+          folder: `clients/${job.gmail}/company/company_memo`
+        });
+
+        const companyMemoDocument = {
+          fileUrl: uploadResult.url,
+          fileName: file.originalname || "Company Memo Document",
+          uploadedAt: new Date(),
+          uploadedBy: req.user._id,
+          description: `Uploaded on ${new Date().toLocaleDateString()}`,
+        };
+
+        companyDetails.companyMemo.push(companyMemoDocument);
+
+        // Clean up temporary file
+        fs.unlink(file.path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
+    }
+
   }
+
+  // ADD THIS: Handle Company Memo deletions
+  if (deletedCompanyMemoIds) {
+    try {
+      const deletedIds = JSON.parse(deletedCompanyMemoIds);
+      if (Array.isArray(deletedIds) && deletedIds.length > 0) {
+        // Remove deleted documents from the array
+        companyDetails.companyMemo = companyDetails.companyMemo.filter(
+          memo => !deletedIds.includes(memo._id.toString())
+        );
+        console.log(`Deleted ${deletedIds.length} Company Memo documents`);
+      }
+    } catch (parseError) {
+      console.error("Error parsing deletedCompanyMemoIds:", parseError);
+    }
+  }
+
 
   // FIXED: Update expiry dates with proper parsing
   if (req.body.companyComputerCardExpiry !== undefined) {
@@ -2006,16 +2056,40 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           }
 
           // Certificate of Incorporate
-          if (req.files["certificateOfIncorporate"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["certificateOfIncorporate"][0].path,
-              { folder: `clients/${gmail}/company/certificate_of_incorporate` }
-            );
-            newCompanyDetails.certificateOfIncorporate = uploadResult.url;
-            fs.unlink(req.files["certificateOfIncorporate"][0].path, (err) => {
-              if (err) console.error("Error deleting temp file:", err);
-            });
+if (req.files["certificateOfIncorporate"]) {
+        const uploadResult = await safeCloudinaryUpload(
+          req.files["certificateOfIncorporate"][0].path,
+          { folder: `clients/${gmail}/company/certificate_of_incorporate` }
+        );
+        newCompanyDetails.certificateOfIncorporate = uploadResult.url;
+        fs.unlink(req.files["certificateOfIncorporate"][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
           }
+// ADD THIS NEW SECTION FOR COMPANY MEMO
+      if (req.files["companyMemo"]) {
+        newCompanyDetails.companyMemo = [];
+
+        for (const file of req.files["companyMemo"]) {
+          const uploadResult = await safeCloudinaryUpload(file.path, {
+            folder: `clients/${gmail}/company/company_memo`,
+          });
+
+          newCompanyDetails.companyMemo.push({
+            fileUrl: uploadResult.url,
+            fileName: file.originalname || "Company Memo Document",
+            uploadedAt: new Date(),
+            uploadedBy: req.user._id,
+            description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
+          });
+
+          fs.unlink(file.path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+        }
+      }
+
+          
         }
 
         // Set expiry dates if provided

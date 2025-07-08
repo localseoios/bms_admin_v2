@@ -15,21 +15,21 @@ const companyDetailsSchema = new mongoose.Schema(
     serviceType: { type: String },
     engagementLetters: [
       {
-        fileUrl: { type: String, required: true }, // URL to document
+        fileUrl: { type: String, required: true },
         fileName: { type: String },
         uploadedAt: { type: Date, default: Date.now },
         uploadedBy: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
         },
-        description: { type: String }, // Optional description for the file
+        description: { type: String },
       },
     ],
     mainPurpose: { type: String },
     expiryDate: { type: Date },
-    companyComputerCard: { type: String }, // URL to document
+    companyComputerCard: { type: String },
     companyComputerCardExpiry: { type: Date },
-    taxCard: { type: String }, // URL to document
+    taxCard: { type: String },
     taxCardExpiry: { type: Date },
     crExtract: [
       {
@@ -45,10 +45,25 @@ const companyDetailsSchema = new mongoose.Schema(
     ],
     crExtractExpiry: { type: Date },
     
-    scopeOfLicense: { type: String }, // URL to document
+    scopeOfLicense: { type: String },
     scopeOfLicenseExpiry: { type: Date },
-    articleOfAssociate: { type: String }, // URL to document
-    certificateOfIncorporate: { type: String }, // URL to document
+    articleOfAssociate: { type: String },
+    certificateOfIncorporate: { type: String },
+    
+    // ADD THIS NEW FIELD FOR COMPANY MEMO - SUPPORTS MULTIPLE FILES
+    companyMemo: [
+      {
+        fileUrl: { type: String, required: true },
+        fileName: { type: String },
+        uploadedAt: { type: Date, default: Date.now },
+        uploadedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        description: { type: String },
+      },
+    ],
+    
     kycActiveStatus: { type: String, enum: ["yes", "no"], default: "yes" },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -57,6 +72,8 @@ const companyDetailsSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+
 
 // Schema for person details (used for directors, shareholders, secretaries, and SEF)
 const personDetailsSchema = new mongoose.Schema(
