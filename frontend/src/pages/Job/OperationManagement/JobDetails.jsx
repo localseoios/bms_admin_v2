@@ -33,6 +33,7 @@ import {
   ChevronDownIcon,
   PlusIcon,
   DocumentArrowDownIcon, // Add this line
+  DocumentArrowUpIcon
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 import {
@@ -2870,7 +2871,7 @@ const handleSaveCompanyDetails = async () => {
           fetchPersonDetails("sef", setSefDetails),
         ]);
       }
-
+      
       setTimeout(() => {
         setActionMessage({ type: null, message: null });
       }, 3000);
@@ -4503,7 +4504,7 @@ const renderCompanyDetailsSection = () => {
     return "border-green-500 bg-green-50"; // Valid
   };
 
-  // Helper function to render document upload section with replace option
+  // Enhanced renderDocumentSection with fixed positioning
   const renderDocumentSection = (documentField, expiryField, label, fieldName) => {
     const hasDocument = companyDetails[documentField];
     const expiryDate = companyDetails[expiryField];
@@ -4511,10 +4512,12 @@ const renderCompanyDetailsSection = () => {
     const expiryStyle = getExpiryStatusStyle(expiryDate);
 
     return (
-      <div className={`grid grid-cols-5 items-center p-4 rounded-lg shadow-sm border-2 ${
+      <div className={`grid grid-cols-1 lg:grid-cols-5 gap-4 items-start p-4 rounded-lg shadow-sm border-2 ${
         isExpired ? 'border-red-300 bg-red-50' : 'bg-yellow-50 border-yellow-200'
       }`}>
-        <div className="col-span-2">
+        
+        {/* Document Upload Section - Takes 3 columns on large screens */}
+        <div className="lg:col-span-3">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             {label}
             {isExpired && (
@@ -4549,12 +4552,12 @@ const renderCompanyDetailsSection = () => {
               <div className="space-y-3">
                 {/* Document Info */}
                 <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                  <div className="flex items-center">
-                    <DocumentTextIcon className={`h-5 w-5 mr-2 ${
+                  <div className="flex items-center flex-1 min-w-0">
+                    <DocumentTextIcon className={`h-5 w-5 mr-2 flex-shrink-0 ${
                       isExpired ? 'text-red-600' : 'text-green-600'
                     }`} />
-                    <div>
-                      <span className="text-sm font-medium text-gray-900 truncate max-w-[120px] block">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-medium text-gray-900 truncate block">
                         {hasDocument instanceof File
                           ? hasDocument.name
                           : `${label} Document`}
@@ -4567,7 +4570,7 @@ const renderCompanyDetailsSection = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 ml-3 flex-shrink-0">
                     {/* View Document Button */}
                     {typeof hasDocument === "string" && (
                       <a
@@ -4587,9 +4590,12 @@ const renderCompanyDetailsSection = () => {
                         <input
                           type="file"
                           className="sr-only"
-                          onChange={(e) =>
-                            handleCompanyFileChange(documentField, e.target.files?.[0])
-                          }
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleCompanyFileChange(documentField, file);
+                            }
+                          }}
                         />
                       </label>
                     )}
@@ -4611,7 +4617,7 @@ const renderCompanyDetailsSection = () => {
                 {isExpired && (
                   <div className="bg-red-100 border border-red-300 rounded-lg p-3">
                     <div className="flex items-center">
-                      <ExclamationTriangleIcon className="h-5 w-5 text-red-500 mr-2" />
+                      <ExclamationTriangleIcon className="h-5 w-5 text-red-500 mr-2 flex-shrink-0" />
                       <div>
                         <p className="text-sm font-medium text-red-800">
                           This document has expired and needs to be renewed
@@ -4642,10 +4648,10 @@ const renderCompanyDetailsSection = () => {
               </div>
             ) : (
               /* No Document Uploaded */
-              <div className="text-center py-3">
+              <div className="text-center py-4">
                 <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
                 <span className="text-xs text-gray-500 block mb-2">
-                  (attached document)
+                  No document uploaded
                 </span>
                 {editingCompanyDetails ? (
                   <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
@@ -4659,16 +4665,16 @@ const renderCompanyDetailsSection = () => {
                     />
                   </label>
                 ) : (
-                  <span className="text-xs text-gray-500">No document uploaded</span>
+                  <span className="text-xs text-gray-500">Click Edit to upload</span>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Expiry Date Column */}
-        <div className="col-span-3">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+        {/* Expiry Date Section - Takes 2 columns on large screens */}
+        <div className="lg:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Expiry Date
             {isExpired && (
               <span className="ml-2 text-xs text-red-600 font-bold">
@@ -4676,62 +4682,86 @@ const renderCompanyDetailsSection = () => {
               </span>
             )}
           </label>
-          <div className="flex items-center space-x-2">
-            <input
-              type="date"
-              value={companyDetails[expiryField] || ""}
-              onChange={(e) =>
-                setCompanyDetails({
-                  ...companyDetails,
-                  [expiryField]: e.target.value,
-                })
-              }
-              className={`block w-full rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors ${
-                editingCompanyDetails
-                  ? "border-indigo-500 ring-1 ring-indigo-500"
-                  : "border-gray-300"
-              } ${isExpired ? "border-red-500 bg-red-50" : ""}`}
-              disabled={!editingCompanyDetails}
-            />
-            
-            {editingCompanyDetails && (
-              <button
-                onClick={() => {
-                  const newDate = new Date();
-                  newDate.setFullYear(newDate.getFullYear() + 1);
+          
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <input
+                type="date"
+                value={companyDetails[expiryField] || ""}
+                onChange={(e) =>
                   setCompanyDetails({
                     ...companyDetails,
-                    [expiryField]: newDate.toISOString().split("T")[0],
-                  });
-                }}
-                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
-                title="Renew for one year"
-              >
-                <ArrowPathIcon className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-
-          {/* Expiry Status Indicator */}
-          {expiryDate && (
-            <div className="mt-2">
-              {isExpired ? (
-                <div className="flex items-center text-red-600">
-                  <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
-                  <span className="text-xs font-medium">
-                    Expired {Math.abs(Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24)))} days ago
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center text-green-600">
-                  <CheckCircleIcon className="h-4 w-4 mr-1" />
-                  <span className="text-xs">
-                    Valid for {Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24))} more days
-                  </span>
-                </div>
+                    [expiryField]: e.target.value,
+                  })
+                }
+                className={`block w-full rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors ${
+                  editingCompanyDetails
+                    ? "border-indigo-500 ring-1 ring-indigo-500"
+                    : "border-gray-300"
+                } ${isExpired ? "border-red-500 bg-red-50" : ""}`}
+                disabled={!editingCompanyDetails}
+              />
+              
+              {/* Renew Date Button */}
+              {editingCompanyDetails && (
+                <button
+                  onClick={() => {
+                    const newDate = new Date();
+                    newDate.setFullYear(newDate.getFullYear() + 1);
+                    setCompanyDetails({
+                      ...companyDetails,
+                      [expiryField]: newDate.toISOString().split("T")[0],
+                    });
+                  }}
+                  className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors flex-shrink-0"
+                  title="Renew for one year"
+                >
+                  <ArrowPathIcon className="h-5 w-5" />
+                </button>
               )}
             </div>
-          )}
+
+            {/* Expiry Status Indicator */}
+            {expiryDate && (
+              <div className="flex items-center text-sm">
+                {isExpired ? (
+                  <div className="flex items-center text-red-600">
+                    <ExclamationTriangleIcon className="h-4 w-4 mr-1 flex-shrink-0" />
+                    <span className="text-xs font-medium">
+                      Expired {Math.abs(Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24)))} days ago
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center text-green-600">
+                    <CheckCircleIcon className="h-4 w-4 mr-1 flex-shrink-0" />
+                    <span className="text-xs">
+                      Valid for {Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24))} more days
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Additional Replace Button for Easy Access */}
+            {editingCompanyDetails && hasDocument && (
+              <div className="pt-2 border-t border-gray-200">
+                <label className="cursor-pointer inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 rounded-lg shadow-sm border border-blue-200 hover:shadow-md transition-all duration-200">
+                  <DocumentArrowUpIcon className="h-3 w-3 mr-1" />
+                  Replace Document
+                  <input
+                    type="file"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleCompanyFileChange(documentField, file);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -4801,7 +4831,7 @@ const renderCompanyDetailsSection = () => {
           </label>
           <input
             type="text"
-            value={companyDetails.companyName}
+            value={companyDetails.companyName || ""}
             onChange={(e) =>
               setCompanyDetails({
                 ...companyDetails,
@@ -4833,7 +4863,7 @@ const renderCompanyDetailsSection = () => {
           </label>
           <input
             type="text"
-            value={companyDetails.qfcNo}
+            value={companyDetails.qfcNo || ""}
             onChange={(e) =>
               setCompanyDetails({
                 ...companyDetails,
@@ -4860,7 +4890,7 @@ const renderCompanyDetailsSection = () => {
           </label>
           <input
             type="text"
-            value={companyDetails.registeredAddress}
+            value={companyDetails.registeredAddress || ""}
             onChange={(e) =>
               setCompanyDetails({
                 ...companyDetails,
@@ -4882,22 +4912,22 @@ const renderCompanyDetailsSection = () => {
             Incorporation Date
           </label>
           <div className="flex items-center space-x-2">
-<input
-  type="date"
-  value={sanitizeDateValue(companyDetails.incorporationDate)}
-  onChange={(e) =>
-    setCompanyDetails({
-      ...companyDetails,
-      incorporationDate: e.target.value || null,
-    })
-  }
-  className={`block w-full rounded-lg ${
-    editingCompanyDetails
-      ? "border-indigo-500 ring-1 ring-indigo-500"
-      : "border-gray-300"
-  } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-  disabled={!editingCompanyDetails}
-/>
+            <input
+              type="date"
+              value={sanitizeDateValue(companyDetails.incorporationDate)}
+              onChange={(e) =>
+                setCompanyDetails({
+                  ...companyDetails,
+                  incorporationDate: e.target.value || null,
+                })
+              }
+              className={`block w-full rounded-lg ${
+                editingCompanyDetails
+                  ? "border-indigo-500 ring-1 ring-indigo-500"
+                  : "border-gray-300"
+              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+              disabled={!editingCompanyDetails}
+            />
             {editingCompanyDetails && (
               <button
                 onClick={() => {
@@ -4908,7 +4938,7 @@ const renderCompanyDetailsSection = () => {
                     incorporationDate: newDate.toISOString().split("T")[0],
                   });
                 }}
-                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors flex-shrink-0"
                 title="Renew date"
               >
                 <ArrowPathIcon className="h-5 w-5" />
@@ -4922,7 +4952,7 @@ const renderCompanyDetailsSection = () => {
             Services types (1)
           </label>
           <select
-            value={companyDetails.serviceType}
+            value={companyDetails.serviceType || "Please select"}
             onChange={(e) =>
               setCompanyDetails({
                 ...companyDetails,
@@ -4952,7 +4982,7 @@ const renderCompanyDetailsSection = () => {
           </label>
           <input
             type="text"
-            value={companyDetails.mainPurpose}
+            value={companyDetails.mainPurpose || ""}
             onChange={(e) =>
               setCompanyDetails({
                 ...companyDetails,
@@ -4974,22 +5004,22 @@ const renderCompanyDetailsSection = () => {
             Expiry Date
           </label>
           <div className="flex items-center space-x-2">
-<input
-  type="date"
-  value={sanitizeDateValue(companyDetails.expiryDate)}
-  onChange={(e) =>
-    setCompanyDetails({
-      ...companyDetails,
-      expiryDate: e.target.value || null,
-    })
-  }
-  className={`block w-full rounded-lg ${
-    editingCompanyDetails
-      ? "border-indigo-500 ring-1 ring-indigo-500"
-      : "border-gray-300"
-  } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
-  disabled={!editingCompanyDetails}
-/>
+            <input
+              type="date"
+              value={sanitizeDateValue(companyDetails.expiryDate)}
+              onChange={(e) =>
+                setCompanyDetails({
+                  ...companyDetails,
+                  expiryDate: e.target.value || null,
+                })
+              }
+              className={`block w-full rounded-lg ${
+                editingCompanyDetails
+                  ? "border-indigo-500 ring-1 ring-indigo-500"
+                  : "border-gray-300"
+              } shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors`}
+              disabled={!editingCompanyDetails}
+            />
             {editingCompanyDetails && (
               <button
                 onClick={() => {
@@ -5000,7 +5030,7 @@ const renderCompanyDetailsSection = () => {
                     expiryDate: newDate.toISOString().split("T")[0],
                   });
                 }}
-                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors flex-shrink-0"
                 title="Renew date"
               >
                 <ArrowPathIcon className="h-5 w-5" />
@@ -5029,13 +5059,13 @@ const renderCompanyDetailsSection = () => {
         )}
 
         {/* CR Extract - Special handling for multiple files */}
-        <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+          <div className="lg:col-span-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               CR Extract (Max 2 files)
             </label>
             <div
-              className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
+              className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
                 (Array.isArray(companyDetails.crExtract) &&
                   companyDetails.crExtract.length > 0) ||
                 crExtractFiles.length > 0
@@ -5066,13 +5096,13 @@ const renderCompanyDetailsSection = () => {
                         key={index}
                         className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm"
                       >
-                        <div className="flex items-center">
-                          <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                          <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
+                        <div className="flex items-center flex-1 min-w-0">
+                          <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2 flex-shrink-0" />
+                          <span className="text-xs text-gray-900 font-medium truncate">
                             {doc.fileName || `CR Extract ${index + 1}`}
                           </span>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
                           <a
                             href={doc.fileUrl}
                             target="_blank"
@@ -5084,7 +5114,6 @@ const renderCompanyDetailsSection = () => {
                           {editingCompanyDetails && (
                             <button
                               onClick={() => {
-                                // Remove specific document from array
                                 const newCrExtract = [...companyDetails.crExtract];
                                 newCrExtract.splice(index, 1);
                                 setCompanyDetails({
@@ -5133,14 +5162,14 @@ const renderCompanyDetailsSection = () => {
                       key={index}
                       className="flex items-center justify-between bg-blue-50 p-2 rounded-lg shadow-sm border border-blue-200"
                     >
-                      <div className="flex items-center">
-                        <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2" />
-                        <span className="text-xs text-gray-900 font-medium truncate max-w-[120px]">
+                      <div className="flex items-center flex-1 min-w-0">
+                        <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2 flex-shrink-0" />
+                        <span className="text-xs text-gray-900 font-medium truncate">
                           {file.name}
                         </span>
                         <span className="text-xs text-blue-600 ml-1">(New)</span>
                       </div>
-                      <div className="flex items-center">
+                      <div className="flex items-center ml-2 flex-shrink-0">
                         {editingCompanyDetails && (
                           <button
                             onClick={() => removeCrExtractFile(index)}
@@ -5158,13 +5187,13 @@ const renderCompanyDetailsSection = () => {
 
               {/* Upload area */}
               {editingCompanyDetails && crExtractFiles.length < 2 && (
-                <div className="text-center">
-                  <span className="text-xs text-gray-500 block">
+                <div className="text-center py-3">
+                  <span className="text-xs text-gray-500 block mb-2">
                     {crExtractFiles.length === 0
                       ? "(Upload 1-2 documents)"
                       : "(Upload 1 more document)"}
                   </span>
-                  <label className="cursor-pointer block mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                  <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
                     Upload{" "}
                     {crExtractFiles.length === 0
                       ? "Documents"
@@ -5190,7 +5219,7 @@ const renderCompanyDetailsSection = () => {
                 (!Array.isArray(companyDetails.crExtract) ||
                   companyDetails.crExtract.length === 0) &&
                 crExtractFiles.length === 0 && (
-                  <div className="text-center">
+                  <div className="text-center py-3">
                     <span className="text-xs text-gray-500">
                       No documents uploaded
                     </span>
@@ -5200,14 +5229,14 @@ const renderCompanyDetailsSection = () => {
           </div>
 
           {/* CR Extract Expiry date section */}
-          <div className="col-span-3">
-            <label className="block text-sm font-medium text-gray-700">
+          <div className="lg:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Expiry Date
             </label>
-            <div className="flex items-center space-x-2 mt-1">
+            <div className="flex items-center space-x-2">
               <input
                 type="date"
-                value={companyDetails.crExtractExpiry}
+                value={companyDetails.crExtractExpiry || ""}
                 onChange={(e) =>
                   setCompanyDetails({
                     ...companyDetails,
@@ -5231,7 +5260,7 @@ const renderCompanyDetailsSection = () => {
                       crExtractExpiry: newDate.toISOString().split("T")[0],
                     });
                   }}
-                  className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                  className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors flex-shrink-0"
                   title="Renew date"
                 >
                   <ArrowPathIcon className="h-5 w-5" />
@@ -5250,13 +5279,13 @@ const renderCompanyDetailsSection = () => {
         )}
 
         {/* Article of Associate */}
-        <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-          <div className="col-span-5">
-            <label className="block text-sm font-medium text-gray-700">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+          <div className="lg:col-span-5">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Article of Associate (AOA)
             </label>
             <div
-              className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
+              className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
                 companyDetails.articleOfAssociate
                   ? "border-green-500 bg-green-50"
                   : editingCompanyDetails
@@ -5275,16 +5304,16 @@ const renderCompanyDetailsSection = () => {
               }}
             >
               {companyDetails.articleOfAssociate ? (
-                <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                  <div className="flex items-center">
-                    <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                    <span className="text-sm text-gray-900 font-medium">
+                <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm">
+                  <div className="flex items-center flex-1 min-w-0">
+                    <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2 flex-shrink-0" />
+                    <span className="text-sm text-gray-900 font-medium truncate">
                       {companyDetails.articleOfAssociate instanceof File
                         ? companyDetails.articleOfAssociate.name
                         : "Article of Associate Document"}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 ml-3 flex-shrink-0">
                     {typeof companyDetails.articleOfAssociate === "string" && (
                       <a
                         href={companyDetails.articleOfAssociate}
@@ -5315,7 +5344,8 @@ const renderCompanyDetailsSection = () => {
                         onClick={() =>
                           handleCompanyFileChange("articleOfAssociate", null)
                         }
-                        className="text-red-500 hover:text-red-700 transition-colors"
+                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                        title="Remove document"
                       >
                         <XMarkIcon className="h-5 w-5" />
                       </button>
@@ -5323,12 +5353,13 @@ const renderCompanyDetailsSection = () => {
                   </div>
                 </div>
               ) : (
-                <div className="text-center">
-                  <span className="text-xs text-gray-500 block">
-                    (attached document)
+                <div className="text-center py-4">
+                  <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                  <span className="text-xs text-gray-500 block mb-2">
+                    No document uploaded
                   </span>
                   {editingCompanyDetails ? (
-                    <label className="cursor-pointer block mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                    <label className="cursor-pointer block text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
                       Upload AOA Document
                       <input
                         type="file"
@@ -5343,7 +5374,7 @@ const renderCompanyDetailsSection = () => {
                     </label>
                   ) : (
                     <span className="text-sm text-gray-500">
-                      No document uploaded
+                      Click Edit to upload
                     </span>
                   )}
                 </div>
@@ -5353,13 +5384,13 @@ const renderCompanyDetailsSection = () => {
         </div>
 
         {/* Certificate of Incorporate */}
-        <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
-          <div className="col-span-5">
-            <label className="block text-sm font-medium text-gray-700">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+          <div className="lg:col-span-5">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Certificate of Incorporate (COI)
             </label>
             <div
-              className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
+              className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
                 companyDetails.certificateOfIncorporate
                   ? "border-green-500 bg-green-50"
                   : editingCompanyDetails
@@ -5379,16 +5410,16 @@ const renderCompanyDetailsSection = () => {
               }}
             >
               {companyDetails.certificateOfIncorporate ? (
-                <div className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                  <div className="flex items-center">
-                    <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
-                    <span className="text-sm text-gray-900 font-medium">
+                <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm">
+                  <div className="flex items-center flex-1 min-w-0">
+                    <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2 flex-shrink-0" />
+                    <span className="text-sm text-gray-900 font-medium truncate">
                       {companyDetails.certificateOfIncorporate instanceof File
                         ? companyDetails.certificateOfIncorporate.name
                         : "Certificate of Incorporate Document"}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 ml-3 flex-shrink-0">
                     {typeof companyDetails.certificateOfIncorporate ===
                       "string" && (
                       <a
@@ -5423,7 +5454,8 @@ const renderCompanyDetailsSection = () => {
                             null
                           )
                         }
-                        className="text-red-500 hover:text-red-700 transition-colors"
+                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                        title="Remove document"
                       >
                         <XMarkIcon className="h-5 w-5" />
                       </button>
@@ -5431,12 +5463,13 @@ const renderCompanyDetailsSection = () => {
                   </div>
                 </div>
               ) : (
-                <div className="text-center">
-                  <span className="text-xs text-gray-500 block">
-                    (attached document)
+                <div className="text-center py-4">
+                  <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                  <span className="text-xs text-gray-500 block mb-2">
+                    No document uploaded
                   </span>
                   {editingCompanyDetails ? (
-                    <label className="cursor-pointer block mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                    <label className="cursor-pointer block text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
                       Upload COI Document
                       <input
                         type="file"
@@ -5451,7 +5484,7 @@ const renderCompanyDetailsSection = () => {
                     </label>
                   ) : (
                     <span className="text-sm text-gray-500">
-                      No document uploaded
+                      Click Edit to upload
                     </span>
                   )}
                 </div>
@@ -5481,7 +5514,7 @@ const renderCompanyDetailsSection = () => {
           <button
             type="button"
             onClick={handleCancelEditMode}
-            className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>

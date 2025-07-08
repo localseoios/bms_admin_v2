@@ -10,7 +10,7 @@ import FinancialDocuments from "./FinancialDocuments";
 
 const Reports = () => {
   const [activeTab, setActiveTab] = useState("financial_statement");
-
+  
   const tabs = [
     {
       id: "financial_statement",
