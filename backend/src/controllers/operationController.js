@@ -1715,10 +1715,17 @@ const completeOperation = asyncHandler(async (req, res) => {
 
 // Fixed createPreApprovedJob function in operationController.js
 
+// FIXED createPreApprovedJob function with enhanced debugging
+// Replace the existing function in operationController.js
+
 const createPreApprovedJob = asyncHandler(async (req, res) => {
   try {
+    console.log("🚀 === STARTING PRE-APPROVED JOB CREATION ===");
+    console.log("📦 Raw request body keys:", Object.keys(req.body));
+    console.log("📁 Files received:", Object.keys(req.files || {}));
+
     const {
-      jobNumber, // Add job number field
+      jobNumber,
       serviceType,
       assignedPerson,
       jobDetails,
@@ -1734,10 +1741,21 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       secretaries, // Array of secretary details
       sefs, // Array of SEF details
       // KYC documents info
-      kycDocumentInfo, // Array of descriptions and dates for uploaded files
+      kycDocumentInfo,
       // BRA documents info
-      braDocumentInfo, // Array of descriptions and dates for uploaded files
+      braDocumentInfo,
     } = req.body;
+
+    // ENHANCED DEBUGGING for directors
+    console.log("👥 === DIRECTOR DATA DEBUGGING ===");
+    console.log("Directors raw:", directors);
+    console.log("Directors type:", typeof directors);
+    console.log("Directors is array:", Array.isArray(directors));
+    if (directors) {
+      console.log("Directors length:", directors.length);
+      console.log("Directors content:", JSON.stringify(directors, null, 2));
+    }
+    console.log("===============================");
 
     // Validate required fields (including job number)
     if (
@@ -1774,15 +1792,12 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         .json({ message: "Please provide a valid email address" });
     }
 
-    // NOTE: Passport and ID documents are now OPTIONAL
-    // No validation required for these documents
-
     // Start a MongoDB transaction
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      console.log("Creating pre-approved job for:", clientName, "with job number:", jobNumber);
+      console.log("✅ Creating pre-approved job for:", clientName, "with job number:", jobNumber);
 
       // 1. Check if client exists, create if not
       let client = await Client.findOne({ gmail });
@@ -1793,9 +1808,9 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           startingPoint,
         });
         await client.save({ session });
-        console.log("Created new client:", client._id);
+        console.log("✅ Created new client:", client._id);
       } else {
-        console.log("Using existing client:", client._id);
+        console.log("ℹ️ Using existing client:", client._id);
       }
 
       // 2. Upload job documents (now optional)
@@ -1808,7 +1823,6 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           req.files["documentPassport"][0].path,
           { folder: `clients/${gmail}/passport` }
         );
-        // Clean up temporary file
         fs.unlink(req.files["documentPassport"][0].path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
@@ -1820,7 +1834,6 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           req.files["documentID"][0].path,
           { folder: `clients/${gmail}/id` }
         );
-        // Clean up temporary file
         fs.unlink(req.files["documentID"][0].path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
@@ -1848,11 +1861,11 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       // 3. Create job with fully completed status (including job number)
       const currentTime = new Date();
       const job = new Job({
-        jobNumber, // Add job number to job creation
+        jobNumber,
         clientId: client._id,
         serviceType,
-        documentPassport: documentPassportUrl.url, // Can be null if not provided
-        documentID: documentIDUrl.url, // Can be null if not provided
+        documentPassport: documentPassportUrl.url,
+        documentID: documentIDUrl.url,
         otherDocuments: otherDocumentsUrls.map((result) => result.url),
         assignedPerson,
         jobDetails,
@@ -1860,7 +1873,7 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         clientName,
         gmail,
         startingPoint,
-        status: "fully_completed_bra", // Set as fully completed
+        status: "fully_completed_bra",
         createdBy: req.user._id,
         // Create a complete timeline with timestamps at 1-second intervals
         timeline: [
@@ -1940,7 +1953,7 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       });
 
       const savedJob = await job.save({ session });
-      console.log("Created job:", savedJob._id, "with job number:", savedJob.jobNumber);
+      console.log("✅ Created job:", savedJob._id, "with job number:", savedJob.jobNumber);
 
       // 4. Create company details if provided
       if (companyDetails) {
@@ -1970,7 +1983,6 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
               { folder: `clients/${gmail}/company/engagement_letters` }
             );
             
-            // Store as array format for consistency
             newCompanyDetails.engagementLetters = [{
               fileUrl: uploadResult.url,
               fileName: req.files["engagementLetters"][0].originalname || 'Engagement Letter',
@@ -2056,40 +2068,39 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           }
 
           // Certificate of Incorporate
-if (req.files["certificateOfIncorporate"]) {
-        const uploadResult = await safeCloudinaryUpload(
-          req.files["certificateOfIncorporate"][0].path,
-          { folder: `clients/${gmail}/company/certificate_of_incorporate` }
-        );
-        newCompanyDetails.certificateOfIncorporate = uploadResult.url;
-        fs.unlink(req.files["certificateOfIncorporate"][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
+          if (req.files["certificateOfIncorporate"]) {
+            const uploadResult = await safeCloudinaryUpload(
+              req.files["certificateOfIncorporate"][0].path,
+              { folder: `clients/${gmail}/company/certificate_of_incorporate` }
+            );
+            newCompanyDetails.certificateOfIncorporate = uploadResult.url;
+            fs.unlink(req.files["certificateOfIncorporate"][0].path, (err) => {
+              if (err) console.error("Error deleting temp file:", err);
+            });
           }
-// ADD THIS NEW SECTION FOR COMPANY MEMO
-      if (req.files["companyMemo"]) {
-        newCompanyDetails.companyMemo = [];
 
-        for (const file of req.files["companyMemo"]) {
-          const uploadResult = await safeCloudinaryUpload(file.path, {
-            folder: `clients/${gmail}/company/company_memo`,
-          });
+          // Company Memo
+          if (req.files["companyMemo"]) {
+            newCompanyDetails.companyMemo = [];
 
-          newCompanyDetails.companyMemo.push({
-            fileUrl: uploadResult.url,
-            fileName: file.originalname || "Company Memo Document",
-            uploadedAt: new Date(),
-            uploadedBy: req.user._id,
-            description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
-          });
+            for (const file of req.files["companyMemo"]) {
+              const uploadResult = await safeCloudinaryUpload(file.path, {
+                folder: `clients/${gmail}/company/company_memo`,
+              });
 
-          fs.unlink(file.path, (err) => {
-            if (err) console.error("Error deleting temp file:", err);
-          });
-        }
-      }
+              newCompanyDetails.companyMemo.push({
+                fileUrl: uploadResult.url,
+                fileName: file.originalname || "Company Memo Document",
+                uploadedAt: new Date(),
+                uploadedBy: req.user._id,
+                description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
+              });
 
-          
+              fs.unlink(file.path, (err) => {
+                if (err) console.error("Error deleting temp file:", err);
+              });
+            }
+          }
         }
 
         // Set expiry dates if provided
@@ -2109,77 +2120,254 @@ if (req.files["certificateOfIncorporate"]) {
         }
 
         await newCompanyDetails.save({ session });
-        console.log("Created company details for job:", savedJob._id);
+        console.log("✅ Created company details for job:", savedJob._id);
       }
 
-      // 5. Create person details (directors, shareholders, etc.)
-      // Process directors
-      if (directors && Array.isArray(directors) && directors.length > 0) {
-        const parsedDirectors = typeof directors === 'string' ? JSON.parse(directors) : directors;
-        for (const director of parsedDirectors) {
-          await createPersonDetails(
-            savedJob._id,
-            "director",
-            director,
-            req.user._id,
-            req.files,
-            gmail,
-            session
-          );
+      // 5. FIXED: Process person details (directors, shareholders, etc.)
+      console.log("👥 === PROCESSING DIRECTORS ===");
+      
+      // ENHANCED debugging and processing for directors
+      if (directors) {
+        console.log("📋 Directors data received");
+        console.log("Raw directors:", directors);
+        console.log("Type:", typeof directors);
+        
+        let parsedDirectors;
+        try {
+          // Handle both string and array formats
+          if (typeof directors === 'string') {
+            console.log("🔄 Parsing directors from string");
+            parsedDirectors = JSON.parse(directors);
+          } else if (Array.isArray(directors)) {
+            console.log("✅ Directors already in array format");
+            parsedDirectors = directors;
+          } else {
+            console.log("❌ Directors in unexpected format");
+            parsedDirectors = [];
+          }
+          
+          console.log("📊 Parsed directors:", parsedDirectors);
+          console.log("📊 Directors count:", parsedDirectors.length);
+          
+          if (Array.isArray(parsedDirectors) && parsedDirectors.length > 0) {
+            console.log(`🚀 Processing ${parsedDirectors.length} directors...`);
+            
+            for (let index = 0; index < parsedDirectors.length; index++) {
+              const director = parsedDirectors[index];
+              console.log(`\n👤 Processing Director ${index + 1}:`);
+              console.log(`   Name: ${director.name || 'MISSING NAME'}`);
+              console.log(`   Email: ${director.email || 'NO EMAIL'}`);
+              console.log(`   Nationality: ${director.nationality || 'NO NATIONALITY'}`);
+              
+              try {
+                // ENHANCED: More detailed validation
+                if (!director || !director.name || director.name.trim() === '') {
+                  console.log(`⚠️  Skipping Director ${index + 1} - Missing or empty name`);
+                  continue;
+                }
+                
+                console.log(`✅ Creating director ${index + 1}: ${director.name}`);
+                
+                const createdDirector = await createPersonDetails(
+                  savedJob._id,
+                  "director",
+                  director,
+                  req.user._id,
+                  req.files,
+                  gmail,
+                  session,
+                  index
+                );
+                
+                if (createdDirector) {
+                  console.log(`✅ Successfully created director ${index + 1}: ${director.name} (ID: ${createdDirector._id})`);
+                } else {
+                  console.log(`⚠️  Director ${index + 1} creation returned null`);
+                }
+              } catch (error) {
+                console.error(`❌ Error creating director ${index + 1}:`, error);
+                // Don't throw here, continue with other directors
+                // throw error; // Comment this out to continue processing
+              }
+            }
+            
+            console.log(`✅ Completed processing ${parsedDirectors.length} director records`);
+          } else {
+            console.log("⚠️  No valid directors to process");
+          }
+        } catch (parseError) {
+          console.error("❌ Error parsing directors data:", parseError);
+          console.log("Raw directors data that failed to parse:", directors);
         }
-        console.log(`Created ${parsedDirectors.length} director records`);
+      } else {
+        console.log("⚠️  No directors data provided");
       }
+      
+      console.log("=== DIRECTORS PROCESSING COMPLETE ===\n");
 
-      // Process shareholders
-      if (shareholders && Array.isArray(shareholders) && shareholders.length > 0) {
-        const parsedShareholders = typeof shareholders === 'string' ? JSON.parse(shareholders) : shareholders;
-        for (const shareholder of parsedShareholders) {
-          await createPersonDetails(
-            savedJob._id,
-            "shareholder",
-            shareholder,
-            req.user._id,
-            req.files,
-            gmail,
-            session
-          );
+      // Process shareholders (similar enhanced debugging)
+      console.log("👥 === PROCESSING SHAREHOLDERS ===");
+      if (shareholders) {
+        console.log("📋 Shareholders data received");
+        let parsedShareholders;
+        try {
+          if (typeof shareholders === 'string') {
+            parsedShareholders = JSON.parse(shareholders);
+          } else if (Array.isArray(shareholders)) {
+            parsedShareholders = shareholders;
+          } else {
+            parsedShareholders = [];
+          }
+          
+          console.log(`📊 Shareholders count: ${parsedShareholders.length}`);
+          
+          if (Array.isArray(parsedShareholders) && parsedShareholders.length > 0) {
+            console.log(`🚀 Processing ${parsedShareholders.length} shareholders...`);
+            
+            for (let index = 0; index < parsedShareholders.length; index++) {
+              const shareholder = parsedShareholders[index];
+              console.log(`👤 Processing Shareholder ${index + 1}: ${shareholder.name || 'Unnamed'}`);
+              
+              try {
+                if (!shareholder || !shareholder.name || shareholder.name.trim() === '') {
+                  console.log(`⚠️  Skipping Shareholder ${index + 1} - Missing name`);
+                  continue;
+                }
+                
+                const createdShareholder = await createPersonDetails(
+                  savedJob._id,
+                  "shareholder",
+                  shareholder,
+                  req.user._id,
+                  req.files,
+                  gmail,
+                  session,
+                  index
+                );
+                
+                if (createdShareholder) {
+                  console.log(`✅ Successfully created shareholder ${index + 1}: ${shareholder.name}`);
+                }
+              } catch (error) {
+                console.error(`❌ Error creating shareholder ${index + 1}:`, error);
+              }
+            }
+            
+            console.log(`✅ Completed processing ${parsedShareholders.length} shareholder records`);
+          }
+        } catch (parseError) {
+          console.error("❌ Error parsing shareholders data:", parseError);
         }
-        console.log(`Created ${parsedShareholders.length} shareholder records`);
+      } else {
+        console.log("ℹ️  No shareholders data provided");
       }
+      console.log("=== SHAREHOLDERS PROCESSING COMPLETE ===\n");
 
       // Process secretaries
-      if (secretaries && Array.isArray(secretaries) && secretaries.length > 0) {
-        const parsedSecretaries = typeof secretaries === 'string' ? JSON.parse(secretaries) : secretaries;
-        for (const secretary of parsedSecretaries) {
-          await createPersonDetails(
-            savedJob._id,
-            "secretary",
-            secretary,
-            req.user._id,
-            req.files,
-            gmail,
-            session
-          );
+      console.log("👥 === PROCESSING SECRETARIES ===");
+      if (secretaries) {
+        let parsedSecretaries;
+        try {
+          if (typeof secretaries === 'string') {
+            parsedSecretaries = JSON.parse(secretaries);
+          } else if (Array.isArray(secretaries)) {
+            parsedSecretaries = secretaries;
+          } else {
+            parsedSecretaries = [];
+          }
+          
+          console.log(`📊 Secretaries count: ${parsedSecretaries.length}`);
+          
+          if (Array.isArray(parsedSecretaries) && parsedSecretaries.length > 0) {
+            for (let index = 0; index < parsedSecretaries.length; index++) {
+              const secretary = parsedSecretaries[index];
+              console.log(`👤 Processing Secretary ${index + 1}: ${secretary.name || 'Unnamed'}`);
+              
+              try {
+                if (!secretary || !secretary.name || secretary.name.trim() === '') {
+                  console.log(`⚠️  Skipping Secretary ${index + 1} - Missing name`);
+                  continue;
+                }
+                
+                const createdSecretary = await createPersonDetails(
+                  savedJob._id,
+                  "secretary",
+                  secretary,
+                  req.user._id,
+                  req.files,
+                  gmail,
+                  session,
+                  index
+                );
+                
+                if (createdSecretary) {
+                  console.log(`✅ Successfully created secretary ${index + 1}: ${secretary.name}`);
+                }
+              } catch (error) {
+                console.error(`❌ Error creating secretary ${index + 1}:`, error);
+              }
+            }
+          }
+        } catch (parseError) {
+          console.error("❌ Error parsing secretaries data:", parseError);
         }
-        console.log(`Created ${parsedSecretaries.length} secretary records`);
+      } else {
+        console.log("ℹ️  No secretaries data provided");
       }
+      console.log("=== SECRETARIES PROCESSING COMPLETE ===\n");
 
       // Process SEFs
-      if (sefs && Array.isArray(sefs) && sefs.length > 0) {
-        const parsedSefs = typeof sefs === 'string' ? JSON.parse(sefs) : sefs;
-        for (const sef of parsedSefs) {
-          await createPersonDetails(
-            savedJob._id,
-            "sef",
-            sef,
-            req.user._id,
-            req.files,
-            gmail,
-            session
-          );
+      console.log("👥 === PROCESSING SEFS ===");
+      if (sefs) {
+        let parsedSefs;
+        try {
+          if (typeof sefs === 'string') {
+            parsedSefs = JSON.parse(sefs);
+          } else if (Array.isArray(sefs)) {
+            parsedSefs = sefs;
+          } else {
+            parsedSefs = [];
+          }
+          
+          console.log(`📊 SEFs count: ${parsedSefs.length}`);
+          
+          if (Array.isArray(parsedSefs) && parsedSefs.length > 0) {
+            for (let index = 0; index < parsedSefs.length; index++) {
+              const sef = parsedSefs[index];
+              console.log(`👤 Processing SEF ${index + 1}: ${sef.name || 'Unnamed'}`);
+              
+              try {
+                if (!sef || !sef.name || sef.name.trim() === '') {
+                  console.log(`⚠️  Skipping SEF ${index + 1} - Missing name`);
+                  continue;
+                }
+                
+                const createdSef = await createPersonDetails(
+                  savedJob._id,
+                  "sef",
+                  sef,
+                  req.user._id,
+                  req.files,
+                  gmail,
+                  session,
+                  index
+                );
+                
+                if (createdSef) {
+                  console.log(`✅ Successfully created SEF ${index + 1}: ${sef.name}`);
+                }
+              } catch (error) {
+                console.error(`❌ Error creating SEF ${index + 1}:`, error);
+              }
+            }
+          }
+        } catch (parseError) {
+          console.error("❌ Error parsing SEFs data:", parseError);
         }
-        console.log(`Created ${parsedSefs.length} SEF records`);
+      } else {
+        console.log("ℹ️  No SEFs data provided");
       }
+      console.log("=== SEFS PROCESSING COMPLETE ===\n");
 
       // 6. Create KYC documents collection
       let kycDocuments = [];
@@ -2188,7 +2376,7 @@ if (req.files["certificateOfIncorporate"]) {
       // Process and upload KYC documents first
       if (req.files["kycDocuments"] && req.files["kycDocuments"].length > 0) {
         console.log(
-          `Processing ${req.files["kycDocuments"].length} KYC documents`
+          `📄 Processing ${req.files["kycDocuments"].length} KYC documents`
         );
 
         const parsedKycDocumentInfo = typeof kycDocumentInfo === 'string' 
@@ -2239,7 +2427,7 @@ if (req.files["certificateOfIncorporate"]) {
         });
 
         await kycDoc.save({ session });
-        console.log(`Created KYC documents with ${kycDocuments.length} files`);
+        console.log(`✅ Created KYC documents with ${kycDocuments.length} files`);
       }
 
       // 8. Create and complete KYC approval AFTER documents are processed
@@ -2305,7 +2493,7 @@ if (req.files["certificateOfIncorporate"]) {
       }
 
       await kycApproval.save({ session });
-      console.log("Created and completed KYC approval with documents");
+      console.log("✅ Created and completed KYC approval with documents");
 
       // 9. Process BRA documents similarly
       let braDocUrls = {};
@@ -2373,7 +2561,7 @@ if (req.files["certificateOfIncorporate"]) {
       }
 
       await braApproval.save({ session });
-      console.log("Created and completed BRA approval with documents");
+      console.log("✅ Created and completed BRA approval with documents");
 
       // 11. Send notifications
       await notificationService.createNotification(
@@ -2413,7 +2601,7 @@ if (req.files["certificateOfIncorporate"]) {
       await session.commitTransaction();
       session.endSession();
 
-      console.log("Pre-approved job creation completed successfully");
+      console.log("🎉 Pre-approved job creation completed successfully");
       res.status(201).json({
         message: "Pre-approved job created successfully",
         job: savedJob,
@@ -2423,14 +2611,14 @@ if (req.files["certificateOfIncorporate"]) {
       await session.abortTransaction();
       session.endSession();
 
-      console.error("Error creating pre-approved job:", error);
+      console.error("❌ Error creating pre-approved job:", error);
       res.status(500).json({
         message: "Failed to create pre-approved job",
         error: error.message,
       });
     }
   } catch (error) {
-    console.error("Error creating pre-approved job:", error);
+    console.error("❌ Error creating pre-approved job:", error);
     res.status(500).json({ 
       message: "Failed to create pre-approved job", 
       error: error.message 
@@ -2438,100 +2626,188 @@ if (req.files["certificateOfIncorporate"]) {
   }
 });
 
-// Helper to create person details (updated to handle document indexing properly)
-const createPersonDetails = async (jobId, personType, personData, userId, files, gmail, session) => {
+// ENHANCED: createPersonDetails helper function with better debugging
+const createPersonDetails = async (jobId, personType, personData, userId, files, gmail, session, personIndex = 0) => {
+  console.log(`\n🔧 === CREATING ${personType.toUpperCase()} DETAILS ===`);
+  console.log(`📋 Person Index: ${personIndex}`);
+  console.log(`👤 Person Data:`, JSON.stringify(personData, null, 2));
+  
   // Validate personData
-  if (!personData || !personData.name) {
-    console.log(`Skipping ${personType} record due to missing required data`);
+  if (!personData) {
+    console.log(`❌ Skipping ${personType} record - personData is null/undefined`);
     return null;
   }
+  
+  if (!personData.name || personData.name.trim() === '') {
+    console.log(`❌ Skipping ${personType} record - missing or empty name`);
+    console.log(`📋 Full person data:`, personData);
+    return null;
+  }
+
+  console.log(`✅ Creating ${personType} details for: ${personData.name} (index: ${personIndex})`);
 
   const newPerson = new PersonDetails({
     jobId,
     personType,
-    name: personData.name,
+    name: personData.name.trim(),
     nationality: personData.nationality || "",
     qidNo: personData.qidNo || "",
-    qidExpiry: personData.qidExpiry || null,
+    qidExpiry: personData.qidExpiry ? new Date(personData.qidExpiry) : null,
     nationalAddress: personData.nationalAddress || "",
-    nationalAddressExpiry: personData.nationalAddressExpiry || null,
+    nationalAddressExpiry: personData.nationalAddressExpiry ? new Date(personData.nationalAddressExpiry) : null,
     passportNo: personData.passportNo || "",
-    passportExpiry: personData.passportExpiry || null,
+    passportExpiry: personData.passportExpiry ? new Date(personData.passportExpiry) : null,
     mobileNo: personData.mobileNo || "",
     email: personData.email || "",
     updatedBy: userId,
   });
 
-  // Process document uploads for person
+  console.log(`📋 Created PersonDetails object:`, {
+    jobId: newPerson.jobId,
+    personType: newPerson.personType,
+    name: newPerson.name,
+    nationality: newPerson.nationality,
+    email: newPerson.email
+  });
+
+  // Process document uploads for person with proper indexing
   if (files) {
-    // Each person type has its own field names for documents
     const fieldPrefix = personType.toLowerCase();
+    
+    console.log(`📁 Processing documents for ${personType} ${personIndex}`);
+    console.log(`🔍 Available file fields:`, Object.keys(files));
+
+    // Check for indexed documents first (new format)
+    const visaCopyField = `${fieldPrefix}VisaCopy_${personIndex}`;
+    const qidDocField = `${fieldPrefix}QidDoc_${personIndex}`;
+    const nationalAddressDocField = `${fieldPrefix}NationalAddressDoc_${personIndex}`;
+    const passportDocField = `${fieldPrefix}PassportDoc_${personIndex}`;
+    const cvField = `${fieldPrefix}Cv_${personIndex}`;
+
+    console.log(`🔍 Looking for files with patterns:`, {
+      visaCopy: visaCopyField,
+      qidDoc: qidDocField,
+      nationalAddress: nationalAddressDocField,
+      passport: passportDocField,
+      cv: cvField
+    });
+
+    let documentsProcessed = 0;
 
     // Visa Copy
-    if (files[`${fieldPrefix}VisaCopy`] && files[`${fieldPrefix}VisaCopy`].length > 0) {
-      const uploadResult = await safeCloudinaryUpload(
-        files[`${fieldPrefix}VisaCopy`][0].path,
-        { folder: `clients/${gmail}/people/${personType}/visa` }
-      );
-      newPerson.visaCopy = uploadResult.url;
-      fs.unlink(files[`${fieldPrefix}VisaCopy`][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+    if (files[visaCopyField] && files[visaCopyField].length > 0) {
+      console.log(`📄 Found visa copy: ${visaCopyField}`);
+      try {
+        const uploadResult = await safeCloudinaryUpload(
+          files[visaCopyField][0].path,
+          { folder: `clients/${gmail}/people/${personType}/visa` }
+        );
+        newPerson.visaCopy = uploadResult.url;
+        documentsProcessed++;
+        console.log(`✅ Uploaded visa copy: ${uploadResult.url}`);
+        
+        fs.unlink(files[visaCopyField][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } catch (uploadError) {
+        console.error(`❌ Error uploading visa copy:`, uploadError);
+      }
     }
 
     // QID Document
-    if (files[`${fieldPrefix}QidDoc`] && files[`${fieldPrefix}QidDoc`].length > 0) {
-      const uploadResult = await safeCloudinaryUpload(
-        files[`${fieldPrefix}QidDoc`][0].path,
-        { folder: `clients/${gmail}/people/${personType}/qid` }
-      );
-      newPerson.qidDoc = uploadResult.url;
-      fs.unlink(files[`${fieldPrefix}QidDoc`][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+    if (files[qidDocField] && files[qidDocField].length > 0) {
+      console.log(`📄 Found QID doc: ${qidDocField}`);
+      try {
+        const uploadResult = await safeCloudinaryUpload(
+          files[qidDocField][0].path,
+          { folder: `clients/${gmail}/people/${personType}/qid` }
+        );
+        newPerson.qidDoc = uploadResult.url;
+        documentsProcessed++;
+        console.log(`✅ Uploaded QID doc: ${uploadResult.url}`);
+        
+        fs.unlink(files[qidDocField][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } catch (uploadError) {
+        console.error(`❌ Error uploading QID doc:`, uploadError);
+      }
     }
 
     // National Address Document
-    if (files[`${fieldPrefix}NationalAddressDoc`] && files[`${fieldPrefix}NationalAddressDoc`].length > 0) {
-      const uploadResult = await safeCloudinaryUpload(
-        files[`${fieldPrefix}NationalAddressDoc`][0].path,
-        { folder: `clients/${gmail}/people/${personType}/national_address` }
-      );
-      newPerson.nationalAddressDoc = uploadResult.url;
-      fs.unlink(files[`${fieldPrefix}NationalAddressDoc`][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+    if (files[nationalAddressDocField] && files[nationalAddressDocField].length > 0) {
+      console.log(`📄 Found national address doc: ${nationalAddressDocField}`);
+      try {
+        const uploadResult = await safeCloudinaryUpload(
+          files[nationalAddressDocField][0].path,
+          { folder: `clients/${gmail}/people/${personType}/national_address` }
+        );
+        newPerson.nationalAddressDoc = uploadResult.url;
+        documentsProcessed++;
+        console.log(`✅ Uploaded national address doc: ${uploadResult.url}`);
+        
+        fs.unlink(files[nationalAddressDocField][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } catch (uploadError) {
+        console.error(`❌ Error uploading national address doc:`, uploadError);
+      }
     }
 
     // Passport Document
-    if (files[`${fieldPrefix}PassportDoc`] && files[`${fieldPrefix}PassportDoc`].length > 0) {
-      const uploadResult = await safeCloudinaryUpload(
-        files[`${fieldPrefix}PassportDoc`][0].path,
-        { folder: `clients/${gmail}/people/${personType}/passport` }
-      );
-      newPerson.passportDoc = uploadResult.url;
-      fs.unlink(files[`${fieldPrefix}PassportDoc`][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+    if (files[passportDocField] && files[passportDocField].length > 0) {
+      console.log(`📄 Found passport doc: ${passportDocField}`);
+      try {
+        const uploadResult = await safeCloudinaryUpload(
+          files[passportDocField][0].path,
+          { folder: `clients/${gmail}/people/${personType}/passport` }
+        );
+        newPerson.passportDoc = uploadResult.url;
+        documentsProcessed++;
+        console.log(`✅ Uploaded passport doc: ${uploadResult.url}`);
+        
+        fs.unlink(files[passportDocField][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } catch (uploadError) {
+        console.error(`❌ Error uploading passport doc:`, uploadError);
+      }
     }
 
     // CV
-    if (files[`${fieldPrefix}Cv`] && files[`${fieldPrefix}Cv`].length > 0) {
-      const uploadResult = await safeCloudinaryUpload(
-        files[`${fieldPrefix}Cv`][0].path,
-        { folder: `clients/${gmail}/people/${personType}/cv` }
-      );
-      newPerson.cv = uploadResult.url;
-      fs.unlink(files[`${fieldPrefix}Cv`][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+    if (files[cvField] && files[cvField].length > 0) {
+      console.log(`📄 Found CV: ${cvField}`);
+      try {
+        const uploadResult = await safeCloudinaryUpload(
+          files[cvField][0].path,
+          { folder: `clients/${gmail}/people/${personType}/cv` }
+        );
+        newPerson.cv = uploadResult.url;
+        documentsProcessed++;
+        console.log(`✅ Uploaded CV: ${uploadResult.url}`);
+        
+        fs.unlink(files[cvField][0].path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } catch (uploadError) {
+        console.error(`❌ Error uploading CV:`, uploadError);
+      }
     }
+
+    console.log(`📊 Documents processed for ${personType} ${personIndex}: ${documentsProcessed}`);
+  } else {
+    console.log(`📁 No files provided for ${personType} ${personIndex}`);
   }
 
-  await newPerson.save({ session });
-  return newPerson;
+  try {
+    const savedPerson = await newPerson.save({ session });
+    console.log(`✅ Successfully saved ${personType}: ${personData.name} (DB ID: ${savedPerson._id})`);
+    return savedPerson;
+  } catch (saveError) {
+    console.error(`❌ Error saving ${personType} to database:`, saveError);
+    throw saveError;
+  }
 };
-
 
 // Get field history for a person detail
 const getPersonFieldHistory = asyncHandler(async (req, res) => {

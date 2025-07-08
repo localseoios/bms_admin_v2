@@ -38,6 +38,7 @@ const CreatePreApprovedJob = () => {
 
   // Add state for CR Extract files
   const [crExtractFiles, setCrExtractFiles] = useState([]);
+  const [companyMemoFiles, setCompanyMemoFiles] = useState([]);
 
   const [files, setFiles] = useState({
     documentPassport: null,
@@ -135,6 +136,18 @@ const CreatePreApprovedJob = () => {
   const [secretaryDocs, setSecretaryDocs] = useState([]);
   const [sefDocs, setSefDocs] = useState([]);
 
+  // Add these helper functions for Company Memo
+  const handleCompanyMemoFileChange = (files) => {
+    const fileArray = Array.from(files);
+    // Limit to 5 files maximum
+    const limitedFiles = fileArray.slice(0, 5);
+    setCompanyMemoFiles(limitedFiles);
+  };
+
+  const removeCompanyMemoFile = (index) => {
+    setCompanyMemoFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // Add CR Extract helper functions
   const handleCrExtractFileChange = (files) => {
     const fileArray = Array.from(files);
@@ -162,7 +175,7 @@ const CreatePreApprovedJob = () => {
 
     try {
       const response = await axiosInstance.get(
-        `/jobs/check-job-number/${encodeURIComponent(jobNumber)}`
+        `/operations/check-job-number/${encodeURIComponent(jobNumber)}`
       );
       setJobNumberStatus({
         checking: false,
@@ -531,16 +544,17 @@ const CreatePreApprovedJob = () => {
     setIsDragging(false);
   };
 
-  // Create the job
+  // Create the job - FIXED VERSION WITH PROPER DIRECTOR DOCUMENT HANDLING
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    console.log("Starting form submission...");
-    console.log("Email being submitted:", formData.gmail);
+    console.log("🚀 Starting form submission...");
+    console.log("📧 Email being submitted:", formData.gmail);
+    console.log("👥 Directors to process:", formData.directors.length);
 
     try {
       setLoading(true);
-      console.log("About to validate required fields");
+      console.log("✅ About to validate required fields");
 
       // Validate required fields (removed passport and ID document validation)
       if (
@@ -582,7 +596,7 @@ const CreatePreApprovedJob = () => {
         return;
       }
 
-      console.log("Validation passed, continuing submission");
+      console.log("✅ Validation passed, continuing submission");
 
       // Create FormData for file uploads
       const formDataToSend = new FormData();
@@ -657,7 +671,7 @@ const CreatePreApprovedJob = () => {
           formDataToSend.append("crExtract", file);
         });
         console.log(
-          `Adding ${crExtractFiles.length} CR Extract files to form data`
+          `📄 Adding ${crExtractFiles.length} CR Extract files to form data`
         );
       }
 
@@ -671,103 +685,163 @@ const CreatePreApprovedJob = () => {
           files.certificateOfIncorporate
         );
 
-      // Add director documents
-      formData.directors.forEach((_, index) => {
-        if (directorDocs[index]) {
-          if (directorDocs[index].visaCopy)
+      // ADD COMPANY MEMO FILES HERE:
+      if (companyMemoFiles.length > 0) {
+        companyMemoFiles.forEach((file) => {
+          formDataToSend.append("companyMemo", file);
+        });
+        console.log(`📄 Adding ${companyMemoFiles.length} Company Memo files to form data`);
+      }
+
+      // 🔥 FIXED: Add director documents with proper indexing
+      console.log("👥 Processing director documents...");
+      formData.directors.forEach((director, directorIndex) => {
+        console.log(`📋 Processing director ${directorIndex}: ${director.name || 'Unnamed'}`);
+        
+        if (directorDocs[directorIndex]) {
+          // Add index to field names for multiple directors support
+          if (directorDocs[directorIndex].visaCopy) {
             formDataToSend.append(
-              "directorVisaCopy",
-              directorDocs[index].visaCopy
+              `directorVisaCopy_${directorIndex}`,
+              directorDocs[directorIndex].visaCopy
             );
-          if (directorDocs[index].qidDoc)
-            formDataToSend.append("directorQidDoc", directorDocs[index].qidDoc);
-          if (directorDocs[index].nationalAddressDoc)
+            console.log(`📄 Added visa copy for director ${directorIndex}`);
+          }
+          
+          if (directorDocs[directorIndex].qidDoc) {
             formDataToSend.append(
-              "directorNationalAddressDoc",
-              directorDocs[index].nationalAddressDoc
+              `directorQidDoc_${directorIndex}`, 
+              directorDocs[directorIndex].qidDoc
             );
-          if (directorDocs[index].passportDoc)
+            console.log(`📄 Added QID doc for director ${directorIndex}`);
+          }
+          
+          if (directorDocs[directorIndex].nationalAddressDoc) {
             formDataToSend.append(
-              "directorPassportDoc",
-              directorDocs[index].passportDoc
+              `directorNationalAddressDoc_${directorIndex}`,
+              directorDocs[directorIndex].nationalAddressDoc
             );
-          if (directorDocs[index].cv)
-            formDataToSend.append("directorCv", directorDocs[index].cv);
+            console.log(`📄 Added national address doc for director ${directorIndex}`);
+          }
+          
+          if (directorDocs[directorIndex].passportDoc) {
+            formDataToSend.append(
+              `directorPassportDoc_${directorIndex}`,
+              directorDocs[directorIndex].passportDoc
+            );
+            console.log(`📄 Added passport doc for director ${directorIndex}`);
+          }
+          
+          if (directorDocs[directorIndex].cv) {
+            formDataToSend.append(
+              `directorCv_${directorIndex}`, 
+              directorDocs[directorIndex].cv
+            );
+            console.log(`📄 Added CV for director ${directorIndex}`);
+          }
+        } else {
+          console.log(`⚠️ No documents found for director ${directorIndex}`);
         }
       });
 
-      // Add shareholder documents
-      formData.shareholders.forEach((_, index) => {
-        if (shareholderDocs[index]) {
-          if (shareholderDocs[index].visaCopy)
+      console.log(`✅ Processed documents for ${formData.directors.length} directors`);
+
+      // Add shareholder documents with proper indexing
+      formData.shareholders.forEach((shareholder, shareholderIndex) => {
+        console.log(`📋 Processing shareholder ${shareholderIndex}: ${shareholder.name || 'Unnamed'}`);
+        
+        if (shareholderDocs[shareholderIndex]) {
+          if (shareholderDocs[shareholderIndex].visaCopy)
             formDataToSend.append(
-              "shareholderVisaCopy",
-              shareholderDocs[index].visaCopy
+              `shareholderVisaCopy_${shareholderIndex}`,
+              shareholderDocs[shareholderIndex].visaCopy
             );
-          if (shareholderDocs[index].qidDoc)
+          if (shareholderDocs[shareholderIndex].qidDoc)
             formDataToSend.append(
-              "shareholderQidDoc",
-              shareholderDocs[index].qidDoc
+              `shareholderQidDoc_${shareholderIndex}`,
+              shareholderDocs[shareholderIndex].qidDoc
             );
-          if (shareholderDocs[index].nationalAddressDoc)
+          if (shareholderDocs[shareholderIndex].nationalAddressDoc)
             formDataToSend.append(
-              "shareholderNationalAddressDoc",
-              shareholderDocs[index].nationalAddressDoc
+              `shareholderNationalAddressDoc_${shareholderIndex}`,
+              shareholderDocs[shareholderIndex].nationalAddressDoc
             );
-          if (shareholderDocs[index].passportDoc)
+          if (shareholderDocs[shareholderIndex].passportDoc)
             formDataToSend.append(
-              "shareholderPassportDoc",
-              shareholderDocs[index].passportDoc
+              `shareholderPassportDoc_${shareholderIndex}`,
+              shareholderDocs[shareholderIndex].passportDoc
             );
-          if (shareholderDocs[index].cv)
-            formDataToSend.append("shareholderCv", shareholderDocs[index].cv);
+          if (shareholderDocs[shareholderIndex].cv)
+            formDataToSend.append(
+              `shareholderCv_${shareholderIndex}`, 
+              shareholderDocs[shareholderIndex].cv
+            );
         }
       });
 
-      // Add secretary documents
-      formData.secretaries.forEach((_, index) => {
-        if (secretaryDocs[index]) {
-          if (secretaryDocs[index].visaCopy)
+      // Add secretary documents with proper indexing
+      formData.secretaries.forEach((secretary, secretaryIndex) => {
+        console.log(`📋 Processing secretary ${secretaryIndex}: ${secretary.name || 'Unnamed'}`);
+        
+        if (secretaryDocs[secretaryIndex]) {
+          if (secretaryDocs[secretaryIndex].visaCopy)
             formDataToSend.append(
-              "secretaryVisaCopy",
-              secretaryDocs[index].visaCopy
+              `secretaryVisaCopy_${secretaryIndex}`,
+              secretaryDocs[secretaryIndex].visaCopy
             );
-          if (secretaryDocs[index].qidDoc)
+          if (secretaryDocs[secretaryIndex].qidDoc)
             formDataToSend.append(
-              "secretaryQidDoc",
-              secretaryDocs[index].qidDoc
+              `secretaryQidDoc_${secretaryIndex}`,
+              secretaryDocs[secretaryIndex].qidDoc
             );
-          if (secretaryDocs[index].nationalAddressDoc)
+          if (secretaryDocs[secretaryIndex].nationalAddressDoc)
             formDataToSend.append(
-              "secretaryNationalAddressDoc",
-              secretaryDocs[index].nationalAddressDoc
+              `secretaryNationalAddressDoc_${secretaryIndex}`,
+              secretaryDocs[secretaryIndex].nationalAddressDoc
             );
-          if (secretaryDocs[index].passportDoc)
+          if (secretaryDocs[secretaryIndex].passportDoc)
             formDataToSend.append(
-              "secretaryPassportDoc",
-              secretaryDocs[index].passportDoc
+              `secretaryPassportDoc_${secretaryIndex}`,
+              secretaryDocs[secretaryIndex].passportDoc
             );
-          if (secretaryDocs[index].cv)
-            formDataToSend.append("secretaryCv", secretaryDocs[index].cv);
+          if (secretaryDocs[secretaryIndex].cv)
+            formDataToSend.append(
+              `secretaryCv_${secretaryIndex}`, 
+              secretaryDocs[secretaryIndex].cv
+            );
         }
       });
 
-      // Add SEF documents
-      formData.sefs.forEach((_, index) => {
-        if (sefDocs[index]) {
-          if (sefDocs[index].visaCopy)
-            formDataToSend.append("sefVisaCopy", sefDocs[index].visaCopy);
-          if (sefDocs[index].qidDoc)
-            formDataToSend.append("sefQidDoc", sefDocs[index].qidDoc);
-          if (sefDocs[index].nationalAddressDoc)
+      // Add SEF documents with proper indexing
+      formData.sefs.forEach((sef, sefIndex) => {
+        console.log(`📋 Processing SEF ${sefIndex}: ${sef.name || 'Unnamed'}`);
+        
+        if (sefDocs[sefIndex]) {
+          if (sefDocs[sefIndex].visaCopy)
             formDataToSend.append(
-              "sefNationalAddressDoc",
-              sefDocs[index].nationalAddressDoc
+              `sefVisaCopy_${sefIndex}`, 
+              sefDocs[sefIndex].visaCopy
             );
-          if (sefDocs[index].passportDoc)
-            formDataToSend.append("sefPassportDoc", sefDocs[index].passportDoc);
-          if (sefDocs[index].cv)
-            formDataToSend.append("sefCv", sefDocs[index].cv);
+          if (sefDocs[sefIndex].qidDoc)
+            formDataToSend.append(
+              `sefQidDoc_${sefIndex}`, 
+              sefDocs[sefIndex].qidDoc
+            );
+          if (sefDocs[sefIndex].nationalAddressDoc)
+            formDataToSend.append(
+              `sefNationalAddressDoc_${sefIndex}`,
+              sefDocs[sefIndex].nationalAddressDoc
+            );
+          if (sefDocs[sefIndex].passportDoc)
+            formDataToSend.append(
+              `sefPassportDoc_${sefIndex}`, 
+              sefDocs[sefIndex].passportDoc
+            );
+          if (sefDocs[sefIndex].cv)
+            formDataToSend.append(
+              `sefCv_${sefIndex}`, 
+              sefDocs[sefIndex].cv
+            );
         }
       });
 
@@ -785,6 +859,8 @@ const CreatePreApprovedJob = () => {
         });
       }
 
+      console.log("🚀 Sending request to backend...");
+
       // Send request to the backend
       const response = await axiosInstance.post(
         "/operations/pre-approved-job",
@@ -796,12 +872,13 @@ const CreatePreApprovedJob = () => {
         }
       );
 
+      console.log("✅ Pre-approved job created successfully!");
       toast.success("Pre-approved job created successfully!");
 
       // Navigate to the job details page
       navigate(`/job/${response.data.job._id}`);
     } catch (error) {
-      console.error("Error creating pre-approved job:", error);
+      console.error("❌ Error creating pre-approved job:", error);
 
       // Handle API error response
       const errorMessage =
@@ -1528,7 +1605,6 @@ const CreatePreApprovedJob = () => {
                 </div>
               </div>
 
-              {/* Continue with other document sections... */}
               {/* Scope of License */}
               <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
                 <div className="col-span-2">
@@ -1627,6 +1703,106 @@ const CreatePreApprovedJob = () => {
                       </span>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Company Memo - NEW SECTION */}
+              <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+                <div className="col-span-5">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Company Memo (Max 5 files)
+                  </label>
+                  <div
+                    className={`mt-1 border-2 border-dashed rounded-lg p-3 transition-colors ${
+                      companyMemoFiles.length > 0
+                        ? "border-green-500 bg-green-50"
+                        : "border-gray-300 hover:border-indigo-300 hover:bg-indigo-50/30"
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(false);
+                      const files = Array.from(e.dataTransfer.files).slice(0, 5);
+                      if (files.length > 0) {
+                        setCompanyMemoFiles(files);
+                      }
+                    }}
+                  >
+                    {/* Show selected files */}
+                    {companyMemoFiles.length > 0 ? (
+                      <div className="space-y-2">
+                        {companyMemoFiles.map((file, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100"
+                          >
+                            <div className="flex items-center">
+                              <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2" />
+                              <span className="text-sm text-gray-900 font-medium truncate max-w-[200px]">
+                                {file.name}
+                              </span>
+                              <span className="text-xs text-gray-500 ml-2">
+                                ({(file.size / 1024).toFixed(1)}KB)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeCompanyMemoFile(index)}
+                              className="p-1 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                              title="Remove file"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* Add more files button if less than 5 files */}
+                        {companyMemoFiles.length < 5 && (
+                          <div className="text-center pt-2">
+                            <label className="cursor-pointer block text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                              + Add {companyMemoFiles.length === 4 ? "1 more" : "more"} documents
+                              <input
+                                type="file"
+                                className="sr-only"
+                                multiple
+                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                onChange={(e) => {
+                                  const newFiles = Array.from(e.target.files);
+                                  const remainingSlots = 5 - companyMemoFiles.length;
+                                  const filesToAdd = newFiles.slice(0, remainingSlots);
+                                  setCompanyMemoFiles((prev) => [...prev, ...filesToAdd]);
+                                }}
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <CloudArrowUpIcon className="mx-auto h-10 w-10 text-gray-400 mb-3" />
+                        <div>
+                          <label className="cursor-pointer block text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                            Upload Company Memo Documents (1-5 files)
+                            <input
+                              type="file"
+                              className="sr-only"
+                              multiple
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              onChange={(e) => handleCompanyMemoFileChange(e.target.files)}
+                            />
+                          </label>
+                          <p className="text-xs text-gray-500 mt-1">
+                            or drag and drop here • PDF, DOC, DOCX, JPG, PNG
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Upload up to 5 company memo documents. Supported formats: PDF, DOC, DOCX, JPG, PNG
+                  </p>
                 </div>
               </div>
             </div>

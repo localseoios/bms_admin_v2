@@ -255,7 +255,9 @@ router.post(
   checkPermission("operationManagement"),
   (req, res, next) => {
     console.log("Processing pre-approved job creation request");
-    upload.fields([
+    
+    // Create dynamic fields for multiple directors, shareholders, etc.
+    const fields = [
       // Job documents (now optional)
       { name: "documentPassport", maxCount: 1 },
       { name: "documentID", maxCount: 1 },
@@ -269,42 +271,60 @@ router.post(
       { name: "scopeOfLicense", maxCount: 1 },
       { name: "articleOfAssociate", maxCount: 1 },
       { name: "certificateOfIncorporate", maxCount: 1 },
-      { name: "companyMemo", maxCount: 5 }, // ADD THIS LINE
+      { name: "companyMemo", maxCount: 5 },
 
-      // Director documents (supporting multiple directors)
-      { name: "directorVisaCopy", maxCount: 5 },
-      { name: "directorQidDoc", maxCount: 5 },
-      { name: "directorNationalAddressDoc", maxCount: 5 },
-      { name: "directorPassportDoc", maxCount: 5 },
-      { name: "directorCv", maxCount: 5 },
-
-      // Shareholder documents
-      { name: "shareholderVisaCopy", maxCount: 5 },
-      { name: "shareholderQidDoc", maxCount: 5 },
-      { name: "shareholderNationalAddressDoc", maxCount: 5 },
-      { name: "shareholderPassportDoc", maxCount: 5 },
-      { name: "shareholderCv", maxCount: 5 },
-
-      // Secretary documents
-      { name: "secretaryVisaCopy", maxCount: 5 },
-      { name: "secretaryQidDoc", maxCount: 5 },
-      { name: "secretaryNationalAddressDoc", maxCount: 5 },
-      { name: "secretaryPassportDoc", maxCount: 5 },
-      { name: "secretaryCv", maxCount: 5 },
-
-      // SEF documents
-      { name: "sefVisaCopy", maxCount: 5 },
-      { name: "sefQidDoc", maxCount: 5 },
-      { name: "sefNationalAddressDoc", maxCount: 5 },
-      { name: "sefPassportDoc", maxCount: 5 },
-      { name: "sefCv", maxCount: 5 },
-
-      // KYC documents
+      // KYC and BRA documents
       { name: "kycDocuments", maxCount: 10 },
-
-      // BRA documents
       { name: "braDocuments", maxCount: 10 },
-    ])(req, res, (err) => {
+    ];
+
+    // Add indexed director document fields (support up to 10 directors)
+    for (let i = 0; i < 10; i++) {
+      fields.push(
+        { name: `directorVisaCopy_${i}`, maxCount: 1 },
+        { name: `directorQidDoc_${i}`, maxCount: 1 },
+        { name: `directorNationalAddressDoc_${i}`, maxCount: 1 },
+        { name: `directorPassportDoc_${i}`, maxCount: 1 },
+        { name: `directorCv_${i}`, maxCount: 1 }
+      );
+    }
+
+    // Add indexed shareholder document fields (support up to 10 shareholders)
+    for (let i = 0; i < 10; i++) {
+      fields.push(
+        { name: `shareholderVisaCopy_${i}`, maxCount: 1 },
+        { name: `shareholderQidDoc_${i}`, maxCount: 1 },
+        { name: `shareholderNationalAddressDoc_${i}`, maxCount: 1 },
+        { name: `shareholderPassportDoc_${i}`, maxCount: 1 },
+        { name: `shareholderCv_${i}`, maxCount: 1 }
+      );
+    }
+
+    // Add indexed secretary document fields (support up to 5 secretaries)
+    for (let i = 0; i < 5; i++) {
+      fields.push(
+        { name: `secretaryVisaCopy_${i}`, maxCount: 1 },
+        { name: `secretaryQidDoc_${i}`, maxCount: 1 },
+        { name: `secretaryNationalAddressDoc_${i}`, maxCount: 1 },
+        { name: `secretaryPassportDoc_${i}`, maxCount: 1 },
+        { name: `secretaryCv_${i}`, maxCount: 1 }
+      );
+    }
+
+    // Add indexed SEF document fields (support up to 5 SEFs)
+    for (let i = 0; i < 5; i++) {
+      fields.push(
+        { name: `sefVisaCopy_${i}`, maxCount: 1 },
+        { name: `sefQidDoc_${i}`, maxCount: 1 },
+        { name: `sefNationalAddressDoc_${i}`, maxCount: 1 },
+        { name: `sefPassportDoc_${i}`, maxCount: 1 },
+        { name: `sefCv_${i}`, maxCount: 1 }
+      );
+    }
+
+    console.log(`Configured ${fields.length} multer fields for file upload`);
+
+    upload.fields(fields)(req, res, (err) => {
       if (err) {
         console.error("Upload error:", err.message);
         if (err.code === "LIMIT_FILE_SIZE") {
@@ -318,7 +338,9 @@ router.post(
           error: err.message,
         });
       }
+      
       console.log("Files processed successfully");
+      console.log("Received files:", Object.keys(req.files || {}));
       next();
     });
   },
