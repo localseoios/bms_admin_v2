@@ -1,4 +1,4 @@
-// controllers/braController.js
+// controllers/braController.js - COMPLETE VERSION
 const asyncHandler = require("express-async-handler");
 const BraApproval = require("../models/braApprovalModel");
 const Job = require("../models/Job");
@@ -114,7 +114,7 @@ const initializeBra = asyncHandler(async (req, res) => {
   }
 });
 
-// Get BRA approval status
+// Get BRA approval status - UPDATED to include enhanced population
 const getBraStatus = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
 
@@ -129,12 +129,24 @@ const getBraStatus = asyncHandler(async (req, res) => {
       });
     }
 
-    // Now check for BRA approval
+    // Now check for BRA approval with populated user details
     const braApproval = await BraApproval.findOne({ jobId })
       .populate("lmroApproval.approvedBy", "name email")
       .populate("dlmroApproval.approvedBy", "name email")
       .populate("ceoApproval.approvedBy", "name email")
-      .populate("rejectedBy", "name email");
+      .populate("rejectedBy", "name email")
+      // Document uploader population
+      .populate("lmroApproval.document.uploadedBy", "name email")
+      .populate("dlmroApproval.document.uploadedBy", "name email")
+      .populate("ceoApproval.document.uploadedBy", "name email")
+      // Modified by population
+      .populate("lmroApproval.modifiedBy", "name email")
+      .populate("dlmroApproval.modifiedBy", "name email")
+      .populate("ceoApproval.modifiedBy", "name email")
+      // Deleted by population
+      .populate("lmroApproval.deletedBy", "name email")
+      .populate("dlmroApproval.deletedBy", "name email")
+      .populate("ceoApproval.deletedBy", "name email");
 
     if (!braApproval) {
       return res.status(200).json({
@@ -147,6 +159,8 @@ const getBraStatus = asyncHandler(async (req, res) => {
           clientName: job.clientName,
           serviceType: job.serviceType,
           createdAt: job.createdAt,
+          approvalDocument: job.approvalDocument,
+          approvalNotes: job.approvalNotes
         },
       });
     }
@@ -155,6 +169,13 @@ const getBraStatus = asyncHandler(async (req, res) => {
     res.status(200).json({
       exists: true,
       ...braApproval.toObject(),
+      jobInfo: {
+        clientName: job.clientName,
+        serviceType: job.serviceType,
+        createdAt: job.createdAt,
+        approvalDocument: job.approvalDocument,
+        approvalNotes: job.approvalNotes
+      }
     });
   } catch (error) {
     console.error(`Error in getBraStatus for job ${jobId}:`, error);
@@ -199,8 +220,7 @@ const getAllBraJobs = asyncHandler(async (req, res) => {
   }
 });
 
-// Fixed LMRO Approval function in the BRA controller
-
+// LMRO Approval function
 const lmroApprove = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
   const { notes } = req.body;
@@ -275,13 +295,12 @@ const lmroApprove = asyncHandler(async (req, res) => {
     braApproval.currentApprovalStage = "dlmro";
     await braApproval.save();
 
-    // Update job status - ensure this job status is in the enum
+    // Update job status
     const job = await Job.findById(jobId);
     if (!job) {
       return res.status(404).json({ message: "Job not found" });
     }
 
-    // Check the job model schema to ensure 'bra_lmro_approved' is included in status enum
     job.status = "bra_lmro_approved";
     job.timeline.push({
       status: "bra_lmro_approved",
@@ -328,7 +347,6 @@ const lmroApprove = asyncHandler(async (req, res) => {
     });
   }
 });
-
 
 // DLMRO Approval with Document Upload
 const dlmroApprove = asyncHandler(async (req, res) => {
@@ -387,7 +405,6 @@ const dlmroApprove = asyncHandler(async (req, res) => {
         );
       } else {
         console.error(`Error deleting LMRO document: ${deleteResult.error}`);
-        // Continue processing even if deletion fails
       }
     }
 
@@ -550,7 +567,6 @@ const ceoApprove = asyncHandler(async (req, res) => {
         );
       } else {
         console.error(`Error deleting DLMRO document: ${deleteResult.error}`);
-        // Continue processing even if deletion fails
       }
     }
 
@@ -558,6 +574,7 @@ const ceoApprove = asyncHandler(async (req, res) => {
     if (braApproval.dlmroApproval.document) {
       braApproval.dlmroApproval.document = undefined;
     }
+    
     console.log(
       `Attempting to upload CEO document to Cloudinary from: ${req.file.path}`
     );
@@ -565,8 +582,8 @@ const ceoApprove = asyncHandler(async (req, res) => {
     // Upload new CEO document to Cloudinary
     const cloudinaryResult = await uploadToCloudinary(req.file.path, {
       folder: "bra-documents/ceo",
-      timeout: 120000, // Increase timeout to 2 minutes
-      chunk_size: 6000000, // Add chunk size for large uploads
+      timeout: 120000,
+      chunk_size: 6000000,
     });
 
     if (!cloudinaryResult.success) {
@@ -755,6 +772,198 @@ const rejectBra = asyncHandler(async (req, res) => {
   });
 });
 
+// NEW FUNCTION: Update BRA document for a specific stage
+const updateBraDocument = asyncHandler(async (req, res) => {
+  const { jobId, stage } = req.params;
+  const { notes } = req.body;
+
+  // Validate stage
+  const validStages = ['lmro', 'dlmro', 'ceo'];
+  if (!validStages.includes(stage)) {
+    return res.status(400).json({ message: 'Invalid approval stage' });
+  }
+
+  // Check if file was uploaded
+  if (!req.file) {
+    return res.status(400).json({
+      message: 'Document upload is required for BRA document update',
+    });
+  }
+
+  // Find the BRA approval record
+  const braApproval = await BraApproval.findOne({ jobId });
+
+  if (!braApproval) {
+    return res.status(404).json({ message: 'BRA approval record not found' });
+  }
+
+  // Check if user has permission for this stage
+  if (!req.user.role.permissions.braManagement[stage]) {
+    return res.status(403).json({ 
+      message: `Insufficient permissions. ${stage.toUpperCase()} role required.` 
+    });
+  }
+
+  try {
+    // Get the current approval object
+    const approvalField = `${stage}Approval`;
+    const currentApproval = braApproval[approvalField];
+
+    if (!currentApproval || !currentApproval.approved) {
+      return res.status(400).json({
+        message: `${stage.toUpperCase()} approval must exist before updating document`
+      });
+    }
+
+    // Delete old document from Cloudinary if it exists
+    if (currentApproval.document?.cloudinaryId) {
+      const deleteResult = await deleteFromCloudinary(currentApproval.document.cloudinaryId);
+      if (deleteResult.success) {
+        console.log(`Deleted old ${stage} document: ${currentApproval.document.cloudinaryId}`);
+      } else {
+        console.error(`Error deleting old ${stage} document: ${deleteResult.error}`);
+      }
+    }
+
+    // Upload new document to Cloudinary
+    const cloudinaryResult = await uploadToCloudinary(req.file.path, {
+      folder: `bra-documents/${stage}`,
+    });
+
+    if (!cloudinaryResult.success) {
+      return res.status(500).json({
+        message: 'Failed to upload document to cloud storage',
+        error: cloudinaryResult.error,
+      });
+    }
+
+    // Update the document in the approval
+    braApproval[approvalField].document = {
+      fileUrl: cloudinaryResult.url,
+      fileName: req.file.originalname,
+      fileType: req.file.mimetype,
+      cloudinaryId: cloudinaryResult.publicId,
+      uploadedAt: new Date(),
+      uploadedBy: req.user._id,
+    };
+
+    // Add modification tracking
+    braApproval[approvalField].modifiedAt = new Date();
+    braApproval[approvalField].modifiedBy = req.user._id;
+    if (notes) {
+      braApproval[approvalField].modificationNotes = notes;
+    }
+
+    await braApproval.save();
+
+    // Clean up temporary file
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    // Populate the response with user details
+    await braApproval.populate([
+      { path: `${approvalField}.approvedBy`, select: 'name email' },
+      { path: `${approvalField}.modifiedBy`, select: 'name email' },
+      { path: `${approvalField}.document.uploadedBy`, select: 'name email' }
+    ]);
+
+    res.status(200).json({
+      message: `${stage.toUpperCase()} document updated successfully`,
+      braApproval: braApproval.toObject(),
+    });
+
+  } catch (error) {
+    console.error(`Error updating ${stage} document for job ${jobId}:`, error);
+
+    // Clean up temporary file in case of error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    res.status(500).json({
+      message: `Server error updating ${stage.toUpperCase()} document`,
+      error: error.message,
+    });
+  }
+});
+
+// NEW FUNCTION: Delete BRA document for a specific stage
+const deleteBraDocument = asyncHandler(async (req, res) => {
+  const { jobId, stage } = req.params;
+
+  // Validate stage
+  const validStages = ['lmro', 'dlmro', 'ceo'];
+  if (!validStages.includes(stage)) {
+    return res.status(400).json({ message: 'Invalid approval stage' });
+  }
+
+  // Find the BRA approval record
+  const braApproval = await BraApproval.findOne({ jobId });
+
+  if (!braApproval) {
+    return res.status(404).json({ message: 'BRA approval record not found' });
+  }
+
+  // Check if user has permission for this stage
+  if (!req.user.role.permissions.braManagement[stage]) {
+    return res.status(403).json({ 
+      message: `Insufficient permissions. ${stage.toUpperCase()} role required.` 
+    });
+  }
+
+  try {
+    // Get the current approval object
+    const approvalField = `${stage}Approval`;
+    const currentApproval = braApproval[approvalField];
+
+    if (!currentApproval?.document?.cloudinaryId) {
+      return res.status(404).json({
+        message: `No document found for ${stage.toUpperCase()} stage`
+      });
+    }
+
+    // Delete document from Cloudinary
+    const deleteResult = await deleteFromCloudinary(currentApproval.document.cloudinaryId);
+    if (deleteResult.success) {
+      console.log(`Deleted ${stage} document: ${currentApproval.document.cloudinaryId}`);
+    } else {
+      console.error(`Error deleting ${stage} document: ${deleteResult.error}`);
+      return res.status(500).json({
+        message: 'Failed to delete document from cloud storage',
+        error: deleteResult.error,
+      });
+    }
+
+    // Add deletion tracking before removing document
+    braApproval[approvalField].deletedAt = new Date();
+    braApproval[approvalField].deletedBy = req.user._id;
+    
+    // Remove the document object
+    braApproval[approvalField].document = undefined;
+
+    await braApproval.save();
+
+    // Populate the response with user details
+    await braApproval.populate([
+      { path: `${approvalField}.approvedBy`, select: 'name email' },
+      { path: `${approvalField}.deletedBy`, select: 'name email' }
+    ]);
+
+    res.status(200).json({
+      message: `${stage.toUpperCase()} document deleted successfully`,
+      braApproval: braApproval.toObject(),
+    });
+
+  } catch (error) {
+    console.error(`Error deleting ${stage} document for job ${jobId}:`, error);
+    res.status(500).json({
+      message: `Server error deleting ${stage.toUpperCase()} document`,
+      error: error.message,
+    });
+  }
+});
+
 module.exports = {
   initializeBra,
   getBraStatus,
@@ -763,4 +972,6 @@ module.exports = {
   ceoApprove,
   rejectBra,
   getAllBraJobs,
+  updateBraDocument,    // NEW
+  deleteBraDocument,    // NEW
 };

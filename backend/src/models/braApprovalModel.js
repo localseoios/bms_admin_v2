@@ -1,7 +1,7 @@
-// models/braApprovalModel.js
+// models/braApprovalModel.js - UPDATED VERSION
 const mongoose = require("mongoose");
 
-// Reuse the document schema from KYC model
+// Document schema with enhanced tracking
 const documentSchema = new mongoose.Schema({
   fileUrl: { type: String, required: true }, // Cloudinary secure URL
   fileName: { type: String, required: true }, // Original filename
@@ -25,6 +25,19 @@ const approvalSchema = new mongoose.Schema({
   document: {
     type: documentSchema,
     required: false, // Not requiring at schema level, enforced in controller
+  },
+  // ADD THESE FIELDS FOR MODIFICATION TRACKING
+  modifiedAt: { type: Date },
+  modifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
+  modificationNotes: { type: String },
+  // ADD THESE FIELDS FOR DELETION TRACKING
+  deletedAt: { type: Date },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
   },
 });
 

@@ -88,7 +88,9 @@ const [kycDocumentModals, setKycDocumentModals] = useState({});
 const [kycDocumentUploading, setKycDocumentUploading] = useState({});
 const [deleteConfirmModals, setDeleteConfirmModals] = useState({});
 
-
+const [braDocumentModals, setBraDocumentModals] = useState({});
+const [braDocumentUploading, setBraDocumentUploading] = useState({});
+const [braDeleteConfirmModals, setBraDeleteConfirmModals] = useState({});
 
   // ADD THESE STATE VARIABLES (after existing state declarations)
   const [engagementLetters, setEngagementLetters] = useState([]);
@@ -740,6 +742,422 @@ const KycDocumentUpdateModal = ({ isOpen, onClose, jobId, stage, onUpdate }) => 
 
 // Delete Confirmation Modal Component
 const KycDocumentDeleteModal = ({ isOpen, onClose, jobId, stage, onDelete }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="px-6 py-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-medium text-gray-900">
+                Delete {getStageDisplayName(stage)} Document
+              </h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Are you sure you want to delete this document? This action cannot be undone.
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onDelete(jobId, stage)}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
+          >
+            Delete Document
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+const handleUpdateBraDocument = async (jobId, stage, file, notes = '') => {
+  try {
+    setBraDocumentUploading(prev => ({
+      ...prev,
+      [`${jobId}-${stage}`]: true
+    }));
+
+    const formData = new FormData();
+    formData.append('document', file);
+    if (notes) {
+      formData.append('notes', notes);
+    }
+
+    const response = await axiosInstance.put(
+      `/bra/jobs/${jobId}/documents/${stage}/update`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+
+    if (response.status === 200) {
+      toast.success(`${getStageDisplayName(stage)} document updated successfully!`);
+      await fetchBraStatus(jobId);
+      setBraDocumentModals(prev => ({
+        ...prev,
+        [`${jobId}-${stage}`]: false
+      }));
+    }
+  } catch (error) {
+    console.error(`Error updating ${stage} document:`, error);
+    toast.error(
+      error.response?.data?.message || 
+      `Failed to update ${getStageDisplayName(stage)} document`
+    );
+  } finally {
+    setBraDocumentUploading(prev => ({
+      ...prev,
+      [`${jobId}-${stage}`]: false
+    }));
+  }
+};
+
+const handleDeleteBraDocument = async (jobId, stage) => {
+  try {
+    const response = await axiosInstance.delete(
+      `/bra/jobs/${jobId}/documents/${stage}/delete`
+    );
+
+    if (response.status === 200) {
+      toast.success(`${getStageDisplayName(stage)} document deleted successfully!`);
+      await fetchBraStatus(jobId);
+      setBraDeleteConfirmModals(prev => ({
+        ...prev,
+        [`${jobId}-${stage}`]: false
+      }));
+    }
+  } catch (error) {
+    console.error(`Error deleting ${stage} document:`, error);
+    toast.error(
+      error.response?.data?.message || 
+      `Failed to delete ${getStageDisplayName(stage)} document`
+    );
+  }
+};
+
+const renderEnhancedBraDocumentSection = (braData, jobId) => {
+  const documents = [];
+  
+  const createDocumentInfo = (stage, approval) => {
+    if (!approval?.document?.fileUrl) return null;
+    
+    return {
+      stage,
+      stageLabel: getStageDisplayName(stage),
+      document: approval.document,
+      approval: approval,
+      canEdit: true,
+      canDelete: true,
+    };
+  };
+
+  if (braData.lmroApproval?.document?.fileUrl) {
+    documents.push(createDocumentInfo('lmro', braData.lmroApproval));
+  }
+  
+  if (braData.dlmroApproval?.document?.fileUrl) {
+    documents.push(createDocumentInfo('dlmro', braData.dlmroApproval));
+  }
+  
+  if (braData.ceoApproval?.document?.fileUrl) {
+    documents.push(createDocumentInfo('ceo', braData.ceoApproval));
+  }
+
+  if (documents.length === 0) {
+    return (
+      <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
+        <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+        <p className="text-sm text-gray-500">
+          No BRA documents have been uploaded yet.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {documents.map((doc) => {
+        const stageColors = {
+          lmro: { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800', icon: 'text-teal-600' },
+          dlmro: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', icon: 'text-purple-600' },
+          ceo: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-800', icon: 'text-indigo-600' }
+        };
+        const colors = stageColors[doc.stage];
+
+        return (
+          <div
+            key={doc.stage}
+            className={`group relative ${colors.bg} rounded-lg p-4 transition-all duration-200 hover:shadow-md ${colors.border}`}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-start flex-1">
+                <div className="flex-shrink-0">
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-md bg-white ${colors.icon} shadow-sm`}>
+                    {doc.stage === 'lmro' && <UserGroupIcon className="h-5 w-5" />}
+                    {doc.stage === 'dlmro' && <ClipboardDocumentCheckIcon className="h-5 w-5" />}
+                    {doc.stage === 'ceo' && <LockClosedIcon className="h-5 w-5" />}
+                  </span>
+                </div>
+                <div className="ml-4 flex-1">
+                  <h6 className={`text-sm font-medium ${colors.text}`}>
+                    {doc.stageLabel} Document
+                  </h6>
+                  <p className={`mt-1 text-xs flex items-center flex-wrap gap-2`}>
+                    <span className="flex items-center">
+                      <DocumentTextIcon className="h-3 w-3 mr-1" />
+                      {doc.document.fileName || "Document"}
+                    </span>
+                    <span className="mx-1">•</span>
+                    {doc.approval.approved ? (
+                      <span className="inline-flex items-center text-green-700">
+                        <CheckIcon className="h-3 w-3 mr-0.5" /> Approved
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center text-yellow-700">
+                        <ClockIcon className="h-3 w-3 mr-0.5" /> Pending
+                      </span>
+                    )}
+                  </p>
+                  
+                  <div className="mt-2 space-y-1">
+                    {doc.document.uploadedBy && (
+                      <p className="text-xs text-gray-600">
+                        <UserIcon className="h-3 w-3 inline mr-1" />
+                        Uploaded by: <span className="font-medium">{doc.document.uploadedBy.name || 'Unknown User'}</span>
+                      </p>
+                    )}
+                    {doc.document.uploadedAt && (
+                      <p className="text-xs text-gray-600">
+                        <CalendarIcon className="h-3 w-3 inline mr-1" />
+                        Uploaded: {new Date(doc.document.uploadedAt).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    )}
+                    {doc.approval.modifiedAt && doc.approval.modifiedBy && (
+                      <p className="text-xs text-amber-600">
+                        <PencilIcon className="h-3 w-3 inline mr-1" />
+                        Modified by: <span className="font-medium">
+                          {doc.approval.modifiedBy?.name || 'Unknown User'}
+                        </span>
+                        {' '}on {new Date(doc.approval.modifiedAt).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <a
+                      href={doc.document.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
+                    >
+                      <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
+                      Download
+                    </a>
+                    
+                    {doc.canEdit && (
+                      <button
+                        onClick={() => setBraDocumentModals(prev => ({
+                          ...prev,
+                          [`${jobId}-${doc.stage}`]: true
+                        }))}
+                        className="inline-flex items-center text-xs text-amber-600 hover:text-amber-800 bg-white rounded-md px-2 py-1 border border-amber-200 hover:bg-amber-50 transition-colors"
+                      >
+                        <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                        Replace
+                      </button>
+                    )}
+                    
+                    {doc.canDelete && (
+                      <button
+                        onClick={() => setBraDeleteConfirmModals(prev => ({
+                          ...prev,
+                          [`${jobId}-${doc.stage}`]: true
+                        }))}
+                        className="inline-flex items-center text-xs text-red-600 hover:text-red-800 bg-white rounded-md px-2 py-1 border border-red-200 hover:bg-red-50 transition-colors"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5 mr-1" />
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// STEP 3: ADD THESE MODAL COMPONENTS (after your existing KYC modal components)
+
+const BraDocumentUpdateModal = ({ isOpen, onClose, jobId, stage, onUpdate }) => {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [notes, setNotes] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFileSelect = (file) => {
+    setSelectedFile(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (selectedFile) {
+      onUpdate(jobId, stage, selectedFile, notes);
+    }
+  };
+
+  const resetForm = () => {
+    setSelectedFile(null);
+    setNotes('');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">
+            Replace {getStageDisplayName(stage)} Document
+          </h3>
+        </div>
+        
+        <div className="px-6 py-4 space-y-4">
+          <div 
+            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+              isDragging 
+                ? 'border-teal-400 bg-teal-50' 
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+          >
+            {selectedFile ? (
+              <div className="text-sm">
+                <DocumentTextIcon className="h-8 w-8 mx-auto text-green-500 mb-2" />
+                <p className="font-medium text-gray-900">{selectedFile.name}</p>
+                <p className="text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                <button
+                  onClick={() => setSelectedFile(null)}
+                  className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                >
+                  Remove file
+                </button>
+              </div>
+            ) : (
+              <div>
+                <DocumentTextIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                <p className="text-sm text-gray-600 mb-2">
+                  Drag and drop a file here, or click to select
+                </p>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleFileSelect(e.target.files[0]);
+                    }
+                  }}
+                  className="hidden"
+                  id={`bra-file-input-${stage}`}
+                />
+                <label
+                  htmlFor={`bra-file-input-${stage}`}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                >
+                  Choose File
+                </label>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes (optional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+              placeholder="Add any notes about this document update..."
+            />
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+          <button
+            onClick={() => {
+              resetForm();
+              onClose();
+            }}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!selectedFile || braDocumentUploading[`${jobId}-${stage}`]}
+            className="px-4 py-2 text-sm font-medium text-white bg-teal-600 border border-transparent rounded-md hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+          >
+            {braDocumentUploading[`${jobId}-${stage}`] ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                Uploading...
+              </>
+            ) : (
+              'Replace Document'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const BraDocumentDeleteModal = ({ isOpen, onClose, jobId, stage, onDelete }) => {
   if (!isOpen) return null;
 
   return (
@@ -3821,181 +4239,51 @@ const getKycStatusSafely = async (jobId) => {
                                 </div>
                               )}
 
-                              {/* BRA Documents Section */}
-                              {braStatuses[job._id].exists && (
-                                <div>
-                                  <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
-                                    <DocumentTextIcon className="h-4 w-4 mr-1.5 text-teal-600" />
-                                    BRA Documents
-                                  </h5>
-                                  <div className="space-y-3">
-                                    {/* LMRO Document */}
-                                    {braStatuses[job._id].lmroApproval?.document
-                                      ?.fileUrl && (
-                                      <div className="group relative bg-teal-50 rounded-lg p-3 transition-all duration-200 hover:bg-teal-100">
-                                        <div className="flex items-start">
-                                          <div className="flex-shrink-0">
-                                            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-teal-100 text-teal-600">
-                                              <UserGroupIcon className="h-5 w-5" />
-                                            </span>
-                                          </div>
-                                          <div className="ml-3">
-                                            <h6 className="text-sm font-medium text-teal-800">
-                                              LMRO Document
-                                            </h6>
-                                            <p className="mt-1 text-xs text-teal-700 flex items-center">
-                                              {braStatuses[job._id].lmroApproval
-                                                .document.fileName ||
-                                                "Document"}
-                                              <span className="mx-1">•</span>
-                                              {braStatuses[job._id].lmroApproval
-                                                .approved ? (
-                                                <span className="inline-flex items-center text-green-700">
-                                                  <CheckIcon className="h-3 w-3 mr-0.5" />{" "}
-                                                  Approved
-                                                </span>
-                                              ) : (
-                                                <span className="inline-flex items-center text-yellow-700">
-                                                  <ClockIcon className="h-3 w-3 mr-0.5" />{" "}
-                                                  Pending
-                                                </span>
-                                              )}
-                                            </p>
-                                            <a
-                                              href={
-                                                braStatuses[job._id]
-                                                  .lmroApproval.document.fileUrl
-                                              }
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="mt-1 inline-flex items-center text-xs text-teal-600 hover:text-teal-800"
-                                            >
-                                              <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
-                                              Download Document
-                                            </a>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
+{/* Enhanced BRA Documents Section */}
+{braStatuses[job._id].exists && (
+  <div>
+    <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
+      <DocumentTextIcon className="h-4 w-4 mr-1.5 text-teal-600" />
+      BRA Documents
+    </h5>
+    {renderEnhancedBraDocumentSection(braStatuses[job._id], job._id)}
+  </div>
+)}
+{/* BRA Document Update Modals */}
+{Object.entries(braDocumentModals).map(([key, isOpen]) => {
+  const [jobId, stage] = key.split('-');
+  return (
+    <BraDocumentUpdateModal
+      key={key}
+      isOpen={isOpen}
+      onClose={() => setBraDocumentModals(prev => ({
+        ...prev,
+        [key]: false
+      }))}
+      jobId={jobId}
+      stage={stage}
+      onUpdate={handleUpdateBraDocument}
+    />
+  );
+})}
 
-                                    {/* DLMRO Document */}
-                                    {braStatuses[job._id].dlmroApproval
-                                      ?.document?.fileUrl && (
-                                      <div className="group relative bg-purple-50 rounded-lg p-3 transition-all duration-200 hover:bg-purple-100">
-                                        <div className="flex items-start">
-                                          <div className="flex-shrink-0">
-                                            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-purple-100 text-purple-600">
-                                              <ClipboardDocumentCheckIcon className="h-5 w-5" />
-                                            </span>
-                                          </div>
-                                          <div className="ml-3">
-                                            <h6 className="text-sm font-medium text-purple-800">
-                                              DLMRO Document
-                                            </h6>
-                                            <p className="mt-1 text-xs text-purple-700 flex items-center">
-                                              {braStatuses[job._id]
-                                                .dlmroApproval.document
-                                                .fileName || "Document"}
-                                              <span className="mx-1">•</span>
-                                              {braStatuses[job._id]
-                                                .dlmroApproval.approved ? (
-                                                <span className="inline-flex items-center text-green-700">
-                                                  <CheckIcon className="h-3 w-3 mr-0.5" />{" "}
-                                                  Approved
-                                                </span>
-                                              ) : (
-                                                <span className="inline-flex items-center text-yellow-700">
-                                                  <ClockIcon className="h-3 w-3 mr-0.5" />{" "}
-                                                  Pending
-                                                </span>
-                                              )}
-                                            </p>
-                                            <a
-                                              href={
-                                                braStatuses[job._id]
-                                                  .dlmroApproval.document
-                                                  .fileUrl
-                                              }
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="mt-1 inline-flex items-center text-xs text-purple-600 hover:text-purple-800"
-                                            >
-                                              <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
-                                              Download Document
-                                            </a>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* CEO Document */}
-                                    {braStatuses[job._id].ceoApproval?.document
-                                      ?.fileUrl && (
-                                      <div className="group relative bg-indigo-50 rounded-lg p-3 transition-all duration-200 hover:bg-indigo-100">
-                                        <div className="flex items-start">
-                                          <div className="flex-shrink-0">
-                                            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-100 text-indigo-600">
-                                              <LockClosedIcon className="h-5 w-5" />
-                                            </span>
-                                          </div>
-                                          <div className="ml-3">
-                                            <h6 className="text-sm font-medium text-indigo-800">
-                                              CEO Document
-                                            </h6>
-                                            <p className="mt-1 text-xs text-indigo-700 flex items-center">
-                                              {braStatuses[job._id].ceoApproval
-                                                .document.fileName ||
-                                                "Document"}
-                                              <span className="mx-1">•</span>
-                                              {braStatuses[job._id].ceoApproval
-                                                .approved ? (
-                                                <span className="inline-flex items-center text-green-700">
-                                                  <CheckIcon className="h-3 w-3 mr-0.5" />{" "}
-                                                  Approved
-                                                </span>
-                                              ) : (
-                                                <span className="inline-flex items-center text-yellow-700">
-                                                  <ClockIcon className="h-3 w-3 mr-0.5" />{" "}
-                                                  Pending
-                                                </span>
-                                              )}
-                                            </p>
-                                            <a
-                                              href={
-                                                braStatuses[job._id].ceoApproval
-                                                  .document.fileUrl
-                                              }
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="mt-1 inline-flex items-center text-xs text-indigo-600 hover:text-indigo-800"
-                                            >
-                                              <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
-                                              Download Document
-                                            </a>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* No Documents Message */}
-                                    {!braStatuses[job._id].lmroApproval
-                                      ?.document?.fileUrl &&
-                                      !braStatuses[job._id].dlmroApproval
-                                        ?.document?.fileUrl &&
-                                      !braStatuses[job._id].ceoApproval
-                                        ?.document?.fileUrl && (
-                                        <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
-                                          <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                                          <p className="text-sm text-gray-500">
-                                            No BRA documents have been uploaded
-                                            yet.
-                                          </p>
-                                        </div>
-                                      )}
-                                  </div>
-                                </div>
-                              )}
-
+{/* BRA Document Delete Confirmation Modals */}
+{Object.entries(braDeleteConfirmModals).map(([key, isOpen]) => {
+  const [jobId, stage] = key.split('-');
+  return (
+    <BraDocumentDeleteModal
+      key={key}
+      isOpen={isOpen}
+      onClose={() => setBraDeleteConfirmModals(prev => ({
+        ...prev,
+        [key]: false
+      }))}
+      jobId={jobId}
+      stage={stage}
+      onDelete={handleDeleteBraDocument}
+    />
+  );
+})}
                               {/* Rejection Reason (if BRA is rejected) */}
                               {braStatuses[job._id].exists &&
                                 braStatuses[job._id].status === "rejected" && (

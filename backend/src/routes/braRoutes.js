@@ -1,4 +1,4 @@
-// routes/braRoutes.js
+// routes/braRoutes.js - UPDATED VERSION
 const express = require("express");
 const router = express.Router();
 const {
@@ -14,6 +14,8 @@ const {
   ceoApprove,
   rejectBra,
   getAllBraJobs,
+  updateBraDocument,  // ADD THIS
+  deleteBraDocument,  // ADD THIS
 } = require("../controllers/braController");
 const { upload, largeFileUpload } = require("../services/fileUploadService");
 
@@ -50,13 +52,30 @@ router.put(
 );
 
 // CEO Approval with document upload requirement
-// In braRoutes.js, update the CEO approval route:
 router.put(
   "/jobs/:jobId/ceo-approve",
   protect,
   checkPermission("braManagement.ceo"),
   largeFileUpload.single("document"), // Use largeFileUpload instead of upload
   ceoApprove
+);
+
+// ADD THESE NEW ROUTES FOR DOCUMENT MANAGEMENT
+// Update BRA document for specific stage
+router.put(
+  "/jobs/:jobId/documents/:stage/update",
+  protect,
+  checkBraPermission,
+  upload.single("document"),
+  updateBraDocument
+);
+
+// Delete BRA document for specific stage
+router.delete(
+  "/jobs/:jobId/documents/:stage/delete",
+  protect,
+  checkBraPermission,
+  deleteBraDocument
 );
 
 // Reject BRA (each role can only reject at their stage)
