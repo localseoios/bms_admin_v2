@@ -2813,7 +2813,7 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
 const getPersonFieldHistory = asyncHandler(async (req, res) => {
   const { jobId, personType, personId } = req.params;
   const { field } = req.query;
-
+  
   if (!field) {
     return res.status(400).json({ message: "Field parameter is required" });
   }

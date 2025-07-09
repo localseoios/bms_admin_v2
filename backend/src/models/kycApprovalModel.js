@@ -27,6 +27,18 @@ const approvalSchema = new mongoose.Schema({
     type: documentSchema,
     required: false, // Changed from true to false
   },
+  // NEW: Track modifications
+  modifiedAt: { type: Date },
+  modifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
+  // NEW: Track deletions
+  deletedAt: { type: Date },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
 });
 
 const kycApprovalSchema = new mongoose.Schema(

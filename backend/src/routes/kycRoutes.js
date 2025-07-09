@@ -14,6 +14,8 @@ const {
   ceoApprove,
   rejectKyc,
   getAllKycJobs,
+  updateKycDocument, // NEW
+  deleteKycDocument, // NEW
 } = require("../controllers/kycController");
 const { upload } = require("../services/fileUploadService");
 
@@ -60,5 +62,20 @@ router.put(
 
 // Reject KYC (each role can only reject at their stage)
 router.put("/jobs/:jobId/reject", protect, checkKycPermission, rejectKyc);
+
+// NEW: Update KYC Document for specific stage
+router.put(
+  "/jobs/:jobId/documents/:stage/update",
+  protect,
+  upload.single("document"),
+  updateKycDocument
+);
+
+// NEW: Delete KYC Document for specific stage
+router.delete(
+  "/jobs/:jobId/documents/:stage/delete",
+  protect,
+  deleteKycDocument
+);
 
 module.exports = router;

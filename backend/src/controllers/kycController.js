@@ -1,4 +1,4 @@
-// controllers/kycController.js
+// controllers/kycController.js - COMPLETE FIXED VERSION
 const asyncHandler = require("express-async-handler");
 const KycApproval = require("../models/kycApprovalModel");
 const Job = require("../models/Job");
@@ -8,6 +8,7 @@ const {
   deleteFromCloudinary,
 } = require("../services/fileUploadService");
 const fs = require("fs");
+const mongoose = require("mongoose");
 
 // Helper function to extract job data for response
 const prepareJobForResponse = (job) => {
@@ -30,14 +31,26 @@ const prepareJobForResponse = (job) => {
   }
 };
 
-// Helper function to safely get KYC status
+// FIXED: Helper function to safely get KYC status with complete population
 const getKycStatusSafely = async (jobId) => {
   try {
     const kycApproval = await KycApproval.findOne({ jobId })
       .populate("lmroApproval.approvedBy", "name email")
       .populate("dlmroApproval.approvedBy", "name email")
       .populate("ceoApproval.approvedBy", "name email")
-      .populate("rejectedBy", "name email");
+      .populate("rejectedBy", "name email")
+      // Document uploader population
+      .populate("lmroApproval.document.uploadedBy", "name email")
+      .populate("dlmroApproval.document.uploadedBy", "name email")
+      .populate("ceoApproval.document.uploadedBy", "name email")
+      // FIXED: Add modifiedBy population
+      .populate("lmroApproval.modifiedBy", "name email")
+      .populate("dlmroApproval.modifiedBy", "name email")
+      .populate("ceoApproval.modifiedBy", "name email")
+      // FIXED: Add deletedBy population
+      .populate("lmroApproval.deletedBy", "name email")
+      .populate("dlmroApproval.deletedBy", "name email")
+      .populate("ceoApproval.deletedBy", "name email");
 
     return kycApproval;
   } catch (error) {
@@ -147,7 +160,7 @@ const initializeKyc = asyncHandler(async (req, res) => {
   }
 });
 
-// Get KYC approval status - UPDATED to include compliance documents
+// FIXED: Get KYC approval status with complete population
 const getKycStatus = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
 
@@ -162,12 +175,24 @@ const getKycStatus = asyncHandler(async (req, res) => {
       });
     }
 
-    // Now check for KYC approval
+    // FIXED: Use complete population including modifiedBy and deletedBy
     const kycApproval = await KycApproval.findOne({ jobId })
       .populate("lmroApproval.approvedBy", "name email")
       .populate("dlmroApproval.approvedBy", "name email")
       .populate("ceoApproval.approvedBy", "name email")
-      .populate("rejectedBy", "name email");
+      .populate("rejectedBy", "name email")
+      // Document uploader population
+      .populate("lmroApproval.document.uploadedBy", "name email")
+      .populate("dlmroApproval.document.uploadedBy", "name email")
+      .populate("ceoApproval.document.uploadedBy", "name email")
+      // FIXED: Add modifiedBy population
+      .populate("lmroApproval.modifiedBy", "name email")
+      .populate("dlmroApproval.modifiedBy", "name email")
+      .populate("ceoApproval.modifiedBy", "name email")
+      // FIXED: Add deletedBy population
+      .populate("lmroApproval.deletedBy", "name email")
+      .populate("dlmroApproval.deletedBy", "name email")
+      .populate("ceoApproval.deletedBy", "name email");
 
     if (!kycApproval) {
       // Return 200 with exists:false instead of 404
@@ -347,10 +372,13 @@ const lmroApprove = asyncHandler(async (req, res) => {
       console.log(`Deleted temporary file: ${req.file.path}`);
     }
 
+    // FIXED: Return populated data
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
     // Return exists: true to maintain consistency with other endpoints
     res.status(200).json({
       exists: true,
-      ...kycApproval.toObject(),
+      ...populatedKycApproval.toObject(),
     });
   } catch (error) {
     console.error(`Error in LMRO approval for job ${jobId}:`, error);
@@ -498,10 +526,13 @@ const dlmroApprove = asyncHandler(async (req, res) => {
       console.log(`Deleted temporary file: ${req.file.path}`);
     }
 
+    // FIXED: Return populated data
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
     // Return exists: true to maintain consistency with other endpoints
     res.status(200).json({
       exists: true,
-      ...kycApproval.toObject(),
+      ...populatedKycApproval.toObject(),
     });
   } catch (error) {
     console.error(`Error in DLMRO approval for job ${jobId}:`, error);
@@ -716,10 +747,13 @@ const ceoApprove = asyncHandler(async (req, res) => {
       console.log(`Deleted temporary file: ${req.file.path}`);
     }
 
+    // FIXED: Return populated data
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
     // Return exists: true to maintain consistency with other endpoints
     res.status(200).json({
       exists: true,
-      ...kycApproval.toObject(),
+      ...populatedKycApproval.toObject(),
       braInitialized: true, // Indicate that BRA has been initialized
     });
   } catch (error) {
@@ -821,11 +855,230 @@ const rejectKyc = asyncHandler(async (req, res) => {
     { "role.name": "admin" }
   );
 
+  // FIXED: Return populated data
+  const populatedKycApproval = await getKycStatusSafely(jobId);
+
   // Return exists: true to maintain consistency with other endpoints
   res.status(200).json({
     exists: true,
-    ...kycApproval.toObject(),
+    ...populatedKycApproval.toObject(),
   });
+});
+
+// FIXED: Update KYC Document function with proper population
+const updateKycDocument = asyncHandler(async (req, res) => {
+  const { jobId, stage } = req.params; // stage: lmro, dlmro, ceo
+  const { notes } = req.body;
+
+  // Validate stage
+  if (!["lmro", "dlmro", "ceo"].includes(stage)) {
+    return res.status(400).json({ message: "Invalid approval stage" });
+  }
+
+  // Check permissions
+  if (!req.user.role.permissions.kycManagement[stage]) {
+    return res.status(403).json({ 
+      message: `Insufficient permissions. ${stage.toUpperCase()} role required.` 
+    });
+  }
+
+  // Check if file was uploaded
+  if (!req.file) {
+    return res.status(400).json({
+      message: "Document upload is required",
+    });
+  }
+
+  try {
+    const kycApproval = await KycApproval.findOne({ jobId });
+
+    if (!kycApproval) {
+      return res.status(404).json({ message: "KYC approval record not found" });
+    }
+
+    // Check if the stage has been approved (can only update approved stages)
+    const stageApproval = kycApproval[`${stage}Approval`];
+    if (!stageApproval || !stageApproval.approved) {
+      return res.status(400).json({
+        message: `${stage.toUpperCase()} stage has not been approved yet. Cannot update document.`,
+      });
+    }
+
+    // Delete old document from Cloudinary if it exists
+    if (stageApproval.document && stageApproval.document.cloudinaryId) {
+      const deleteResult = await deleteFromCloudinary(
+        stageApproval.document.cloudinaryId
+      );
+      if (deleteResult.success) {
+        console.log(`Deleted old ${stage} document: ${stageApproval.document.cloudinaryId}`);
+      } else {
+        console.error(`Error deleting old ${stage} document: ${deleteResult.error}`);
+      }
+    }
+
+    // Upload new document to Cloudinary
+    const cloudinaryResult = await uploadToCloudinary(req.file.path, {
+      folder: `kyc-documents/${stage}`,
+    });
+
+    if (!cloudinaryResult.success) {
+      return res.status(500).json({
+        message: "Failed to upload document to cloud storage",
+        error: cloudinaryResult.error,
+      });
+    }
+
+    // Update the document in the approval stage
+    stageApproval.document = {
+      fileUrl: cloudinaryResult.url,
+      fileName: req.file.originalname,
+      fileType: req.file.mimetype,
+      cloudinaryId: cloudinaryResult.publicId,
+      uploadedAt: new Date(),
+      uploadedBy: req.user._id,
+    };
+
+    // Update notes if provided
+    if (notes) {
+      stageApproval.notes = notes;
+    }
+
+    // FIXED: Mark as modified by current user (ensure ObjectId)
+    stageApproval.modifiedAt = new Date();
+    stageApproval.modifiedBy = req.user._id;
+
+    await kycApproval.save();
+
+    // Add timeline entry
+    const job = await Job.findById(jobId);
+    job.timeline.push({
+      status: `kyc_${stage}_document_updated`,
+      description: `KYC ${stage.toUpperCase()} document updated by ${req.user.name}`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    // Clean up temporary file
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    // Send notifications
+    await notificationService.createNotification(
+      {
+        title: "KYC Document Updated",
+        description: `${stage.toUpperCase()} document updated for ${job.clientName}'s KYC by ${req.user.name}`,
+        type: "kyc",
+        relatedTo: { model: "Job", id: job._id },
+      },
+      { "role.name": "admin" }
+    );
+
+    // FIXED: Return populated data after update
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
+    res.status(200).json({
+      message: `${stage.toUpperCase()} document updated successfully`,
+      document: populatedKycApproval[`${stage}Approval`].document,
+      kycApproval: populatedKycApproval, // Return the populated KYC data
+    });
+  } catch (error) {
+    console.error(`Error updating ${stage} document for job ${jobId}:`, error);
+
+    // Clean up temporary file in case of error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    res.status(500).json({
+      message: `Server error updating ${stage.toUpperCase()} document`,
+      error: error.message,
+    });
+  }
+});
+
+// FIXED: Delete KYC Document function with proper population
+const deleteKycDocument = asyncHandler(async (req, res) => {
+  const { jobId, stage } = req.params; // stage: lmro, dlmro, ceo
+
+  // Validate stage
+  if (!["lmro", "dlmro", "ceo"].includes(stage)) {
+    return res.status(400).json({ message: "Invalid approval stage" });
+  }
+
+  // Check permissions
+  if (!req.user.role.permissions.kycManagement[stage]) {
+    return res.status(403).json({ 
+      message: `Insufficient permissions. ${stage.toUpperCase()} role required.` 
+    });
+  }
+
+  try {
+    const kycApproval = await KycApproval.findOne({ jobId });
+
+    if (!kycApproval) {
+      return res.status(404).json({ message: "KYC approval record not found" });
+    }
+
+    const stageApproval = kycApproval[`${stage}Approval`];
+    if (!stageApproval || !stageApproval.document) {
+      return res.status(404).json({
+        message: `No document found for ${stage.toUpperCase()} stage`,
+      });
+    }
+
+    // Delete document from Cloudinary
+    if (stageApproval.document.cloudinaryId) {
+      const deleteResult = await deleteFromCloudinary(
+        stageApproval.document.cloudinaryId
+      );
+      if (deleteResult.success) {
+        console.log(`Deleted ${stage} document: ${stageApproval.document.cloudinaryId}`);
+      } else {
+        console.error(`Error deleting ${stage} document: ${deleteResult.error}`);
+        // Continue with database deletion even if Cloudinary deletion fails
+      }
+    }
+
+    // Remove document from database
+    stageApproval.document = undefined;
+    stageApproval.deletedAt = new Date();
+    stageApproval.deletedBy = req.user._id;
+
+    await kycApproval.save();
+
+    // Add timeline entry
+    const job = await Job.findById(jobId);
+    job.timeline.push({
+      status: `kyc_${stage}_document_deleted`,
+      description: `KYC ${stage.toUpperCase()} document deleted by ${req.user.name}`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    // Send notifications
+    await notificationService.createNotification(
+      {
+        title: "KYC Document Deleted",
+        description: `${stage.toUpperCase()} document deleted for ${job.clientName}'s KYC by ${req.user.name}`,
+        type: "kyc",
+        relatedTo: { model: "Job", id: job._id },
+      },
+      { "role.name": "admin" }
+    );
+
+    res.status(200).json({
+      message: `${stage.toUpperCase()} document deleted successfully`,
+    });
+  } catch (error) {
+    console.error(`Error deleting ${stage} document for job ${jobId}:`, error);
+    res.status(500).json({
+      message: `Server error deleting ${stage.toUpperCase()} document`,
+      error: error.message,
+    });
+  }
 });
 
 module.exports = {
@@ -836,4 +1089,6 @@ module.exports = {
   ceoApprove,
   rejectKyc,
   getAllKycJobs,
+  updateKycDocument, // FIXED
+  deleteKycDocument, // FIXED
 };
