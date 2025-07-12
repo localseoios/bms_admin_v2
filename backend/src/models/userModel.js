@@ -27,6 +27,18 @@ const userSchema = mongoose.Schema(
       ref: "Role",
       required: true,
     },
+    lastLogin: {
+      type: Date,
+      default: null,
+    },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    lastActivity: {
+      type: Date,
+      default: Date.now,
+    },
   },
   { timestamps: true }
 );

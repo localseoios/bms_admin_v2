@@ -10,6 +10,7 @@ const {
   getCurrentUser,
   updateCurrentUser,
   changePassword,
+  getOnlineUsers,
   getOperationManagers,
 } = require("../controllers/userController");
 const {
@@ -31,6 +32,8 @@ router
 
 router.get("/operation-managers", protect, getOperationManagers);
 
+// Route to get online users
+router.get("/online", protect, getOnlineUsers);
 
 router
   .route("/:id")

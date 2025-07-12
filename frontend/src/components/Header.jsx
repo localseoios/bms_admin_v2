@@ -35,12 +35,22 @@ function Header() {
 
   const handleLogout = async () => {
     try {
-      await axiosInstance.get("/auth/logout");
+      // Send user ID with logout request to properly update online status
+      if (user && user._id) {
+        await axiosInstance.post("/auth/logout", { userId: user._id });
+      } else {
+        // Fallback to GET request if no user ID
+        await axiosInstance.get("/auth/logout");
+      }
       localStorage.removeItem("user");
       setUser(null); // Update state immediately
       navigate("/login");
     } catch (error) {
       console.error("Error logging out:", error);
+      // Clear local data even if logout request fails
+      localStorage.removeItem("user");
+      setUser(null);
+      navigate("/login");
     }
   };
 

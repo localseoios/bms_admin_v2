@@ -97,6 +97,12 @@ const loginUser = asyncHandler(async (req, res) => {
   console.log("Password verification:", passwordIsCorrect ? "Successful" : "Failed");
 
   if (passwordIsCorrect) {
+    // Update user online status and last login
+    user.isOnline = true;
+    user.lastLogin = new Date();
+    user.lastActivity = new Date();
+    await user.save();
+
     const token = generateToken(user._id);
     res.cookie("token", token, {
       path: "/",
@@ -122,14 +128,52 @@ const loginUser = asyncHandler(async (req, res) => {
 
 // Logout User
 const logout = asyncHandler(async (req, res) => {
-  res.cookie("token", "", {
-    path: "/",
-    httpOnly: true,
-    expires: new Date(0),
-    sameSite: "none",
-    secure: true,
-  });
-  res.status(200).json({ message: "Successfully Logged Out" });
+  try {
+    // Try to get user ID from request body or query (for manual logout)
+    const userId = req.body.userId || req.query.userId;
+    
+    if (userId) {
+      // Manual logout with user ID provided
+      const user = await User.findById(userId);
+      if (user) {
+        user.isOnline = false;
+        user.lastActivity = new Date();
+        await user.save();
+        console.log(`User ${user.email} manually logged out`);
+      }
+    } else if (req.user) {
+      // Protected logout (if middleware runs)
+      const user = await User.findById(req.user._id);
+      if (user) {
+        user.isOnline = false;
+        user.lastActivity = new Date();
+        await user.save();
+        console.log(`User ${user.email} logged out via protected route`);
+      }
+    }
+
+    // Clear the authentication cookie
+    res.cookie("token", "", {
+      path: "/",
+      httpOnly: true,
+      expires: new Date(0),
+      sameSite: "none",
+      secure: true,
+    });
+    
+    res.status(200).json({ message: "Successfully Logged Out" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    // Still clear the cookie even if database update fails
+    res.cookie("token", "", {
+      path: "/",
+      httpOnly: true,
+      expires: new Date(0),
+      sameSite: "none",
+      secure: true,
+    });
+    res.status(200).json({ message: "Logged out (with error updating status)" });
+  }
 });
 
 // Get all users
@@ -333,6 +377,38 @@ const changePassword = asyncHandler(async (req, res) => {
   res.status(200).json({ message: "Password updated successfully" });
 });
 
+// Get online users
+const getOnlineUsers = asyncHandler(async (req, res) => {
+  try {
+    // Consider users online if they logged in recently (within last 30 minutes)
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    
+    const onlineUsers = await User.find({
+      $or: [
+        { isOnline: true },
+        { lastActivity: { $gte: thirtyMinutesAgo } }
+      ]
+    })
+    .populate("role", "name")
+    .select("-password")
+    .sort({ lastActivity: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: onlineUsers.length,
+      data: onlineUsers,
+      message: `Found ${onlineUsers.length} online users`
+    });
+  } catch (error) {
+    console.error("Error fetching online users:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching online users",
+      error: error.message
+    });
+  }
+});
+
 // Get all operation managers
 const getOperationManagers = asyncHandler(async (req, res) => {
   try {
@@ -375,5 +451,6 @@ module.exports = {
   getCurrentUser,
   updateCurrentUser,
   changePassword,
+  getOnlineUsers,
   getOperationManagers,
 };

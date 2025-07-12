@@ -9,5 +9,6 @@ const {
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.get("/logout", logout);
+router.post("/logout", logout); // Support both GET and POST for logout
 
 module.exports = router;

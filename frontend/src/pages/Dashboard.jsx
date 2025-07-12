@@ -65,6 +65,10 @@ const Dashboard = () => {
 
   // Modal state
   const [showAllExpiringJobs, setShowAllExpiringJobs] = useState(false);
+  const [totalUsersData, setTotalUsersData] = useState([]);
+  const [showTotalUsersModal, setShowTotalUsersModal] = useState(false);
+  const [showOnlineUsersModal, setShowOnlineUsersModal] = useState(false);
+  const [onlineUsersData, setOnlineUsersData] = useState([]);
 
   // Helper function to get urgency display info based on backend data
   // UPDATED: Helper function to get urgency display info with new expiryType
@@ -403,17 +407,25 @@ const fetchExpiringJobs = async () => {
   const fetchStats = async () => {
     try {
       // For real implementation, fetch these stats from relevant API endpoints
-      const [jobsResponse, clientsResponse] = await Promise.all([
+      const [jobsResponse, usersResponse, onlineUsersResponse] = await Promise.all([
         axiosInstance.get("/jobs"),
-        axiosInstance.get("/clients/assigned"),
+        axiosInstance.get("/users"),
+        axiosInstance.get("/users/online"),
       ]);
 
       const jobs = jobsResponse.data;
-      const clients = clientsResponse.data.clients || [];
+      const users = usersResponse.data || [];
+      const onlineUsers = onlineUsersResponse.data?.data || [];
 
       // Calculate statistics from the responses
       const totalJobs = jobs.length;
-      const activeClients = clients.length;
+
+      // Calculate users statistics
+      const totalUsers = users.length;
+      
+      // Store users data for modals
+      setTotalUsersData(users);
+      setOnlineUsersData(onlineUsers);
 
       // Count pending tasks (jobs with status 'pending')
       const pendingTasks = jobs.filter(
@@ -439,13 +451,26 @@ const fetchExpiringJobs = async () => {
           iconColor: "text-blue-600",
         },
         {
-          name: "Active Clients",
-          value: activeClients.toString(),
-          change: "+8.2%",
+          name: "Total Users",
+          value: totalUsers.toString(),
+          change: "+3.2%",
           changeType: "positive",
           icon: UserGroupIcon,
-          bgColor: "bg-purple-50",
-          iconColor: "text-purple-600",
+          bgColor: "bg-blue-50",
+          iconColor: "text-blue-600",
+          onClick: () => setShowTotalUsersModal(true),
+          isClickable: true,
+        },
+        {
+          name: "Online Users",
+          value: onlineUsers.length.toString(),
+          change: "+1.5%",
+          changeType: "positive",
+          icon: UserGroupIcon,
+          bgColor: "bg-emerald-50",
+          iconColor: "text-emerald-600",
+          onClick: () => setShowOnlineUsersModal(true),
+          isClickable: true,
         },
         {
           name: "Pending Tasks",
@@ -480,13 +505,22 @@ const fetchExpiringJobs = async () => {
           iconColor: "text-blue-600",
         },
         {
-          name: "Active Clients",
+          name: "Total Users",
           value: "0",
           change: "0%",
           changeType: "neutral",
           icon: UserGroupIcon,
-          bgColor: "bg-purple-50",
-          iconColor: "text-purple-600",
+          bgColor: "bg-blue-50",
+          iconColor: "text-blue-600",
+        },
+        {
+          name: "Online Users",
+          value: "0",
+          change: "0%",
+          changeType: "neutral",
+          icon: UserGroupIcon,
+          bgColor: "bg-emerald-50",
+          iconColor: "text-emerald-600",
         },
         {
           name: "Pending Tasks",
@@ -935,10 +969,10 @@ const fetchExpiringJobs = async () => {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {isLoading
             ? // Skeleton loaders for stats
-              Array(4)
+              Array(5)
                 .fill(0)
                 .map((_, index) => (
                   <div
@@ -960,7 +994,10 @@ const fetchExpiringJobs = async () => {
             : stats.map((stat, index) => (
                 <div
                   key={stat.name}
-                  className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100/50 hover:shadow-xl hover:scale-[1.02] transition-all duration-300"
+                  className={`bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100/50 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 ${
+                    stat.isClickable ? 'cursor-pointer hover:ring-2 hover:ring-blue-500' : ''
+                  }`}
+                  onClick={stat.onClick || (() => {})}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
@@ -1417,6 +1454,187 @@ const fetchExpiringJobs = async () => {
         onClose={() => setShowAllExpiringJobs(false)}
         initialJobs={expiringJobs}
       />
+
+
+      {/* Total Users Modal */}
+      {showTotalUsersModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">All Users</h2>
+                  <p className="text-blue-100">System registered users</p>
+                </div>
+                <button
+                  onClick={() => setShowTotalUsersModal(false)}
+                  className="text-white hover:text-blue-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {totalUsersData.length > 0 ? (
+                <div className="grid gap-4">
+                  {totalUsersData.map((user) => (
+                    <div key={user._id} className="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {user.name}
+                          </h3>
+                          <p className="text-sm text-gray-600 mb-2">
+                            {user.email}
+                          </p>
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <span className="flex items-center">
+                              <UserGroupIcon className="h-4 w-4 mr-1" />
+                              Role: {user.role?.name || 'No Role'}
+                            </span>
+                            {user.createdAt && (
+                              <span className="flex items-center">
+                                <CalendarIcon className="h-4 w-4 mr-1" />
+                                Joined: {new Date(user.createdAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            user.status === 'active' || !user.status 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {user.status || 'Active'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <UserGroupIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500">No users found</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-gray-50 px-6 py-4 border-t">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  Total: {totalUsersData.length} user{totalUsersData.length !== 1 ? 's' : ''}
+                </p>
+                <button
+                  onClick={() => setShowTotalUsersModal(false)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Online Users Modal */}
+      {showOnlineUsersModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-600 to-green-600 text-white p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Online Users</h2>
+                  <p className="text-emerald-100">Users currently logged in to the system</p>
+                </div>
+                <button
+                  onClick={() => setShowOnlineUsersModal(false)}
+                  className="text-white hover:text-emerald-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {onlineUsersData.length > 0 ? (
+                <div className="grid gap-4">
+                  {onlineUsersData.map((user) => (
+                    <div key={user._id} className="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {user.name}
+                          </h3>
+                          <p className="text-sm text-gray-600 mb-2">
+                            {user.email}
+                          </p>
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <span className="flex items-center">
+                              <UserGroupIcon className="h-4 w-4 mr-1" />
+                              Role: {user.role?.name || 'No Role'}
+                            </span>
+                            {user.lastLogin && (
+                              <span className="flex items-center">
+                                <CalendarIcon className="h-4 w-4 mr-1" />
+                                Last login: {new Date(user.lastLogin).toLocaleDateString()} {new Date(user.lastLogin).toLocaleTimeString()}
+                              </span>
+                            )}
+                            {user.lastActivity && (
+                              <span className="flex items-center">
+                                <ClockIcon className="h-4 w-4 mr-1" />
+                                Last activity: {new Date(user.lastActivity).toLocaleTimeString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+                            Online
+                          </span>
+                          {user.isOnline && (
+                            <p className="text-xs text-green-600 mt-1 font-medium">
+                              Currently active
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <UserGroupIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500">No users currently online</p>
+                  <p className="text-xs text-gray-400 mt-1">Users will appear here when they log in</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-gray-50 px-6 py-4 border-t">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  Total: {onlineUsersData.length} user{onlineUsersData.length !== 1 ? 's' : ''} online
+                </p>
+                <button
+                  onClick={() => setShowOnlineUsersModal(false)}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
