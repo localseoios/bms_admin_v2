@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { InformationCircleIcon, ClockIcon } from "@heroicons/react/24/outline";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { InformationCircleIcon, ClockIcon, CheckCircleIcon, UserIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
+import { getPersonSuggestionsArray } from "../../../utils/personSuggestions";
 
 // Component to display field history on hover
 const FieldHistory = ({ fieldName, personId, personType, jobId }) => {
@@ -130,8 +131,155 @@ export const DateInputWithHistory = withHistory(
   )
 );
 
+// AutoSuggest Input Component with History
+const AutoSuggestInput = ({ 
+  value, 
+  onChange, 
+  className, 
+  placeholder,
+  onAutoFill,
+  personType = "Person"
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [filteredSuggestions, setFilteredSuggestions] = useState([]);
+  const [isAutoFilled, setIsAutoFilled] = useState(false);
+  const inputRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  // Memoize suggestions to prevent infinite re-renders
+  const suggestions = useMemo(() => getPersonSuggestionsArray(), []);
+
+  useEffect(() => {
+    const filtered = suggestions.filter(person =>
+      person.name.toLowerCase().includes((value || '').toLowerCase())
+    );
+    setFilteredSuggestions(filtered);
+  }, [value, suggestions]);
+
+  const handleInputChange = (e) => {
+    const inputValue = e.target.value;
+    onChange(e);
+    
+    const filtered = suggestions.filter(person =>
+      person.name.toLowerCase().includes((inputValue || '').toLowerCase())
+    );
+    
+    const shouldOpen = inputValue.length > 0 && filtered.length > 0;
+    setIsOpen(shouldOpen);
+    setIsAutoFilled(false);
+  };
+
+  const handleSuggestionClick = (suggestion) => {
+    onChange({ target: { value: suggestion.name } });
+    setIsOpen(false);
+    setIsAutoFilled(true);
+    
+    if (onAutoFill) {
+      onAutoFill(suggestion);
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value || ''}
+        onChange={handleInputChange}
+        onFocus={() => {
+          const shouldOpen = value && filteredSuggestions.length > 0;
+          setIsOpen(shouldOpen);
+        }}
+        placeholder={placeholder}
+        className={`${className} ${isAutoFilled ? 'bg-green-50 border-green-300' : ''}`}
+      />
+      
+      {/* Auto-fill success indicator */}
+      {isAutoFilled && (
+        <div className="absolute right-8 top-1/2 transform -translate-y-1/2">
+          <CheckCircleIcon className="h-4 w-4 text-green-500" />
+        </div>
+      )}
+      
+      {/* Dropdown */}
+      {isOpen && filteredSuggestions.length > 0 && (
+        <div 
+          ref={dropdownRef}
+          className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+        >
+          {filteredSuggestions.map((suggestion, index) => (
+            <div
+              key={index}
+              onClick={() => handleSuggestionClick(suggestion)}
+              className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+            >
+              <div className="flex items-center">
+                <UserIcon className="h-4 w-4 text-gray-400 mr-3" />
+                <div>
+                  <div className="font-medium text-gray-900">{suggestion.name}</div>
+                  <div className="text-sm text-gray-500">
+                    {suggestion.nationality} • {suggestion.email}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Enhanced TextInput with AutoSuggest and History  
+export const TextInputWithHistoryAndAutoSuggest = ({ 
+  fieldName, 
+  personId, 
+  personType, 
+  jobId, 
+  onAutoFill,
+  ...props 
+}) => {
+  return (
+    <div className="relative w-full">
+      <AutoSuggestInput 
+        {...props}
+        onAutoFill={onAutoFill}
+        personType={personType}
+      />
+      {personId && (
+        <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+          <FieldHistory
+            fieldName={fieldName}
+            personId={personId}
+            personType={personType}
+            jobId={jobId}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default {
   TextInputWithHistory,
   DateInputWithHistory,
+  TextInputWithHistoryAndAutoSuggest,
   FieldHistory,
 };

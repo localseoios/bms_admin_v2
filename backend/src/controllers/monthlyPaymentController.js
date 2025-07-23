@@ -251,6 +251,7 @@ const addMonthlyPayment = asyncHandler(async (req, res) => {
         invoiceDate: invoice.invoiceDate,
         description: invoice.description,
         amount: parseFloat(invoice.amount),
+        currency: invoice.currency || "QAR",
         option: invoice.option,
         paymentMethod: invoice.paymentMethod,
         fileUrl: invoice.fileUrl,

@@ -225,11 +225,13 @@ router.put(
   upload.single("invoiceFile"),
   handleUploadErrors,
   (req, res, next) => {
-    console.log("📝 UPDATE INVOICE ROUTE HIT!");
+    console.log("=== UPDATE INVOICE ROUTE HIT ===");
     console.log(`💳 Payment ID: ${req.params.paymentId}`);
     console.log(`🧾 Invoice ID: ${req.params.invoiceId}`);
     console.log(`📝 Form Data:`, req.body);
+    console.log(`🏷️ Currency in body:`, req.body.currency);
     console.log(`📎 File:`, req.file ? req.file.originalname : "No file uploaded");
+    console.log("=== END ROUTE INFO ===");
     next();
   },
   updatePaymentInvoice

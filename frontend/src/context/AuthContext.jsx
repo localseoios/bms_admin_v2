@@ -40,10 +40,19 @@ export const AuthProvider = ({ children }) => {
     // For admin role
     if (user.role.name === "admin") return true;
 
-    // For specific permissions like "kycManagement.lmro"
+    // For specific permissions like "kycManagement.lmro" or "clientManagement.auditedFinancial.viewer"
     if (permissionPath.includes(".")) {
-      const [section, permission] = permissionPath.split(".");
-      return user.role.permissions?.[section]?.[permission] === true;
+      const parts = permissionPath.split(".");
+      
+      if (parts.length === 2) {
+        // Two-level nesting like "kycManagement.lmro"
+        const [section, permission] = parts;
+        return user.role.permissions?.[section]?.[permission] === true;
+      } else if (parts.length === 3) {
+        // Three-level nesting like "clientManagement.auditedFinancial.viewer"
+        const [section, subsection, permission] = parts;
+        return user.role.permissions?.[section]?.[subsection]?.[permission] === true;
+      }
     }
 
     // For simple permissions

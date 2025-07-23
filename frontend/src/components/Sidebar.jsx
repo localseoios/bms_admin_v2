@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   UserGroupIcon,
   ChartBarIcon,
@@ -86,8 +87,24 @@ const navigation = [
         href: "/all-clients",
         icon: UsersIcon,
       },
+      {
+        name: "BRA Management",
+        href: "/bra-management",
+        icon: ClipboardIcon,
+      },
+      {
+        name: "KYC Management",
+        href: "/kyc-management",
+        icon: IdentificationIcon,
+      },
     ],
   },
+  //   {
+  //   name: "BRA Management",
+  //   items: [
+      
+  //   ],
+  // },
   {
     name: "Services",
     items: [
@@ -103,26 +120,17 @@ const navigation = [
       },
     ],
   },
-  {
-    name: "KYC Management",
-    items: [
-      {
-        name: "KYC Management",
-        href: "/kyc-management",
-        icon: IdentificationIcon,
-      },
-    ],
-  },
-  {
-    name: "BRA Management",
-    items: [
-      {
-        name: "BRA Management",
-        href: "/bra-management",
-        icon: ClipboardIcon,
-      },
-    ],
-  },
+  // {
+  //   name: "KYC Management",
+  //   items: [
+  //     {
+  //       name: "KYC Management",
+  //       href: "/kyc-management",
+  //       icon: IdentificationIcon,
+  //     },
+  //   ],
+  // },
+
   {
     name: "Account Management",
     items: [
@@ -137,6 +145,7 @@ const navigation = [
 
 function Sidebar() {
   const location = useLocation();
+  const { checkPermission } = useAuth();
   const [expandedSections, setExpandedSections] = useState(
     navigation.map((section) => section.name)
   );
@@ -147,6 +156,22 @@ function Sidebar() {
         ? prev.filter((name) => name !== sectionName)
         : [...prev, sectionName]
     );
+  };
+
+  // Check if user has permission to see a navigation item
+  const hasAccessToItem = (item) => {
+    switch(item.href) {
+      case "/reports":
+        // Check for Audited Financial permission ONLY (viewer or editor)
+        // Explicitly prevent admin bypass for Financial Reports to enforce strict access control
+        const { user } = useAuth();
+        return user && user.role && user.role.permissions && (
+          user.role.permissions.clientManagement?.auditedFinancial?.viewer === true ||
+          user.role.permissions.clientManagement?.auditedFinancial?.editor === true
+        );
+      default:
+        return true; // For now, show all other items
+    }
   };
 
   return (
@@ -171,7 +196,7 @@ function Sidebar() {
                 </button>
                 {expandedSections.includes(section.name) && (
                   <div className="mt-2 space-y-1">
-                    {section.items.map((item) => (
+                    {section.items.filter(hasAccessToItem).map((item) => (
                       <NavLink
                         key={item.name}
                         to={item.href}

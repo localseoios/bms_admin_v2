@@ -42,18 +42,21 @@ const PaymentManagementTab = ({ client, jobId, jobType }) => {
         const history = await accountService.getPaymentHistory(jobId);
         setPaymentHistory(history || []);
 
-        // Calculate statistics
+        // Calculate statistics by currency
         if (history && history.length > 0) {
-          const totalAmount = history.reduce(
-            (sum, payment) => sum + payment.totalAmount,
-            0
-          );
-          const paidAmount = history.reduce(
-            (sum, payment) =>
-              payment.status === "Paid" ? sum + payment.totalAmount : sum,
-            0
-          );
-          const pendingAmount = totalAmount - paidAmount;
+          const totalsByCurrency = calculateTotalsByCurrency(history);
+          const paidTotalsByCurrency = calculateTotalsByCurrency(history, "Paid");
+          
+          // Calculate pending amounts by currency
+          const pendingTotalsByCurrency = {};
+          Object.keys(totalsByCurrency).forEach(currency => {
+            const total = totalsByCurrency[currency] || 0;
+            const paid = paidTotalsByCurrency[currency] || 0;
+            const pending = total - paid;
+            if (pending > 0) {
+              pendingTotalsByCurrency[currency] = pending;
+            }
+          });
 
           // Get the most recent payment date
           const dates = history.map((payment) => new Date(payment.createdAt));
@@ -61,9 +64,9 @@ const PaymentManagementTab = ({ client, jobId, jobType }) => {
             dates.length > 0 ? new Date(Math.max(...dates)) : null;
 
           setPaymentStats({
-            totalAmount,
-            paidAmount,
-            pendingAmount,
+            totalAmount: formatTotalsByCurrency(totalsByCurrency),
+            paidAmount: formatTotalsByCurrency(paidTotalsByCurrency),
+            pendingAmount: formatTotalsByCurrency(pendingTotalsByCurrency),
             lastPaymentDate,
           });
         }
@@ -81,13 +84,41 @@ const PaymentManagementTab = ({ client, jobId, jobType }) => {
   }, [jobId]);
 
   // Format currency
-const formatCurrency = (amount) => {
-  // ‘en-QA’ (or just ‘en’) + currency:'QAR' ➜ “QAR 6,076.25”
-  return new Intl.NumberFormat('en-QA', {
+const formatCurrency = (amount, currency = 'QAR') => {
+  // Format based on currency type
+  const locale = currency === 'USD' ? 'en-US' : 'en-QA';
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'QAR',
+    currency: currency,
     minimumFractionDigits: 2,
   }).format(amount ?? 0);
+};
+
+// Helper function to calculate and format total by currencies from all payments
+const calculateTotalsByCurrency = (payments, statusFilter = null) => {
+  if (!payments || payments.length === 0) return {};
+  
+  const totals = {};
+  
+  payments.forEach(payment => {
+    if (statusFilter && payment.status !== statusFilter) return;
+    
+    if (payment.invoices && payment.invoices.length > 0) {
+      payment.invoices.forEach(invoice => {
+        const currency = invoice.currency || 'QAR';
+        totals[currency] = (totals[currency] || 0) + (invoice.amount || 0);
+      });
+    }
+  });
+  
+  return totals;
+};
+
+const formatTotalsByCurrency = (totals) => {
+  const formatted = Object.entries(totals).map(([currency, amount]) => 
+    formatCurrency(amount, currency)
+  );
+  return formatted.length > 0 ? formatted.join(' + ') : formatCurrency(0);
 };
 
   // Handle payment success
@@ -213,7 +244,7 @@ const formatCurrency = (amount) => {
               TOTAL BILLED
             </p>
             <p className="text-xl font-bold text-blue-700">
-              {formatCurrency(paymentStats.totalAmount)}
+              {paymentStats.totalAmount}
             </p>
           </div>
 
@@ -222,7 +253,7 @@ const formatCurrency = (amount) => {
               PAID AMOUNT
             </p>
             <p className="text-xl font-bold text-green-700">
-              {formatCurrency(paymentStats.paidAmount)}
+              {paymentStats.paidAmount}
             </p>
           </div>
 
@@ -231,7 +262,7 @@ const formatCurrency = (amount) => {
               PENDING
             </p>
             <p className="text-xl font-bold text-yellow-700">
-              {formatCurrency(paymentStats.pendingAmount)}
+              {paymentStats.pendingAmount}
             </p>
           </div>
 

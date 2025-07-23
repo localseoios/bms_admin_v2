@@ -2,6 +2,7 @@
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
+const asyncHandler = require("express-async-handler");
 const router = express.Router();
 
 const {
@@ -60,13 +61,29 @@ const upload = multer({
   }
 });
 
-// Middleware to check if user has permission to manage financial documents
-const checkFinancialDocumentPermission = checkPermission([
-  "operationManagement",
-  "complianceManagement", 
-  "kycManagement.lmro",
-  "braManagement.lmro"
-]);
+// Special middleware to check ONLY Audited Financial permissions - no admin bypass
+const checkFinancialDocumentPermission = asyncHandler(async (req, res, next) => {
+  const user = req.user;
+
+  if (!user || !user.role) {
+    console.error("No user or role found in request");
+    res.status(401);
+    throw new Error("Not authorized");
+  }
+
+  // Check ONLY for Audited Financial permissions - NO admin bypass for financial documents
+  const hasViewerPermission = user.role.permissions?.clientManagement?.auditedFinancial?.viewer === true;
+  const hasEditorPermission = user.role.permissions?.clientManagement?.auditedFinancial?.editor === true;
+  
+  if (hasViewerPermission || hasEditorPermission) {
+    console.log(`User ${user.email} has Audited Financial access`);
+    return next();
+  }
+
+  console.error(`User ${user.email} lacks Audited Financial permission for financial documents`);
+  res.status(403);
+  throw new Error("Forbidden: Only users with Audited Financial permissions can access financial documents");
+});
 
 // Routes
 

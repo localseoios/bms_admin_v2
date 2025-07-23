@@ -723,10 +723,16 @@ const uploadInvoiceDocument = asyncHandler(async (req, res) => {
  */
 const updatePaymentInvoice = asyncHandler(async (req, res) => {
   const { paymentId, invoiceId } = req.params;
-  const { invoiceDate, description, amount, option, paymentMethod, notes } = req.body;
+  const { invoiceDate, description, amount, currency, option, paymentMethod, notes } = req.body;
 
   try {
-    console.log(`Updating invoice ${invoiceId} in payment ${paymentId}`);
+    console.log(`Updating invoice ${invoiceId} in payment ${paymentId}`, {
+      invoiceDate, description, amount, currency, option, paymentMethod, notes
+    });
+    console.log('Raw req.body:', req.body);
+    console.log('Currency debugging - type:', typeof currency, 'value:', JSON.stringify(currency));
+    console.log('Currency is undefined?', currency === undefined);
+    console.log('Currency is empty string?', currency === "");
 
     // Find the payment record
     const payment = await MonthlyPayment.findById(paymentId);
@@ -773,21 +779,32 @@ const updatePaymentInvoice = asyncHandler(async (req, res) => {
     }
 
     // Update the invoice
-    payment.invoices[invoiceIndex] = {
+    const currencyToUse = currency !== undefined ? currency : (invoice.currency || "QAR");
+    console.log('CURRENCY UPDATE DEBUG:');
+    console.log('- Received currency:', JSON.stringify(currency));
+    console.log('- Existing invoice currency:', JSON.stringify(invoice.currency));
+    console.log('- Currency to use:', JSON.stringify(currencyToUse));
+    
+    const updatedInvoice = {
       ...invoice.toObject(),
       invoiceDate: invoiceDate || invoice.invoiceDate,
       description: description || invoice.description,
       amount: amount ? parseFloat(amount) : invoice.amount,
+      currency: currencyToUse,
       option: option !== undefined ? option : invoice.option,
       paymentMethod: paymentMethod || invoice.paymentMethod,
       fileUrl,
       fileName,
     };
+    
+    console.log('Updated invoice object BEFORE save:', updatedInvoice);
+    payment.invoices[invoiceIndex] = updatedInvoice;
 
     // Update the payment record's updatedBy field
     payment.updatedBy = req.user._id;
 
     const updatedPayment = await payment.save();
+    console.log('AFTER SAVE - Updated invoice from DB:', updatedPayment.invoices[invoiceIndex]);
 
     // Create notification for invoice update
     await notificationService.createNotification(
@@ -820,10 +837,14 @@ const updatePaymentInvoice = asyncHandler(async (req, res) => {
  */
 const addPaymentInvoice = asyncHandler(async (req, res) => {
   const { paymentId } = req.params;
-  const { invoiceDate, description, amount, option, paymentMethod } = req.body;
+  const { invoiceDate, description, amount, currency, option, paymentMethod } = req.body;
 
   try {
-    console.log(`Adding new invoice to payment ${paymentId}`);
+    console.log(`Adding new invoice to payment ${paymentId}`, {
+      invoiceDate, description, amount, currency, option, paymentMethod
+    });
+    console.log('Raw req.body:', req.body);
+    console.log('Currency type:', typeof currency, 'Currency value:', currency);
 
     // Find the payment record
     const payment = await MonthlyPayment.findById(paymentId);
@@ -861,15 +882,21 @@ const addPaymentInvoice = asyncHandler(async (req, res) => {
     }
 
     // Create new invoice object
+    const currencyToUse = currency || "QAR";
+    console.log('Currency value before save:', currency, '-> Using:', currencyToUse);
+    
     const newInvoice = {
       invoiceDate: invoiceDate || new Date(),
       description: description || "New Invoice",
       amount: amount ? parseFloat(amount) : 0,
+      currency: currencyToUse,
       option: option || "",
       paymentMethod: paymentMethod || "Bank Transfer",
       fileUrl,
       fileName,
     };
+    
+    console.log('New invoice object:', newInvoice);
 
     // Add the new invoice
     payment.invoices.push(newInvoice);

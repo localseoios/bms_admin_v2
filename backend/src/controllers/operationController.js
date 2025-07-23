@@ -1813,11 +1813,11 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         console.log("ℹ️ Using existing client:", client._id);
       }
 
-      // 2. Upload job documents (now optional)
+      // 2. Upload job documents (now optional) OR use existing document URLs
       let documentPassportUrl = { url: null };
       let documentIDUrl = { url: null };
 
-      // Only upload passport document if provided
+      // Handle passport document - new file OR existing URL
       if (req.files["documentPassport"] && req.files["documentPassport"][0]) {
         documentPassportUrl = await safeCloudinaryUpload(
           req.files["documentPassport"][0].path,
@@ -1826,9 +1826,13 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         fs.unlink(req.files["documentPassport"][0].path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
+        console.log("📄 Uploaded new passport document:", documentPassportUrl.url);
+      } else if (req.body.documentPassportUrl) {
+        documentPassportUrl = { url: req.body.documentPassportUrl };
+        console.log("📄 Using existing passport document URL:", documentPassportUrl.url);
       }
 
-      // Only upload ID document if provided
+      // Handle ID document - new file OR existing URL
       if (req.files["documentID"] && req.files["documentID"][0]) {
         documentIDUrl = await safeCloudinaryUpload(
           req.files["documentID"][0].path,
@@ -1837,25 +1841,40 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
         fs.unlink(req.files["documentID"][0].path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
+        console.log("📄 Uploaded new ID document:", documentIDUrl.url);
+      } else if (req.body.documentIDUrl) {
+        documentIDUrl = { url: req.body.documentIDUrl };
+        console.log("📄 Using existing ID document URL:", documentIDUrl.url);
       }
 
-      const otherDocumentsUrls = req.files["otherDocuments"]
-        ? await Promise.all(
-            req.files["otherDocuments"].map((file) =>
-              safeCloudinaryUpload(file.path, {
-                folder: `clients/${gmail}/other_documents`,
-              })
-            )
+      // Handle other documents - new files OR existing URLs
+      let otherDocumentsUrls = [];
+      
+      if (req.files["otherDocuments"] && req.files["otherDocuments"].length > 0) {
+        otherDocumentsUrls = await Promise.all(
+          req.files["otherDocuments"].map((file) =>
+            safeCloudinaryUpload(file.path, {
+              folder: `clients/${gmail}/other_documents`,
+            })
           )
-        : [];
-
-      // Clean up temporary files for other documents
-      if (req.files["otherDocuments"]) {
+        );
+        console.log("📄 Uploaded new other documents:", otherDocumentsUrls.length);
+        
+        // Clean up temporary files for other documents
         req.files["otherDocuments"].forEach((file) => {
           fs.unlink(file.path, (err) => {
             if (err) console.error("Error deleting temp file:", err);
           });
         });
+      } else if (req.body.otherDocumentsUrls) {
+        try {
+          const existingUrls = JSON.parse(req.body.otherDocumentsUrls);
+          otherDocumentsUrls = existingUrls.map(url => ({ url }));
+          console.log("📄 Using existing other document URLs:", existingUrls.length);
+        } catch (e) {
+          console.error("Error parsing otherDocumentsUrls:", e);
+          otherDocumentsUrls = [];
+        }
       }
 
       // 3. Create job with fully completed status (including job number)
@@ -1974,132 +1993,199 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
           updatedBy: req.user._id,
         });
 
-        // Handle company document uploads
-        if (req.files) {
-          // Engagement Letters
-          if (req.files["engagementLetters"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["engagementLetters"][0].path,
-              { folder: `clients/${gmail}/company/engagement_letters` }
-            );
-            
-            newCompanyDetails.engagementLetters = [{
+        // Handle company document uploads OR existing URLs
+        
+        // Engagement Letters - new file OR existing URLs
+        if (req.files && req.files["engagementLetters"]) {
+          const uploadResult = await safeCloudinaryUpload(
+            req.files["engagementLetters"][0].path,
+            { folder: `clients/${gmail}/company/engagement_letters` }
+          );
+          
+          newCompanyDetails.engagementLetters = [{
+            fileUrl: uploadResult.url,
+            fileName: req.files["engagementLetters"][0].originalname || 'Engagement Letter',
+            uploadedAt: new Date(),
+            uploadedBy: req.user._id,
+            description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`
+          }];
+          
+          fs.unlink(req.files["engagementLetters"][0].path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+          console.log("📄 Uploaded new engagement letters:", newCompanyDetails.engagementLetters.length);
+        } else if (req.body.engagementLettersUrls) {
+          try {
+            const existingLetters = JSON.parse(req.body.engagementLettersUrls);
+            // Transform URL format from {url: "..."} to {fileUrl: "..."}
+            newCompanyDetails.engagementLetters = existingLetters.map(letter => ({
+              fileUrl: letter.url || letter.fileUrl,
+              fileName: letter.fileName || 'engagement_letter.pdf',
+              uploadedAt: letter.uploadedAt || new Date(),
+              description: letter.description || 'Engagement letter'
+            }));
+            console.log("📄 Using existing engagement letters URLs:", existingLetters.length);
+          } catch (e) {
+            console.error("Error parsing engagementLettersUrls:", e);
+            newCompanyDetails.engagementLetters = [];
+          }
+        }
+
+        // Company Computer Card - new file OR existing URL
+        if (req.files && req.files["companyComputerCard"]) {
+          const uploadResult = await safeCloudinaryUpload(
+            req.files["companyComputerCard"][0].path,
+            { folder: `clients/${gmail}/company/computer_card` }
+          );
+          newCompanyDetails.companyComputerCard = uploadResult.url;
+          fs.unlink(req.files["companyComputerCard"][0].path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+          console.log("📄 Uploaded new company computer card:", newCompanyDetails.companyComputerCard);
+        } else if (req.body.companyComputerCardUrl) {
+          newCompanyDetails.companyComputerCard = req.body.companyComputerCardUrl;
+          console.log("📄 Using existing company computer card URL:", newCompanyDetails.companyComputerCard);
+        }
+
+        // Tax Card - new file OR existing URL
+        if (req.files && req.files["taxCard"]) {
+          const uploadResult = await safeCloudinaryUpload(
+            req.files["taxCard"][0].path,
+            { folder: `clients/${gmail}/company/tax_card` }
+          );
+          newCompanyDetails.taxCard = uploadResult.url;
+          fs.unlink(req.files["taxCard"][0].path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+          console.log("📄 Uploaded new tax card:", newCompanyDetails.taxCard);
+        } else if (req.body.taxCardUrl) {
+          newCompanyDetails.taxCard = req.body.taxCardUrl;
+          console.log("📄 Using existing tax card URL:", newCompanyDetails.taxCard);
+        }
+
+        // CR Extract - new files OR existing URLs
+        if (req.files && req.files["crExtract"]) {
+          newCompanyDetails.crExtract = [];
+
+          for (const file of req.files["crExtract"]) {
+            const uploadResult = await safeCloudinaryUpload(file.path, {
+              folder: `clients/${gmail}/company/cr_extract`,
+            });
+
+            newCompanyDetails.crExtract.push({
               fileUrl: uploadResult.url,
-              fileName: req.files["engagementLetters"][0].originalname || 'Engagement Letter',
+              fileName: file.originalname || "CR Extract Document",
               uploadedAt: new Date(),
               uploadedBy: req.user._id,
-              description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`
-            }];
-            
-            fs.unlink(req.files["engagementLetters"][0].path, (err) => {
+              description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
+            });
+
+            fs.unlink(file.path, (err) => {
               if (err) console.error("Error deleting temp file:", err);
             });
           }
-
-          // Company Computer Card
-          if (req.files["companyComputerCard"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["companyComputerCard"][0].path,
-              { folder: `clients/${gmail}/company/computer_card` }
-            );
-            newCompanyDetails.companyComputerCard = uploadResult.url;
-            fs.unlink(req.files["companyComputerCard"][0].path, (err) => {
-              if (err) console.error("Error deleting temp file:", err);
-            });
-          }
-
-          // Tax Card
-          if (req.files["taxCard"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["taxCard"][0].path,
-              { folder: `clients/${gmail}/company/tax_card` }
-            );
-            newCompanyDetails.taxCard = uploadResult.url;
-            fs.unlink(req.files["taxCard"][0].path, (err) => {
-              if (err) console.error("Error deleting temp file:", err);
-            });
-          }
-
-          // CR Extract
-          if (req.files["crExtract"]) {
+          console.log("📄 Uploaded new CR Extract files:", newCompanyDetails.crExtract.length);
+        } else if (req.body.crExtractUrls) {
+          try {
+            const existingCrExtract = JSON.parse(req.body.crExtractUrls);
+            // Transform URL format from {url: "..."} to {fileUrl: "..."}
+            newCompanyDetails.crExtract = existingCrExtract.map(extract => ({
+              fileUrl: extract.url || extract.fileUrl,
+              fileName: extract.fileName || 'cr_extract.pdf',
+              uploadedAt: extract.uploadedAt || new Date(),
+              description: extract.description || 'CR Extract document'
+            }));
+            console.log("📄 Using existing CR Extract URLs:", existingCrExtract.length);
+          } catch (e) {
+            console.error("Error parsing crExtractUrls:", e);
             newCompanyDetails.crExtract = [];
-
-            for (const file of req.files["crExtract"]) {
-              const uploadResult = await safeCloudinaryUpload(file.path, {
-                folder: `clients/${gmail}/company/cr_extract`,
-              });
-
-              newCompanyDetails.crExtract.push({
-                fileUrl: uploadResult.url,
-                fileName: file.originalname || "CR Extract Document",
-                uploadedAt: new Date(),
-                uploadedBy: req.user._id,
-                description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
-              });
-
-              fs.unlink(file.path, (err) => {
-                if (err) console.error("Error deleting temp file:", err);
-              });
-            }
           }
+        }
 
-          // Scope of License
-          if (req.files["scopeOfLicense"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["scopeOfLicense"][0].path,
-              { folder: `clients/${gmail}/company/scope_of_license` }
-            );
-            newCompanyDetails.scopeOfLicense = uploadResult.url;
-            fs.unlink(req.files["scopeOfLicense"][0].path, (err) => {
+        // Scope of License - new file OR existing URL
+        if (req.files && req.files["scopeOfLicense"]) {
+          const uploadResult = await safeCloudinaryUpload(
+            req.files["scopeOfLicense"][0].path,
+            { folder: `clients/${gmail}/company/scope_of_license` }
+          );
+          newCompanyDetails.scopeOfLicense = uploadResult.url;
+          fs.unlink(req.files["scopeOfLicense"][0].path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+          console.log("📄 Uploaded new scope of license:", newCompanyDetails.scopeOfLicense);
+        } else if (req.body.scopeOfLicenseUrl) {
+          newCompanyDetails.scopeOfLicense = req.body.scopeOfLicenseUrl;
+          console.log("📄 Using existing scope of license URL:", newCompanyDetails.scopeOfLicense);
+        }
+
+        // Article of Associate - new file OR existing URL
+        if (req.files && req.files["articleOfAssociate"]) {
+          const uploadResult = await safeCloudinaryUpload(
+            req.files["articleOfAssociate"][0].path,
+            { folder: `clients/${gmail}/company/article_of_associate` }
+          );
+          newCompanyDetails.articleOfAssociate = uploadResult.url;
+          fs.unlink(req.files["articleOfAssociate"][0].path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+          console.log("📄 Uploaded new article of associate:", newCompanyDetails.articleOfAssociate);
+        } else if (req.body.articleOfAssociateUrl) {
+          newCompanyDetails.articleOfAssociate = req.body.articleOfAssociateUrl;
+          console.log("📄 Using existing article of associate URL:", newCompanyDetails.articleOfAssociate);
+        }
+
+        // Certificate of Incorporate - new file OR existing URL
+        if (req.files && req.files["certificateOfIncorporate"]) {
+          const uploadResult = await safeCloudinaryUpload(
+            req.files["certificateOfIncorporate"][0].path,
+            { folder: `clients/${gmail}/company/certificate_of_incorporate` }
+          );
+          newCompanyDetails.certificateOfIncorporate = uploadResult.url;
+          fs.unlink(req.files["certificateOfIncorporate"][0].path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+          console.log("📄 Uploaded new certificate of incorporate:", newCompanyDetails.certificateOfIncorporate);
+        } else if (req.body.certificateOfIncorporateUrl) {
+          newCompanyDetails.certificateOfIncorporate = req.body.certificateOfIncorporateUrl;
+          console.log("📄 Using existing certificate of incorporate URL:", newCompanyDetails.certificateOfIncorporate);
+        }
+
+        // Company Memo - new files OR existing URLs
+        if (req.files && req.files["companyMemo"]) {
+          newCompanyDetails.companyMemo = [];
+
+          for (const file of req.files["companyMemo"]) {
+            const uploadResult = await safeCloudinaryUpload(file.path, {
+              folder: `clients/${gmail}/company/company_memo`,
+            });
+
+            newCompanyDetails.companyMemo.push({
+              fileUrl: uploadResult.url,
+              fileName: file.originalname || "Company Memo Document",
+              uploadedAt: new Date(),
+              uploadedBy: req.user._id,
+              description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
+            });
+
+            fs.unlink(file.path, (err) => {
               if (err) console.error("Error deleting temp file:", err);
             });
           }
-
-          // Article of Associate
-          if (req.files["articleOfAssociate"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["articleOfAssociate"][0].path,
-              { folder: `clients/${gmail}/company/article_of_associate` }
-            );
-            newCompanyDetails.articleOfAssociate = uploadResult.url;
-            fs.unlink(req.files["articleOfAssociate"][0].path, (err) => {
-              if (err) console.error("Error deleting temp file:", err);
-            });
-          }
-
-          // Certificate of Incorporate
-          if (req.files["certificateOfIncorporate"]) {
-            const uploadResult = await safeCloudinaryUpload(
-              req.files["certificateOfIncorporate"][0].path,
-              { folder: `clients/${gmail}/company/certificate_of_incorporate` }
-            );
-            newCompanyDetails.certificateOfIncorporate = uploadResult.url;
-            fs.unlink(req.files["certificateOfIncorporate"][0].path, (err) => {
-              if (err) console.error("Error deleting temp file:", err);
-            });
-          }
-
-          // Company Memo
-          if (req.files["companyMemo"]) {
+          console.log("📄 Uploaded new company memo files:", newCompanyDetails.companyMemo.length);
+        } else if (req.body.companyMemoUrls) {
+          try {
+            const existingMemos = JSON.parse(req.body.companyMemoUrls);
+            // Transform URL format from {url: "..."} to {fileUrl: "..."}
+            newCompanyDetails.companyMemo = existingMemos.map(memo => ({
+              fileUrl: memo.url || memo.fileUrl,
+              fileName: memo.fileName || 'company_memo.pdf',
+              uploadedAt: memo.uploadedAt || new Date(),
+              description: memo.description || 'Company memo document'
+            }));
+            console.log("📄 Using existing company memo URLs:", existingMemos.length);
+          } catch (e) {
+            console.error("Error parsing companyMemoUrls:", e);
             newCompanyDetails.companyMemo = [];
-
-            for (const file of req.files["companyMemo"]) {
-              const uploadResult = await safeCloudinaryUpload(file.path, {
-                folder: `clients/${gmail}/company/company_memo`,
-              });
-
-              newCompanyDetails.companyMemo.push({
-                fileUrl: uploadResult.url,
-                fileName: file.originalname || "Company Memo Document",
-                uploadedAt: new Date(),
-                uploadedBy: req.user._id,
-                description: `Uploaded during job creation on ${new Date().toLocaleDateString()}`,
-              });
-
-              fs.unlink(file.path, (err) => {
-                if (err) console.error("Error deleting temp file:", err);
-              });
-            }
           }
         }
 
@@ -2176,7 +2262,8 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
                   req.files,
                   gmail,
                   session,
-                  index
+                  index,
+                  req
                 );
                 
                 if (createdDirector) {
@@ -2242,7 +2329,8 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
                   req.files,
                   gmail,
                   session,
-                  index
+                  index,
+                  req
                 );
                 
                 if (createdShareholder) {
@@ -2297,7 +2385,8 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
                   req.files,
                   gmail,
                   session,
-                  index
+                  index,
+                  req
                 );
                 
                 if (createdSecretary) {
@@ -2350,7 +2439,8 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
                   req.files,
                   gmail,
                   session,
-                  index
+                  index,
+                  req
                 );
                 
                 if (createdSef) {
@@ -2626,8 +2716,8 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
   }
 });
 
-// ENHANCED: createPersonDetails helper function with better debugging
-const createPersonDetails = async (jobId, personType, personData, userId, files, gmail, session, personIndex = 0) => {
+// ENHANCED: createPersonDetails helper function with better debugging and URL handling
+const createPersonDetails = async (jobId, personType, personData, userId, files, gmail, session, personIndex = 0, req = null) => {
   console.log(`\n🔧 === CREATING ${personType.toUpperCase()} DETAILS ===`);
   console.log(`📋 Person Index: ${personIndex}`);
   console.log(`👤 Person Data:`, JSON.stringify(personData, null, 2));
@@ -2645,6 +2735,16 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
   }
 
   console.log(`✅ Creating ${personType} details for: ${personData.name} (index: ${personIndex})`);
+  
+  // DEBUG: Log person data to see what documents are being passed
+  console.log(`🔍 Person data received:`, {
+    name: personData.name,
+    visaCopy: personData.visaCopy,
+    qidDoc: personData.qidDoc,
+    nationalAddressDoc: personData.nationalAddressDoc,
+    passportDoc: personData.passportDoc,
+    cv: personData.cv
+  });
 
   const newPerson = new PersonDetails({
     jobId,
@@ -2671,137 +2771,207 @@ const createPersonDetails = async (jobId, personType, personData, userId, files,
   });
 
   // Process document uploads for person with proper indexing
-  if (files) {
-    const fieldPrefix = personType.toLowerCase();
-    
-    console.log(`📁 Processing documents for ${personType} ${personIndex}`);
-    console.log(`🔍 Available file fields:`, Object.keys(files));
+  const fieldPrefix = personType.toLowerCase();
+  
+  console.log(`📁 Processing documents for ${personType} ${personIndex}`);
+  if (files) console.log(`🔍 Available file fields:`, Object.keys(files));
 
-    // Check for indexed documents first (new format)
-    const visaCopyField = `${fieldPrefix}VisaCopy_${personIndex}`;
-    const qidDocField = `${fieldPrefix}QidDoc_${personIndex}`;
-    const nationalAddressDocField = `${fieldPrefix}NationalAddressDoc_${personIndex}`;
-    const passportDocField = `${fieldPrefix}PassportDoc_${personIndex}`;
-    const cvField = `${fieldPrefix}Cv_${personIndex}`;
+  // Check for indexed documents first (new format)
+  const visaCopyField = `${fieldPrefix}VisaCopy_${personIndex}`;
+  const qidDocField = `${fieldPrefix}QidDoc_${personIndex}`;
+  const nationalAddressDocField = `${fieldPrefix}NationalAddressDoc_${personIndex}`;
+  const passportDocField = `${fieldPrefix}PassportDoc_${personIndex}`;
+  const cvField = `${fieldPrefix}Cv_${personIndex}`;
 
-    console.log(`🔍 Looking for files with patterns:`, {
-      visaCopy: visaCopyField,
-      qidDoc: qidDocField,
-      nationalAddress: nationalAddressDocField,
-      passport: passportDocField,
-      cv: cvField
-    });
+  // URL field names for existing documents
+  const visaCopyUrlField = `${fieldPrefix}VisaCopyUrl_${personIndex}`;
+  const qidDocUrlField = `${fieldPrefix}QidDocUrl_${personIndex}`;
+  const nationalAddressDocUrlField = `${fieldPrefix}NationalAddressDocUrl_${personIndex}`;
+  const passportDocUrlField = `${fieldPrefix}PassportDocUrl_${personIndex}`;
+  const cvUrlField = `${fieldPrefix}CvUrl_${personIndex}`;
 
-    let documentsProcessed = 0;
+  console.log(`🔍 Looking for files with patterns:`, {
+    visaCopy: visaCopyField,
+    qidDoc: qidDocField,
+    nationalAddress: nationalAddressDocField,
+    passport: passportDocField,
+    cv: cvField
+  });
 
-    // Visa Copy
-    if (files[visaCopyField] && files[visaCopyField].length > 0) {
-      console.log(`📄 Found visa copy: ${visaCopyField}`);
-      try {
-        const uploadResult = await safeCloudinaryUpload(
-          files[visaCopyField][0].path,
-          { folder: `clients/${gmail}/people/${personType}/visa` }
-        );
-        newPerson.visaCopy = uploadResult.url;
-        documentsProcessed++;
-        console.log(`✅ Uploaded visa copy: ${uploadResult.url}`);
-        
-        fs.unlink(files[visaCopyField][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
-      } catch (uploadError) {
-        console.error(`❌ Error uploading visa copy:`, uploadError);
-      }
+  console.log(`🔗 Looking for URL fields:`, {
+    visaCopyUrl: visaCopyUrlField,
+    qidDocUrl: qidDocUrlField,
+    nationalAddressUrl: nationalAddressDocUrlField,
+    passportUrl: passportDocUrlField,
+    cvUrl: cvUrlField
+  });
+
+  console.log(`🔍 req.body contents for URL fields:`, {
+    visaCopyUrl: req.body[visaCopyUrlField],
+    qidDocUrl: req.body[qidDocUrlField],
+    nationalAddressUrl: req.body[nationalAddressDocUrlField],
+    passportUrl: req.body[passportDocUrlField],
+    cvUrl: req.body[cvUrlField]
+  });
+
+  let documentsProcessed = 0;
+
+  // Visa Copy - new file OR existing URL
+  if (files && files[visaCopyField] && files[visaCopyField].length > 0) {
+    console.log(`📄 Found visa copy file: ${visaCopyField}`);
+    try {
+      const uploadResult = await safeCloudinaryUpload(
+        files[visaCopyField][0].path,
+        { folder: `clients/${gmail}/people/${personType}/visa` }
+      );
+      newPerson.visaCopy = uploadResult.url;
+      documentsProcessed++;
+      console.log(`✅ Uploaded visa copy: ${uploadResult.url}`);
+      
+      fs.unlink(files[visaCopyField][0].path, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+    } catch (uploadError) {
+      console.error(`❌ Error uploading visa copy:`, uploadError);
     }
-
-    // QID Document
-    if (files[qidDocField] && files[qidDocField].length > 0) {
-      console.log(`📄 Found QID doc: ${qidDocField}`);
-      try {
-        const uploadResult = await safeCloudinaryUpload(
-          files[qidDocField][0].path,
-          { folder: `clients/${gmail}/people/${personType}/qid` }
-        );
-        newPerson.qidDoc = uploadResult.url;
-        documentsProcessed++;
-        console.log(`✅ Uploaded QID doc: ${uploadResult.url}`);
-        
-        fs.unlink(files[qidDocField][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
-      } catch (uploadError) {
-        console.error(`❌ Error uploading QID doc:`, uploadError);
-      }
-    }
-
-    // National Address Document
-    if (files[nationalAddressDocField] && files[nationalAddressDocField].length > 0) {
-      console.log(`📄 Found national address doc: ${nationalAddressDocField}`);
-      try {
-        const uploadResult = await safeCloudinaryUpload(
-          files[nationalAddressDocField][0].path,
-          { folder: `clients/${gmail}/people/${personType}/national_address` }
-        );
-        newPerson.nationalAddressDoc = uploadResult.url;
-        documentsProcessed++;
-        console.log(`✅ Uploaded national address doc: ${uploadResult.url}`);
-        
-        fs.unlink(files[nationalAddressDocField][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
-      } catch (uploadError) {
-        console.error(`❌ Error uploading national address doc:`, uploadError);
-      }
-    }
-
-    // Passport Document
-    if (files[passportDocField] && files[passportDocField].length > 0) {
-      console.log(`📄 Found passport doc: ${passportDocField}`);
-      try {
-        const uploadResult = await safeCloudinaryUpload(
-          files[passportDocField][0].path,
-          { folder: `clients/${gmail}/people/${personType}/passport` }
-        );
-        newPerson.passportDoc = uploadResult.url;
-        documentsProcessed++;
-        console.log(`✅ Uploaded passport doc: ${uploadResult.url}`);
-        
-        fs.unlink(files[passportDocField][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
-      } catch (uploadError) {
-        console.error(`❌ Error uploading passport doc:`, uploadError);
-      }
-    }
-
-    // CV
-    if (files[cvField] && files[cvField].length > 0) {
-      console.log(`📄 Found CV: ${cvField}`);
-      try {
-        const uploadResult = await safeCloudinaryUpload(
-          files[cvField][0].path,
-          { folder: `clients/${gmail}/people/${personType}/cv` }
-        );
-        newPerson.cv = uploadResult.url;
-        documentsProcessed++;
-        console.log(`✅ Uploaded CV: ${uploadResult.url}`);
-        
-        fs.unlink(files[cvField][0].path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
-      } catch (uploadError) {
-        console.error(`❌ Error uploading CV:`, uploadError);
-      }
-    }
-
-    console.log(`📊 Documents processed for ${personType} ${personIndex}: ${documentsProcessed}`);
-  } else {
-    console.log(`📁 No files provided for ${personType} ${personIndex}`);
+  } else if (req && req.body && req.body[visaCopyUrlField]) {
+    newPerson.visaCopy = req.body[visaCopyUrlField];
+    documentsProcessed++;
+    console.log(`📄 Using existing visa copy URL: ${newPerson.visaCopy}`);
+  } else if (personData.visaCopy) {
+    newPerson.visaCopy = personData.visaCopy;
+    documentsProcessed++;
+    console.log(`📄 Using visa copy from person data: ${newPerson.visaCopy}`);
   }
+
+  // QID Document - new file OR existing URL
+  if (files && files[qidDocField] && files[qidDocField].length > 0) {
+    console.log(`📄 Found QID doc file: ${qidDocField}`);
+    try {
+      const uploadResult = await safeCloudinaryUpload(
+        files[qidDocField][0].path,
+        { folder: `clients/${gmail}/people/${personType}/qid` }
+      );
+      newPerson.qidDoc = uploadResult.url;
+      documentsProcessed++;
+      console.log(`✅ Uploaded QID doc: ${uploadResult.url}`);
+      
+      fs.unlink(files[qidDocField][0].path, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+    } catch (uploadError) {
+      console.error(`❌ Error uploading QID doc:`, uploadError);
+    }
+  } else if (req && req.body && req.body[qidDocUrlField]) {
+    newPerson.qidDoc = req.body[qidDocUrlField];
+    documentsProcessed++;
+    console.log(`📄 Using existing QID doc URL: ${newPerson.qidDoc}`);
+  } else if (personData.qidDoc) {
+    newPerson.qidDoc = personData.qidDoc;
+    documentsProcessed++;
+    console.log(`📄 Using QID doc from person data: ${newPerson.qidDoc}`);
+  }
+
+  // National Address Document - new file OR existing URL
+  if (files && files[nationalAddressDocField] && files[nationalAddressDocField].length > 0) {
+    console.log(`📄 Found national address doc file: ${nationalAddressDocField}`);
+    try {
+      const uploadResult = await safeCloudinaryUpload(
+        files[nationalAddressDocField][0].path,
+        { folder: `clients/${gmail}/people/${personType}/national_address` }
+      );
+      newPerson.nationalAddressDoc = uploadResult.url;
+      documentsProcessed++;
+      console.log(`✅ Uploaded national address doc: ${uploadResult.url}`);
+      
+      fs.unlink(files[nationalAddressDocField][0].path, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+    } catch (uploadError) {
+      console.error(`❌ Error uploading national address doc:`, uploadError);
+    }
+  } else if (req && req.body && req.body[nationalAddressDocUrlField]) {
+    newPerson.nationalAddressDoc = req.body[nationalAddressDocUrlField];
+    documentsProcessed++;
+    console.log(`📄 Using existing national address doc URL: ${newPerson.nationalAddressDoc}`);
+  } else if (personData.nationalAddressDoc) {
+    newPerson.nationalAddressDoc = personData.nationalAddressDoc;
+    documentsProcessed++;
+    console.log(`📄 Using national address doc from person data: ${newPerson.nationalAddressDoc}`);
+  }
+
+  // Passport Document - new file OR existing URL
+  if (files && files[passportDocField] && files[passportDocField].length > 0) {
+    console.log(`📄 Found passport doc file: ${passportDocField}`);
+    try {
+      const uploadResult = await safeCloudinaryUpload(
+        files[passportDocField][0].path,
+        { folder: `clients/${gmail}/people/${personType}/passport` }
+      );
+      newPerson.passportDoc = uploadResult.url;
+      documentsProcessed++;
+      console.log(`✅ Uploaded passport doc: ${uploadResult.url}`);
+      
+      fs.unlink(files[passportDocField][0].path, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+    } catch (uploadError) {
+      console.error(`❌ Error uploading passport doc:`, uploadError);
+    }
+  } else if (req && req.body && req.body[passportDocUrlField]) {
+    newPerson.passportDoc = req.body[passportDocUrlField];
+    documentsProcessed++;
+    console.log(`📄 Using existing passport doc URL: ${newPerson.passportDoc}`);
+  } else if (personData.passportDoc) {
+    newPerson.passportDoc = personData.passportDoc;
+    documentsProcessed++;
+    console.log(`📄 Using passport doc from person data: ${newPerson.passportDoc}`);
+  }
+
+  // CV - new file OR existing URL
+  if (files && files[cvField] && files[cvField].length > 0) {
+    console.log(`📄 Found CV file: ${cvField}`);
+    try {
+      const uploadResult = await safeCloudinaryUpload(
+        files[cvField][0].path,
+        { folder: `clients/${gmail}/people/${personType}/cv` }
+      );
+      newPerson.cv = uploadResult.url;
+      documentsProcessed++;
+      console.log(`✅ Uploaded CV: ${uploadResult.url}`);
+      
+      fs.unlink(files[cvField][0].path, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+    } catch (uploadError) {
+      console.error(`❌ Error uploading CV:`, uploadError);
+    }
+  } else if (req && req.body && req.body[cvUrlField]) {
+    newPerson.cv = req.body[cvUrlField];
+    documentsProcessed++;
+    console.log(`📄 Using existing CV URL: ${newPerson.cv}`);
+  } else if (personData.cv) {
+    newPerson.cv = personData.cv;
+    documentsProcessed++;
+    console.log(`📄 Using CV from person data: ${newPerson.cv}`);
+  }
+
+  console.log(`📊 Documents processed for ${personType} ${personIndex}: ${documentsProcessed}`);
 
   try {
     const savedPerson = await newPerson.save({ session });
     console.log(`✅ Successfully saved ${personType}: ${personData.name} (DB ID: ${savedPerson._id})`);
+    
+    // DEBUG: Log final saved document URLs
+    console.log(`🔍 Final saved document URLs for ${personType}:`, {
+      name: savedPerson.name,
+      visaCopy: savedPerson.visaCopy,
+      qidDoc: savedPerson.qidDoc,
+      nationalAddressDoc: savedPerson.nationalAddressDoc,
+      passportDoc: savedPerson.passportDoc,
+      cv: savedPerson.cv
+    });
+    
     return savedPerson;
   } catch (saveError) {
     console.error(`❌ Error saving ${personType} to database:`, saveError);
@@ -4422,9 +4592,200 @@ const deleteEngagementLetter = asyncHandler(async (req, res) => {
   }
 });
 
+// Get job data by email for auto-fill functionality
+const getJobDataByEmail = asyncHandler(async (req, res) => {
+  const { email } = req.params;
+  
+  try {
+    console.log(`📧 Looking up jobs for email: ${email}`);
+    
+    // Find the most recent job for this email (any status except rejected/cancelled)
+    const latestJob = await Job.findOne({ 
+      gmail: email, 
+      status: { 
+        $nin: ['rejected', 'cancelled'] // Exclude only rejected and cancelled jobs
+      }
+    })
+    .populate('clientId')
+    .sort({ createdAt: -1 })
+    .lean();
 
+    if (!latestJob) {
+      return res.status(404).json({ 
+        message: 'No previous job found for this email',
+        found: false 
+      });
+    }
 
+    console.log(`✅ Found job: ${latestJob.jobNumber}`);
 
+    // Get company details for this job
+    const companyDetails = await CompanyDetails.findOne({ jobId: latestJob._id })
+      .lean();
+
+    // Get all person details for this job
+    const personDetails = await PersonDetails.find({ jobId: latestJob._id })
+      .lean();
+
+    // Get KYC documents for this job
+    const kycDocuments = await KycDocument.findOne({ jobId: latestJob._id })
+      .lean();
+
+    // Get BRA approval documents for this job
+    const braApproval = await BraApproval.findOne({ jobId: latestJob._id })
+      .lean();
+
+    // Separate person details by type
+    const directors = personDetails.filter(person => person.personType === 'director');
+    const shareholders = personDetails.filter(person => person.personType === 'shareholder');
+    const secretaries = personDetails.filter(person => person.personType === 'secretary');
+    const sefs = personDetails.filter(person => person.personType === 'sef');
+
+    // Structure the response data for auto-fill
+    const autoFillData = {
+      found: true,
+      jobNumber: latestJob.jobNumber,
+      basicInfo: {
+        clientName: latestJob.clientName,
+        gmail: latestJob.gmail,
+        startingPoint: latestJob.startingPoint,
+        jobDetails: latestJob.jobDetails,
+        specialDescription: latestJob.specialDescription || ''
+      },
+      companyDetails: companyDetails ? {
+        companyName: companyDetails.companyName,
+        qfcNo: companyDetails.qfcNo,
+        registeredAddress: companyDetails.registeredAddress,
+        incorporationDate: companyDetails.incorporationDate,
+        serviceType: companyDetails.serviceType,
+        mainPurpose: companyDetails.mainPurpose,
+        expiryDate: companyDetails.expiryDate,
+        companyComputerCardExpiry: companyDetails.companyComputerCardExpiry,
+        taxCardExpiry: companyDetails.taxCardExpiry,
+        crExtractExpiry: companyDetails.crExtractExpiry,
+        scopeOfLicenseExpiry: companyDetails.scopeOfLicenseExpiry,
+        kycActiveStatus: companyDetails.kycActiveStatus
+      } : {},
+      directors: directors.map(director => ({
+        name: director.name,
+        nationality: director.nationality,
+        qidNo: director.qidNo,
+        qidExpiry: director.qidExpiry,
+        nationalAddress: director.nationalAddress,
+        nationalAddressExpiry: director.nationalAddressExpiry,
+        passportNo: director.passportNo,
+        passportExpiry: director.passportExpiry,
+        mobileNo: director.mobileNo,
+        email: director.email,
+        // Document URLs for reference
+        visaCopy: director.visaCopy,
+        qidDoc: director.qidDoc,
+        nationalAddressDoc: director.nationalAddressDoc,
+        passportDoc: director.passportDoc,
+        cv: director.cv
+      })),
+      shareholders: shareholders.map(shareholder => ({
+        name: shareholder.name,
+        nationality: shareholder.nationality,
+        qidNo: shareholder.qidNo,
+        qidExpiry: shareholder.qidExpiry,
+        nationalAddress: shareholder.nationalAddress,
+        nationalAddressExpiry: shareholder.nationalAddressExpiry,
+        passportNo: shareholder.passportNo,
+        passportExpiry: shareholder.passportExpiry,
+        mobileNo: shareholder.mobileNo,
+        email: shareholder.email,
+        // Document URLs for reference
+        visaCopy: shareholder.visaCopy,
+        qidDoc: shareholder.qidDoc,
+        nationalAddressDoc: shareholder.nationalAddressDoc,
+        passportDoc: shareholder.passportDoc,
+        cv: shareholder.cv
+      })),
+      secretaries: secretaries.map(secretary => ({
+        name: secretary.name,
+        nationality: secretary.nationality,
+        qidNo: secretary.qidNo,
+        qidExpiry: secretary.qidExpiry,
+        nationalAddress: secretary.nationalAddress,
+        nationalAddressExpiry: secretary.nationalAddressExpiry,
+        passportNo: secretary.passportNo,
+        passportExpiry: secretary.passportExpiry,
+        mobileNo: secretary.mobileNo,
+        email: secretary.email,
+        // Document URLs for reference
+        visaCopy: secretary.visaCopy,
+        qidDoc: secretary.qidDoc,
+        nationalAddressDoc: secretary.nationalAddressDoc,
+        passportDoc: secretary.passportDoc,
+        cv: secretary.cv
+      })),
+      sefs: sefs.map(sef => ({
+        name: sef.name,
+        nationality: sef.nationality,
+        qidNo: sef.qidNo,
+        qidExpiry: sef.qidExpiry,
+        nationalAddress: sef.nationalAddress,
+        nationalAddressExpiry: sef.nationalAddressExpiry,
+        passportNo: sef.passportNo,
+        passportExpiry: sef.passportExpiry,
+        mobileNo: sef.mobileNo,
+        email: sef.email,
+        // Document URLs for reference
+        visaCopy: sef.visaCopy,
+        qidDoc: sef.qidDoc,
+        nationalAddressDoc: sef.nationalAddressDoc,
+        passportDoc: sef.passportDoc,
+        cv: sef.cv
+      })),
+      documents: {
+        // Basic job documents
+        documentPassport: latestJob.documentPassport,
+        documentID: latestJob.documentID,
+        otherDocuments: latestJob.otherDocuments || [],
+        // Company documents from CompanyDetails
+        engagementLetters: companyDetails?.engagementLetters || [],
+        companyComputerCard: companyDetails?.companyComputerCard,
+        taxCard: companyDetails?.taxCard,
+        crExtract: companyDetails?.crExtract || [],
+        companyMemo: companyDetails?.companyMemo || [],
+        scopeOfLicense: companyDetails?.scopeOfLicense,
+        articleOfAssociate: companyDetails?.articleOfAssociate,
+        certificateOfIncorporate: companyDetails?.certificateOfIncorporate
+      },
+      kycDocumentInfo: kycDocuments?.documents || [],
+      braDocumentInfo: braApproval ? [
+        ...(braApproval.lmroApproval?.document ? [{
+          file: braApproval.lmroApproval.document.fileUrl,
+          description: `LMRO Approval Document - ${braApproval.lmroApproval.document.fileName}`,
+          date: braApproval.lmroApproval.document.uploadedAt,
+          stage: 'lmro'
+        }] : []),
+        ...(braApproval.dlmroApproval?.document ? [{
+          file: braApproval.dlmroApproval.document.fileUrl,
+          description: `DLMRO Approval Document - ${braApproval.dlmroApproval.document.fileName}`,
+          date: braApproval.dlmroApproval.document.uploadedAt,
+          stage: 'dlmro'
+        }] : []),
+        ...(braApproval.ceoApproval?.document ? [{
+          file: braApproval.ceoApproval.document.fileUrl,
+          description: `CEO Approval Document - ${braApproval.ceoApproval.document.fileName}`,
+          date: braApproval.ceoApproval.document.uploadedAt,
+          stage: 'ceo'
+        }] : [])
+      ] : []
+    };
+
+    res.status(200).json(autoFillData);
+  } catch (error) {
+    console.error(`❌ Error looking up job by email: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Error retrieving job data',
+      error: error.message,
+      found: false 
+    });
+  }
+});
 
 module.exports = {
   getCompanyDetails,
@@ -4447,5 +4808,7 @@ module.exports = {
   getExpiringJobsForDashboard,
   updateJobExpiryDate,
   getExpiringJobsStats,
-  deleteEngagementLetter
+  deleteEngagementLetter,
+  getJobDataByEmail
 };
+

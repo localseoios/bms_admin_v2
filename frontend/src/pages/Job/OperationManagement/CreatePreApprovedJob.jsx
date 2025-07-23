@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import AutoSuggestPersonInput from "../../../components/AutoSuggestPersonInput";
 import { toast } from "react-hot-toast";
 import {
   BriefcaseIcon,
@@ -36,6 +37,14 @@ const CreatePreApprovedJob = () => {
     message: "",
   });
 
+  // Email auto-fill state
+  const [emailAutoFill, setEmailAutoFill] = useState({
+    checking: false,
+    found: false,
+    data: null,
+    message: "",
+  });
+
   // Add state for CR Extract files
   const [crExtractFiles, setCrExtractFiles] = useState([]);
   const [companyMemoFiles, setCompanyMemoFiles] = useState([]);
@@ -68,6 +77,21 @@ const CreatePreApprovedJob = () => {
     clientName: "",
     gmail: "",
     startingPoint: "QFC",
+
+    // Document URLs for display
+    documentPassportUrl: "",
+    documentIDUrl: "",
+    otherDocumentsUrls: [],
+    
+    // Company Document URLs for display
+    engagementLettersUrls: [],
+    companyComputerCardUrl: "",
+    taxCardUrl: "",
+    crExtractUrls: [],
+    companyMemoUrls: [],
+    scopeOfLicenseUrl: "",
+    articleOfAssociateUrl: "",
+    certificateOfIncorporateUrl: "",
 
     // Company details
     companyDetails: {
@@ -192,6 +216,286 @@ const CreatePreApprovedJob = () => {
     }
   };
 
+  // Email lookup for auto-fill functionality
+  const lookupJobByEmail = async (email) => {
+    if (!email || !email.includes('@')) {
+      setEmailAutoFill({
+        checking: false,
+        found: false,
+        data: null,
+        message: "",
+      });
+      return;
+    }
+
+    setEmailAutoFill((prev) => ({ ...prev, checking: true }));
+
+    try {
+      const response = await axiosInstance.get(
+        `/operations/lookup-by-email/${encodeURIComponent(email)}`
+      );
+      
+      if (response.data.found) {
+        setEmailAutoFill({
+          checking: false,
+          found: true,
+          data: response.data,
+          message: `Found previous job: ${response.data.jobNumber}`,
+        });
+      } else {
+        setEmailAutoFill({
+          checking: false,
+          found: false,
+          data: null,
+          message: "No previous jobs found for this email",
+        });
+      }
+    } catch (error) {
+      console.error("Error looking up job by email:", error);
+      setEmailAutoFill({
+        checking: false,
+        found: false,
+        data: null,
+        message: error.response?.status === 404 ? "No previous jobs found" : "Error looking up email",
+      });
+    }
+  };
+
+  // Auto-fill form data from email lookup
+  const applyEmailAutoFill = () => {
+    const data = emailAutoFill.data;
+    if (!data || !data.found) return;
+
+    // Auto-fill basic job information
+    setFormData(prev => ({
+      ...prev,
+      clientName: data.basicInfo?.clientName || prev.clientName,
+      jobDetails: data.basicInfo?.jobDetails || prev.jobDetails,
+      specialDescription: data.basicInfo?.specialDescription || prev.specialDescription,
+      startingPoint: data.basicInfo?.startingPoint || prev.startingPoint,
+      // Auto-fill document references
+      documentPassportUrl: data.documents?.documentPassport || prev.documentPassportUrl,
+      documentIDUrl: data.documents?.documentID || prev.documentIDUrl,
+      otherDocumentsUrls: data.documents?.otherDocuments || prev.otherDocumentsUrls || [],
+    }));
+
+    // Set company document URLs for display (if they exist from previous job)
+    if (data.documents) {
+      const docs = data.documents;
+      
+      setFormData(prev => ({
+        ...prev,
+        // Set single file document URLs
+        companyComputerCardUrl: docs.companyComputerCard || prev.companyComputerCardUrl,
+        taxCardUrl: docs.taxCard || prev.taxCardUrl,
+        scopeOfLicenseUrl: docs.scopeOfLicense || prev.scopeOfLicenseUrl,
+        articleOfAssociateUrl: docs.articleOfAssociate || prev.articleOfAssociateUrl,
+        certificateOfIncorporateUrl: docs.certificateOfIncorporate || prev.certificateOfIncorporateUrl,
+        
+        // Handle engagement letters (array of objects)
+        engagementLettersUrls: docs.engagementLetters && Array.isArray(docs.engagementLetters) 
+          ? docs.engagementLetters.map(doc => ({
+              url: doc.fileUrl,
+              fileName: doc.fileName,
+              description: doc.description || `From job ${data.jobNumber}`
+            })) 
+          : prev.engagementLettersUrls,
+        
+        // Handle CR Extract files (array of objects)
+        crExtractUrls: docs.crExtract && Array.isArray(docs.crExtract)
+          ? docs.crExtract.map(doc => ({
+              url: doc.fileUrl,
+              fileName: doc.fileName,
+              description: doc.description || `From job ${data.jobNumber}`
+            }))
+          : prev.crExtractUrls,
+        
+        // Handle Company Memo files (array of objects)
+        companyMemoUrls: docs.companyMemo && Array.isArray(docs.companyMemo)
+          ? docs.companyMemo.map(doc => ({
+              url: doc.fileUrl,
+              fileName: doc.fileName,
+              description: doc.description || `From job ${data.jobNumber}`
+            }))
+          : prev.companyMemoUrls,
+      }));
+    }
+
+    // Auto-fill company details with all fields
+    if (data.companyDetails) {
+      setFormData(prev => ({
+        ...prev,
+        companyDetails: {
+          companyName: data.companyDetails.companyName || '',
+          qfcNo: data.companyDetails.qfcNo || '',
+          registeredAddress: data.companyDetails.registeredAddress || '',
+          incorporationDate: data.companyDetails.incorporationDate || '',
+          serviceType: data.companyDetails.serviceType || '',
+          mainPurpose: data.companyDetails.mainPurpose || '',
+          expiryDate: data.companyDetails.expiryDate || '',
+          kycActiveStatus: data.companyDetails.kycActiveStatus || 'yes',
+          // Company document expiry dates
+          companyComputerCardExpiry: data.companyDetails.companyComputerCardExpiry || '',
+          taxCardExpiry: data.companyDetails.taxCardExpiry || '',
+          crExtractExpiry: data.companyDetails.crExtractExpiry || '',
+          scopeOfLicenseExpiry: data.companyDetails.scopeOfLicenseExpiry || '',
+        }
+      }));
+    }
+
+    // Auto-fill directors
+    if (data.directors && data.directors.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        directors: data.directors.map(director => ({
+          name: director.name || '',
+          nationality: director.nationality || '',
+          email: director.email || '',
+          mobileNo: director.mobileNo || '',
+          qidNo: director.qidNo || '',
+          qidExpiry: director.qidExpiry || '',
+          nationalAddress: director.nationalAddress || '',
+          nationalAddressExpiry: director.nationalAddressExpiry || '',
+          passportNo: director.passportNo || '',
+          passportExpiry: director.passportExpiry || '',
+          // Document URLs for display
+          visaCopyUrl: director.visaCopy || '',
+          qidDocUrl: director.qidDoc || '',
+          nationalAddressDocUrl: director.nationalAddressDoc || '',
+          passportDocUrl: director.passportDoc || '',
+          cvUrl: director.cv || '',
+        }))
+      }));
+      
+      // Set director document states (references only)
+      setDirectorDocs(data.directors.map(director => ({
+        visaCopy: null,
+        qidDoc: null,
+        nationalAddressDoc: null,
+        passportDoc: null,
+        cv: null,
+      })));
+    }
+
+    // Auto-fill shareholders
+    if (data.shareholders && data.shareholders.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        shareholders: data.shareholders.map(shareholder => ({
+          name: shareholder.name || '',
+          nationality: shareholder.nationality || '',
+          email: shareholder.email || '',
+          mobileNo: shareholder.mobileNo || '',
+          qidNo: shareholder.qidNo || '',
+          qidExpiry: shareholder.qidExpiry || '',
+          nationalAddress: shareholder.nationalAddress || '',
+          nationalAddressExpiry: shareholder.nationalAddressExpiry || '',
+          passportNo: shareholder.passportNo || '',
+          passportExpiry: shareholder.passportExpiry || '',
+          // Document URLs for display
+          visaCopyUrl: shareholder.visaCopy || '',
+          qidDocUrl: shareholder.qidDoc || '',
+          nationalAddressDocUrl: shareholder.nationalAddressDoc || '',
+          passportDocUrl: shareholder.passportDoc || '',
+          cvUrl: shareholder.cv || '',
+        }))
+      }));
+      
+      setShareholderDocs(data.shareholders.map(() => ({
+        visaCopy: null,
+        qidDoc: null,
+        nationalAddressDoc: null,
+        passportDoc: null,
+        cv: null,
+      })));
+    }
+
+    // Auto-fill secretaries
+    if (data.secretaries && data.secretaries.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        secretaries: data.secretaries.map(secretary => ({
+          name: secretary.name || '',
+          nationality: secretary.nationality || '',
+          email: secretary.email || '',
+          mobileNo: secretary.mobileNo || '',
+          qidNo: secretary.qidNo || '',
+          qidExpiry: secretary.qidExpiry || '',
+          nationalAddress: secretary.nationalAddress || '',
+          nationalAddressExpiry: secretary.nationalAddressExpiry || '',
+          passportNo: secretary.passportNo || '',
+          passportExpiry: secretary.passportExpiry || '',
+          // Document URLs for display
+          visaCopyUrl: secretary.visaCopy || '',
+          qidDocUrl: secretary.qidDoc || '',
+          nationalAddressDocUrl: secretary.nationalAddressDoc || '',
+          passportDocUrl: secretary.passportDoc || '',
+          cvUrl: secretary.cv || '',
+        }))
+      }));
+      
+      setSecretaryDocs(data.secretaries.map(() => ({
+        visaCopy: null,
+        qidDoc: null,
+        nationalAddressDoc: null,
+        passportDoc: null,
+        cv: null,
+      })));
+    }
+
+    // Auto-fill SEFs
+    if (data.sefs && data.sefs.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        sefs: data.sefs.map(sef => ({
+          name: sef.name || '',
+          nationality: sef.nationality || '',
+          email: sef.email || '',
+          mobileNo: sef.mobileNo || '',
+          qidNo: sef.qidNo || '',
+          qidExpiry: sef.qidExpiry || '',
+          nationalAddress: sef.nationalAddress || '',
+          nationalAddressExpiry: sef.nationalAddressExpiry || '',
+          passportNo: sef.passportNo || '',
+          passportExpiry: sef.passportExpiry || '',
+          // Document URLs for display
+          visaCopyUrl: sef.visaCopy || '',
+          qidDocUrl: sef.qidDoc || '',
+          nationalAddressDocUrl: sef.nationalAddressDoc || '',
+          passportDocUrl: sef.passportDoc || '',
+          cvUrl: sef.cv || '',
+        }))
+      }));
+      
+      setSefDocs(data.sefs.map(() => ({
+        visaCopy: null,
+        qidDoc: null,
+        nationalAddressDoc: null,
+        passportDoc: null,
+        cv: null,
+      })));
+    }
+
+    // Show document information in toast
+    const docCount = Object.values(data.documents || {}).filter(doc => 
+      doc && (Array.isArray(doc) ? doc.length > 0 : doc)
+    ).length;
+    
+    const message = `Auto-filled data from job: ${data.jobNumber}${docCount > 0 ? ` (${docCount} document references found)` : ''}`;
+    toast.success(message);
+    
+    // Show document references in console for debugging
+    if (data.documents && docCount > 0) {
+      console.log('📄 Document references from previous job:', data.documents);
+      toast(`Previous documents: ${Object.keys(data.documents).filter(key => 
+        data.documents[key] && (Array.isArray(data.documents[key]) ? data.documents[key].length > 0 : true)
+      ).join(', ')}`, { 
+        duration: 4000,
+        icon: '📄'
+      });
+    }
+  };
+
   // Debounce function for job number checking
   const debounce = (func, delay) => {
     let timeoutId;
@@ -203,8 +507,9 @@ const CreatePreApprovedJob = () => {
     };
   };
 
-  // Create debounced version
+  // Create debounced versions
   const debouncedCheckJobNumber = debounce(checkJobNumberAvailability, 500);
+  const debouncedLookupEmail = debounce(lookupJobByEmail, 800);
 
   // Fetch assignable users for the dropdown
   useEffect(() => {
@@ -250,6 +555,11 @@ const CreatePreApprovedJob = () => {
     // Check job number availability when job number changes
     if (name === "jobNumber") {
       debouncedCheckJobNumber(value);
+    }
+
+    // Lookup job by email when email changes
+    if (name === "gmail") {
+      debouncedLookupEmail(value);
     }
 
     // Handle nested fields with dot notation (e.g., "companyDetails.companyName")
@@ -437,6 +747,62 @@ const CreatePreApprovedJob = () => {
     };
 
     updater(newDocs);
+  };
+
+  // Handle auto-fill for person details
+  const handlePersonAutoFill = (personType, index, personDetails) => {
+    if (!personDetails) return;
+
+    const personData = {
+      name: personDetails.name || '',
+      nationality: personDetails.nationality || '',
+      qidNo: personDetails.qidNo || '',
+      qidExpiry: personDetails.qidExpiry || '',
+      nationalAddress: personDetails.nationalAddress || '',
+      nationalAddressExpiry: personDetails.nationalAddressExpiry || '',
+      passportNo: personDetails.passportNo || '',
+      passportExpiry: personDetails.passportExpiry || '',
+      mobileNo: personDetails.mobileNo || '',
+      email: personDetails.email || '',
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      [personType]: prev[personType].map((person, i) => 
+        i === index ? { ...person, ...personData } : person
+      )
+    }));
+
+    toast.success(`${personType.charAt(0).toUpperCase() + personType.slice(1)} details auto-filled successfully!`);
+  };
+
+  // Add person to array
+  const addPersonToArray = (personType) => {
+    const newPerson = {
+      name: '',
+      nationality: '',
+      qidNo: '',
+      qidExpiry: '',
+      nationalAddress: '',
+      nationalAddressExpiry: '',
+      passportNo: '',
+      passportExpiry: '',
+      mobileNo: '',
+      email: '',
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      [personType]: [...prev[personType], newPerson]
+    }));
+  };
+
+  // Remove person from array
+  const removePersonFromArray = (personType, index) => {
+    setFormData(prev => ({
+      ...prev,
+      [personType]: prev[personType].filter((_, i) => i !== index)
+    }));
   };
 
   // Remove a file from array
@@ -646,9 +1012,16 @@ const CreatePreApprovedJob = () => {
       // Add optional job documents (now optional)
       if (files.documentPassport) {
         formDataToSend.append("documentPassport", files.documentPassport);
+      } else if (formData.documentPassportUrl) {
+        // Send existing document URL if no new file uploaded
+        formDataToSend.append("documentPassportUrl", formData.documentPassportUrl);
       }
+      
       if (files.documentID) {
         formDataToSend.append("documentID", files.documentID);
+      } else if (formData.documentIDUrl) {
+        // Send existing document URL if no new file uploaded
+        formDataToSend.append("documentIDUrl", formData.documentIDUrl);
       }
 
       // Add other job documents
@@ -656,14 +1029,29 @@ const CreatePreApprovedJob = () => {
         files.otherDocuments.forEach((file) => {
           formDataToSend.append("otherDocuments", file);
         });
+      } else if (formData.otherDocumentsUrls && formData.otherDocumentsUrls.length > 0) {
+        // Send existing document URLs if no new files uploaded
+        formDataToSend.append("otherDocumentsUrls", JSON.stringify(formData.otherDocumentsUrls));
       }
 
       // Add company documents
-      if (files.engagementLetters)
+      if (files.engagementLetters) {
         formDataToSend.append("engagementLetters", files.engagementLetters);
-      if (files.companyComputerCard)
+      } else if (formData.engagementLettersUrls && formData.engagementLettersUrls.length > 0) {
+        formDataToSend.append("engagementLettersUrls", JSON.stringify(formData.engagementLettersUrls));
+      }
+      
+      if (files.companyComputerCard) {
         formDataToSend.append("companyComputerCard", files.companyComputerCard);
-      if (files.taxCard) formDataToSend.append("taxCard", files.taxCard);
+      } else if (formData.companyComputerCardUrl) {
+        formDataToSend.append("companyComputerCardUrl", formData.companyComputerCardUrl);
+      }
+      
+      if (files.taxCard) {
+        formDataToSend.append("taxCard", files.taxCard);
+      } else if (formData.taxCardUrl) {
+        formDataToSend.append("taxCardUrl", formData.taxCardUrl);
+      }
 
       // Handle multiple CR Extract files
       if (crExtractFiles.length > 0) {
@@ -673,17 +1061,27 @@ const CreatePreApprovedJob = () => {
         console.log(
           `📄 Adding ${crExtractFiles.length} CR Extract files to form data`
         );
+      } else if (formData.crExtractUrls && formData.crExtractUrls.length > 0) {
+        formDataToSend.append("crExtractUrls", JSON.stringify(formData.crExtractUrls));
       }
 
-      if (files.scopeOfLicense)
+      if (files.scopeOfLicense) {
         formDataToSend.append("scopeOfLicense", files.scopeOfLicense);
-      if (files.articleOfAssociate)
+      } else if (formData.scopeOfLicenseUrl) {
+        formDataToSend.append("scopeOfLicenseUrl", formData.scopeOfLicenseUrl);
+      }
+      
+      if (files.articleOfAssociate) {
         formDataToSend.append("articleOfAssociate", files.articleOfAssociate);
-      if (files.certificateOfIncorporate)
-        formDataToSend.append(
-          "certificateOfIncorporate",
-          files.certificateOfIncorporate
-        );
+      } else if (formData.articleOfAssociateUrl) {
+        formDataToSend.append("articleOfAssociateUrl", formData.articleOfAssociateUrl);
+      }
+      
+      if (files.certificateOfIncorporate) {
+        formDataToSend.append("certificateOfIncorporate", files.certificateOfIncorporate);
+      } else if (formData.certificateOfIncorporateUrl) {
+        formDataToSend.append("certificateOfIncorporateUrl", formData.certificateOfIncorporateUrl);
+      }
 
       // ADD COMPANY MEMO FILES HERE:
       if (companyMemoFiles.length > 0) {
@@ -691,6 +1089,8 @@ const CreatePreApprovedJob = () => {
           formDataToSend.append("companyMemo", file);
         });
         console.log(`📄 Adding ${companyMemoFiles.length} Company Memo files to form data`);
+      } else if (formData.companyMemoUrls && formData.companyMemoUrls.length > 0) {
+        formDataToSend.append("companyMemoUrls", JSON.stringify(formData.companyMemoUrls));
       }
 
       // 🔥 FIXED: Add director documents with proper indexing
@@ -698,14 +1098,21 @@ const CreatePreApprovedJob = () => {
       formData.directors.forEach((director, directorIndex) => {
         console.log(`📋 Processing director ${directorIndex}: ${director.name || 'Unnamed'}`);
         
+        // Handle both new file uploads AND existing document URLs
         if (directorDocs[directorIndex]) {
-          // Add index to field names for multiple directors support
+          // Add new file uploads with index for multiple directors support
           if (directorDocs[directorIndex].visaCopy) {
             formDataToSend.append(
               `directorVisaCopy_${directorIndex}`,
               directorDocs[directorIndex].visaCopy
             );
-            console.log(`📄 Added visa copy for director ${directorIndex}`);
+            console.log(`📄 Added new visa copy for director ${directorIndex}`);
+          } else if (director.visaCopyUrl) {
+            formDataToSend.append(
+              `directorVisaCopyUrl_${directorIndex}`,
+              director.visaCopyUrl
+            );
+            console.log(`📄 Added existing visa copy URL for director ${directorIndex}`);
           }
           
           if (directorDocs[directorIndex].qidDoc) {
@@ -713,7 +1120,13 @@ const CreatePreApprovedJob = () => {
               `directorQidDoc_${directorIndex}`, 
               directorDocs[directorIndex].qidDoc
             );
-            console.log(`📄 Added QID doc for director ${directorIndex}`);
+            console.log(`📄 Added new QID doc for director ${directorIndex}`);
+          } else if (director.qidDocUrl) {
+            formDataToSend.append(
+              `directorQidDocUrl_${directorIndex}`,
+              director.qidDocUrl
+            );
+            console.log(`📄 Added existing QID doc URL for director ${directorIndex}`);
           }
           
           if (directorDocs[directorIndex].nationalAddressDoc) {
@@ -721,7 +1134,13 @@ const CreatePreApprovedJob = () => {
               `directorNationalAddressDoc_${directorIndex}`,
               directorDocs[directorIndex].nationalAddressDoc
             );
-            console.log(`📄 Added national address doc for director ${directorIndex}`);
+            console.log(`📄 Added new national address doc for director ${directorIndex}`);
+          } else if (director.nationalAddressDocUrl) {
+            formDataToSend.append(
+              `directorNationalAddressDocUrl_${directorIndex}`,
+              director.nationalAddressDocUrl
+            );
+            console.log(`📄 Added existing national address doc URL for director ${directorIndex}`);
           }
           
           if (directorDocs[directorIndex].passportDoc) {
@@ -729,7 +1148,13 @@ const CreatePreApprovedJob = () => {
               `directorPassportDoc_${directorIndex}`,
               directorDocs[directorIndex].passportDoc
             );
-            console.log(`📄 Added passport doc for director ${directorIndex}`);
+            console.log(`📄 Added new passport doc for director ${directorIndex}`);
+          } else if (director.passportDocUrl) {
+            formDataToSend.append(
+              `directorPassportDocUrl_${directorIndex}`,
+              director.passportDocUrl
+            );
+            console.log(`📄 Added existing passport doc URL for director ${directorIndex}`);
           }
           
           if (directorDocs[directorIndex].cv) {
@@ -737,10 +1162,55 @@ const CreatePreApprovedJob = () => {
               `directorCv_${directorIndex}`, 
               directorDocs[directorIndex].cv
             );
-            console.log(`📄 Added CV for director ${directorIndex}`);
+            console.log(`📄 Added new CV for director ${directorIndex}`);
+          } else if (director.cvUrl) {
+            formDataToSend.append(
+              `directorCvUrl_${directorIndex}`,
+              director.cvUrl
+            );
+            console.log(`📄 Added existing CV URL for director ${directorIndex}`);
           }
         } else {
-          console.log(`⚠️ No documents found for director ${directorIndex}`);
+          // If no new document uploads, check for existing URLs
+          if (director.visaCopyUrl) {
+            formDataToSend.append(
+              `directorVisaCopyUrl_${directorIndex}`,
+              director.visaCopyUrl
+            );
+            console.log(`📄 Added existing visa copy URL for director ${directorIndex}`);
+          }
+          if (director.qidDocUrl) {
+            formDataToSend.append(
+              `directorQidDocUrl_${directorIndex}`,
+              director.qidDocUrl
+            );
+            console.log(`📄 Added existing QID doc URL for director ${directorIndex}`);
+          }
+          if (director.nationalAddressDocUrl) {
+            formDataToSend.append(
+              `directorNationalAddressDocUrl_${directorIndex}`,
+              director.nationalAddressDocUrl
+            );
+            console.log(`📄 Added existing national address doc URL for director ${directorIndex}`);
+          }
+          if (director.passportDocUrl) {
+            formDataToSend.append(
+              `directorPassportDocUrl_${directorIndex}`,
+              director.passportDocUrl
+            );
+            console.log(`📄 Added existing passport doc URL for director ${directorIndex}`);
+          }
+          if (director.cvUrl) {
+            formDataToSend.append(
+              `directorCvUrl_${directorIndex}`,
+              director.cvUrl
+            );
+            console.log(`📄 Added existing CV URL for director ${directorIndex}`);
+          }
+          
+          if (!director.visaCopyUrl && !director.qidDocUrl && !director.nationalAddressDocUrl && !director.passportDocUrl && !director.cvUrl) {
+            console.log(`⚠️ No documents found for director ${directorIndex}`);
+          }
         }
       });
 
@@ -749,8 +1219,30 @@ const CreatePreApprovedJob = () => {
       // Add shareholder documents with proper indexing
       formData.shareholders.forEach((shareholder, shareholderIndex) => {
         console.log(`📋 Processing shareholder ${shareholderIndex}: ${shareholder.name || 'Unnamed'}`);
+        console.log(`🔍 Shareholder ${shareholderIndex} data:`, {
+          name: shareholder.name,
+          visaCopyUrl: shareholder.visaCopyUrl,
+          qidDocUrl: shareholder.qidDocUrl,
+          nationalAddressDocUrl: shareholder.nationalAddressDocUrl,
+          passportDocUrl: shareholder.passportDocUrl,
+          cvUrl: shareholder.cvUrl,
+          visaCopy: shareholder.visaCopy,
+          qidDoc: shareholder.qidDoc
+        });
         
-        if (shareholderDocs[shareholderIndex]) {
+        console.log(`🔍 shareholderDocs[${shareholderIndex}]:`, shareholderDocs[shareholderIndex]);
+        
+        // Check if there are any actual file uploads for this shareholder
+        const hasFileUploads = shareholderDocs[shareholderIndex] && (
+          shareholderDocs[shareholderIndex].visaCopy ||
+          shareholderDocs[shareholderIndex].qidDoc ||
+          shareholderDocs[shareholderIndex].nationalAddressDoc ||
+          shareholderDocs[shareholderIndex].passportDoc ||
+          shareholderDocs[shareholderIndex].cv
+        );
+        
+        if (hasFileUploads) {
+          console.log(`📁 Processing file uploads for shareholder ${shareholderIndex}`);
           if (shareholderDocs[shareholderIndex].visaCopy)
             formDataToSend.append(
               `shareholderVisaCopy_${shareholderIndex}`,
@@ -776,14 +1268,72 @@ const CreatePreApprovedJob = () => {
               `shareholderCv_${shareholderIndex}`, 
               shareholderDocs[shareholderIndex].cv
             );
+        } else {
+          console.log(`📋 No file uploads for shareholder ${shareholderIndex}, checking for existing URLs`);
+          // If no new document uploads, check for existing URLs from auto-fill
+          if (shareholder.visaCopyUrl && shareholder.visaCopyUrl.trim() !== '') {
+            formDataToSend.append(
+              `shareholderVisaCopyUrl_${shareholderIndex}`,
+              shareholder.visaCopyUrl
+            );
+            console.log(`📄 Added existing visa copy URL for shareholder ${shareholderIndex}`);
+          }
+          if (shareholder.qidDocUrl && shareholder.qidDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `shareholderQidDocUrl_${shareholderIndex}`,
+              shareholder.qidDocUrl
+            );
+            console.log(`📄 Added existing QID doc URL for shareholder ${shareholderIndex}`);
+          }
+          if (shareholder.nationalAddressDocUrl && shareholder.nationalAddressDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `shareholderNationalAddressDocUrl_${shareholderIndex}`,
+              shareholder.nationalAddressDocUrl
+            );
+            console.log(`📄 Added existing national address doc URL for shareholder ${shareholderIndex}`);
+          }
+          if (shareholder.passportDocUrl && shareholder.passportDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `shareholderPassportDocUrl_${shareholderIndex}`,
+              shareholder.passportDocUrl
+            );
+            console.log(`📄 Added existing passport doc URL for shareholder ${shareholderIndex}`);
+          }
+          if (shareholder.cvUrl && shareholder.cvUrl.trim() !== '') {
+            formDataToSend.append(
+              `shareholderCvUrl_${shareholderIndex}`,
+              shareholder.cvUrl
+            );
+            console.log(`📄 Added existing CV URL for shareholder ${shareholderIndex}`);
+          }
         }
       });
 
       // Add secretary documents with proper indexing
       formData.secretaries.forEach((secretary, secretaryIndex) => {
         console.log(`📋 Processing secretary ${secretaryIndex}: ${secretary.name || 'Unnamed'}`);
+        console.log(`🔍 Secretary ${secretaryIndex} data:`, {
+          name: secretary.name,
+          visaCopyUrl: secretary.visaCopyUrl,
+          qidDocUrl: secretary.qidDocUrl,
+          nationalAddressDocUrl: secretary.nationalAddressDocUrl,
+          passportDocUrl: secretary.passportDocUrl,
+          cvUrl: secretary.cvUrl
+        });
         
-        if (secretaryDocs[secretaryIndex]) {
+        console.log(`🔍 secretaryDocs[${secretaryIndex}]:`, secretaryDocs[secretaryIndex]);
+        
+        // Check if there are any actual file uploads for this secretary
+        const hasFileUploads = secretaryDocs[secretaryIndex] && (
+          secretaryDocs[secretaryIndex].visaCopy ||
+          secretaryDocs[secretaryIndex].qidDoc ||
+          secretaryDocs[secretaryIndex].nationalAddressDoc ||
+          secretaryDocs[secretaryIndex].passportDoc ||
+          secretaryDocs[secretaryIndex].cv
+        );
+        
+        if (hasFileUploads) {
+          console.log(`📁 Processing file uploads for secretary ${secretaryIndex}`);
           if (secretaryDocs[secretaryIndex].visaCopy)
             formDataToSend.append(
               `secretaryVisaCopy_${secretaryIndex}`,
@@ -809,14 +1359,72 @@ const CreatePreApprovedJob = () => {
               `secretaryCv_${secretaryIndex}`, 
               secretaryDocs[secretaryIndex].cv
             );
+        } else {
+          console.log(`📋 No file uploads for secretary ${secretaryIndex}, checking for existing URLs`);
+          // If no new document uploads, check for existing URLs from auto-fill
+          if (secretary.visaCopyUrl && secretary.visaCopyUrl.trim() !== '') {
+            formDataToSend.append(
+              `secretaryVisaCopyUrl_${secretaryIndex}`,
+              secretary.visaCopyUrl
+            );
+            console.log(`📄 Added existing visa copy URL for secretary ${secretaryIndex}`);
+          }
+          if (secretary.qidDocUrl && secretary.qidDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `secretaryQidDocUrl_${secretaryIndex}`,
+              secretary.qidDocUrl
+            );
+            console.log(`📄 Added existing QID doc URL for secretary ${secretaryIndex}`);
+          }
+          if (secretary.nationalAddressDocUrl && secretary.nationalAddressDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `secretaryNationalAddressDocUrl_${secretaryIndex}`,
+              secretary.nationalAddressDocUrl
+            );
+            console.log(`📄 Added existing national address doc URL for secretary ${secretaryIndex}`);
+          }
+          if (secretary.passportDocUrl && secretary.passportDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `secretaryPassportDocUrl_${secretaryIndex}`,
+              secretary.passportDocUrl
+            );
+            console.log(`📄 Added existing passport doc URL for secretary ${secretaryIndex}`);
+          }
+          if (secretary.cvUrl && secretary.cvUrl.trim() !== '') {
+            formDataToSend.append(
+              `secretaryCvUrl_${secretaryIndex}`,
+              secretary.cvUrl
+            );
+            console.log(`📄 Added existing CV URL for secretary ${secretaryIndex}`);
+          }
         }
       });
 
       // Add SEF documents with proper indexing
       formData.sefs.forEach((sef, sefIndex) => {
         console.log(`📋 Processing SEF ${sefIndex}: ${sef.name || 'Unnamed'}`);
+        console.log(`🔍 SEF ${sefIndex} data:`, {
+          name: sef.name,
+          visaCopyUrl: sef.visaCopyUrl,
+          qidDocUrl: sef.qidDocUrl,
+          nationalAddressDocUrl: sef.nationalAddressDocUrl,
+          passportDocUrl: sef.passportDocUrl,
+          cvUrl: sef.cvUrl
+        });
         
-        if (sefDocs[sefIndex]) {
+        console.log(`🔍 sefDocs[${sefIndex}]:`, sefDocs[sefIndex]);
+        
+        // Check if there are any actual file uploads for this SEF
+        const hasFileUploads = sefDocs[sefIndex] && (
+          sefDocs[sefIndex].visaCopy ||
+          sefDocs[sefIndex].qidDoc ||
+          sefDocs[sefIndex].nationalAddressDoc ||
+          sefDocs[sefIndex].passportDoc ||
+          sefDocs[sefIndex].cv
+        );
+        
+        if (hasFileUploads) {
+          console.log(`📁 Processing file uploads for SEF ${sefIndex}`);
           if (sefDocs[sefIndex].visaCopy)
             formDataToSend.append(
               `sefVisaCopy_${sefIndex}`, 
@@ -842,6 +1450,44 @@ const CreatePreApprovedJob = () => {
               `sefCv_${sefIndex}`, 
               sefDocs[sefIndex].cv
             );
+        } else {
+          console.log(`📋 No file uploads for SEF ${sefIndex}, checking for existing URLs`);
+          // If no new document uploads, check for existing URLs from auto-fill
+          if (sef.visaCopyUrl && sef.visaCopyUrl.trim() !== '') {
+            formDataToSend.append(
+              `sefVisaCopyUrl_${sefIndex}`,
+              sef.visaCopyUrl
+            );
+            console.log(`📄 Added existing visa copy URL for SEF ${sefIndex}`);
+          }
+          if (sef.qidDocUrl && sef.qidDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `sefQidDocUrl_${sefIndex}`,
+              sef.qidDocUrl
+            );
+            console.log(`📄 Added existing QID doc URL for SEF ${sefIndex}`);
+          }
+          if (sef.nationalAddressDocUrl && sef.nationalAddressDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `sefNationalAddressDocUrl_${sefIndex}`,
+              sef.nationalAddressDocUrl
+            );
+            console.log(`📄 Added existing national address doc URL for SEF ${sefIndex}`);
+          }
+          if (sef.passportDocUrl && sef.passportDocUrl.trim() !== '') {
+            formDataToSend.append(
+              `sefPassportDocUrl_${sefIndex}`,
+              sef.passportDocUrl
+            );
+            console.log(`📄 Added existing passport doc URL for SEF ${sefIndex}`);
+          }
+          if (sef.cvUrl && sef.cvUrl.trim() !== '') {
+            formDataToSend.append(
+              `sefCvUrl_${sefIndex}`,
+              sef.cvUrl
+            );
+            console.log(`📄 Added existing CV URL for SEF ${sefIndex}`);
+          }
         }
       });
 
@@ -1071,17 +1717,70 @@ const CreatePreApprovedJob = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   Email Address <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="email"
-                  name="gmail"
-                  value={formData.gmail}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Must be a valid email address
-                </p>
+                <div className="relative">
+                  <input
+                    type="email"
+                    name="gmail"
+                    value={formData.gmail}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                      emailAutoFill.found
+                        ? "border-green-300 bg-green-50"
+                        : emailAutoFill.checking
+                        ? "border-yellow-300 bg-yellow-50"
+                        : "border-gray-300"
+                    }`}
+                    required
+                  />
+                  {emailAutoFill.checking && (
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                      <ArrowPathIcon className="h-4 w-4 text-yellow-500 animate-spin" />
+                    </div>
+                  )}
+                  {emailAutoFill.found && (
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                      <CheckCircleIcon className="h-4 w-4 text-green-500" />
+                    </div>
+                  )}
+                </div>
+                
+                {/* Email auto-fill status and button */}
+                {emailAutoFill.found && (
+                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <CheckCircleIcon className="h-5 w-5 text-green-600 mr-2" />
+                        <div>
+                          <p className="text-sm font-medium text-green-800">
+                            Previous Job Found
+                          </p>
+                          <p className="text-xs text-green-600">
+                            {emailAutoFill.message}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={applyEmailAutoFill}
+                        className="bg-green-600 text-white px-3 py-1 rounded-md text-sm hover:bg-green-700 transition-colors"
+                      >
+                        Auto-Fill Data
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {emailAutoFill.message && !emailAutoFill.found && !emailAutoFill.checking && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    {emailAutoFill.message}
+                  </p>
+                )}
+                
+                {!emailAutoFill.message && !emailAutoFill.checking && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Must be a valid email address
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1155,6 +1854,24 @@ const CreatePreApprovedJob = () => {
                     </span>
                   </div>
                 )}
+                {!files.documentPassport && formData.documentPassportUrl && (
+                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center text-sm text-blue-800">
+                        <PaperClipIcon className="h-4 w-4 mr-2" />
+                        <span>Previous Passport Document</span>
+                      </div>
+                      <a
+                        href={formData.documentPassportUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        View
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1177,6 +1894,24 @@ const CreatePreApprovedJob = () => {
                   <div className="mt-2 flex items-center text-sm text-gray-500">
                     <PaperClipIcon className="h-4 w-4 mr-1" />
                     <span className="truncate">{files.documentID.name}</span>
+                  </div>
+                )}
+                {!files.documentID && formData.documentIDUrl && (
+                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center text-sm text-blue-800">
+                        <PaperClipIcon className="h-4 w-4 mr-2" />
+                        <span>Previous ID Document</span>
+                      </div>
+                      <a
+                        href={formData.documentIDUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        View
+                      </a>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1216,6 +1951,29 @@ const CreatePreApprovedJob = () => {
                         >
                           <TrashIcon className="h-4 w-4" />
                         </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {files.otherDocuments.length === 0 && formData.otherDocumentsUrls && formData.otherDocumentsUrls.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <div className="text-xs font-medium text-blue-700 mb-2">Previous Other Documents:</div>
+                    {formData.otherDocumentsUrls.map((url, index) => (
+                      <div key={index} className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center text-sm text-blue-800">
+                            <PaperClipIcon className="h-4 w-4 mr-2" />
+                            <span>Other Document {index + 1}</span>
+                          </div>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            View
+                          </a>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1331,14 +2089,33 @@ const CreatePreApprovedJob = () => {
                   }
                   className="mt-1 block w-full px-3 py-2"
                 />
-                {files.engagementLetters && (
+                {files.engagementLetters ? (
                   <div className="mt-2 flex items-center text-sm text-gray-500">
                     <PaperClipIcon className="h-4 w-4 mr-1" />
                     <span className="truncate">
                       {files.engagementLetters.name}
                     </span>
                   </div>
-                )}
+                ) : formData.engagementLettersUrls && formData.engagementLettersUrls.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {formData.engagementLettersUrls.map((doc, index) => (
+                      <div key={index} className="flex items-center text-sm text-blue-600">
+                        <PaperClipIcon className="h-4 w-4 mr-1" />
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate hover:underline"
+                        >
+                          {doc.fileName}
+                        </a>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Previous job)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div>
@@ -1387,14 +2164,29 @@ const CreatePreApprovedJob = () => {
                     }
                     className="mt-1 block w-full px-3 py-2"
                   />
-                  {files.companyComputerCard && (
+                  {files.companyComputerCard ? (
                     <div className="mt-2 flex items-center text-sm text-gray-500">
                       <PaperClipIcon className="h-4 w-4 mr-1" />
                       <span className="truncate">
                         {files.companyComputerCard.name}
                       </span>
                     </div>
-                  )}
+                  ) : formData.companyComputerCardUrl ? (
+                    <div className="mt-2 flex items-center text-sm text-blue-600">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <a
+                        href={formData.companyComputerCardUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate hover:underline"
+                      >
+                        View existing document
+                      </a>
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Previous job)
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="col-span-3">
                   <label className="block text-sm font-medium text-gray-700">
@@ -1430,12 +2222,27 @@ const CreatePreApprovedJob = () => {
                     }
                     className="mt-1 block w-full px-3 py-2"
                   />
-                  {files.taxCard && (
+                  {files.taxCard ? (
                     <div className="mt-2 flex items-center text-sm text-gray-500">
                       <PaperClipIcon className="h-4 w-4 mr-1" />
                       <span className="truncate">{files.taxCard.name}</span>
                     </div>
-                  )}
+                  ) : formData.taxCardUrl ? (
+                    <div className="mt-2 flex items-center text-sm text-blue-600">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <a
+                        href={formData.taxCardUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate hover:underline"
+                      >
+                        View existing document
+                      </a>
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Previous job)
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="col-span-3">
                   <label className="block text-sm font-medium text-gray-700">
@@ -1480,7 +2287,7 @@ const CreatePreApprovedJob = () => {
                       }
                     }}
                   >
-                    {/* Show selected files */}
+                    {/* Show selected files OR existing files */}
                     {crExtractFiles.length > 0 ? (
                       <div className="space-y-2">
                         {crExtractFiles.map((file, index) => (
@@ -1539,6 +2346,41 @@ const CreatePreApprovedJob = () => {
                             </label>
                           </div>
                         )}
+                      </div>
+                    ) : formData.crExtractUrls && formData.crExtractUrls.length > 0 ? (
+                      <div className="space-y-2">
+                        {formData.crExtractUrls.map((doc, index) => (
+                          <div key={index} className="flex items-center justify-between bg-blue-50 p-2 rounded-lg shadow-sm border border-blue-100">
+                            <div className="flex items-center">
+                              <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2" />
+                              <a
+                                href={doc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-900 font-medium truncate max-w-[100px] hover:underline"
+                              >
+                                {doc.fileName}
+                              </a>
+                              <span className="text-xs text-gray-500 ml-1">
+                                (Previous job)
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="text-center py-2">
+                          <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                            Upload new CR Extract Documents
+                            <input
+                              type="file"
+                              className="sr-only"
+                              multiple
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              onChange={(e) =>
+                                handleCrExtractFileChange(e.target.files)
+                              }
+                            />
+                          </label>
+                        </div>
                       </div>
                     ) : (
                       <div className="text-center py-3">
@@ -1623,14 +2465,29 @@ const CreatePreApprovedJob = () => {
                     }
                     className="mt-1 block w-full px-3 py-2"
                   />
-                  {files.scopeOfLicense && (
+                  {files.scopeOfLicense ? (
                     <div className="mt-2 flex items-center text-sm text-gray-500">
                       <PaperClipIcon className="h-4 w-4 mr-1" />
                       <span className="truncate">
                         {files.scopeOfLicense.name}
                       </span>
                     </div>
-                  )}
+                  ) : formData.scopeOfLicenseUrl ? (
+                    <div className="mt-2 flex items-center text-sm text-blue-600">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <a
+                        href={formData.scopeOfLicenseUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate hover:underline"
+                      >
+                        View existing document
+                      </a>
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Previous job)
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="col-span-3">
                   <label className="block text-sm font-medium text-gray-700">
@@ -1666,14 +2523,29 @@ const CreatePreApprovedJob = () => {
                     }
                     className="mt-1 block w-full px-3 py-2"
                   />
-                  {files.articleOfAssociate && (
+                  {files.articleOfAssociate ? (
                     <div className="mt-2 flex items-center text-sm text-gray-500">
                       <PaperClipIcon className="h-4 w-4 mr-1" />
                       <span className="truncate">
                         {files.articleOfAssociate.name}
                       </span>
                     </div>
-                  )}
+                  ) : formData.articleOfAssociateUrl ? (
+                    <div className="mt-2 flex items-center text-sm text-blue-600">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <a
+                        href={formData.articleOfAssociateUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate hover:underline"
+                      >
+                        View existing document
+                      </a>
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Previous job)
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1695,14 +2567,29 @@ const CreatePreApprovedJob = () => {
                     }
                     className="mt-1 block w-full px-3 py-2"
                   />
-                  {files.certificateOfIncorporate && (
+                  {files.certificateOfIncorporate ? (
                     <div className="mt-2 flex items-center text-sm text-gray-500">
                       <PaperClipIcon className="h-4 w-4 mr-1" />
                       <span className="truncate">
                         {files.certificateOfIncorporate.name}
                       </span>
                     </div>
-                  )}
+                  ) : formData.certificateOfIncorporateUrl ? (
+                    <div className="mt-2 flex items-center text-sm text-blue-600">
+                      <PaperClipIcon className="h-4 w-4 mr-1" />
+                      <a
+                        href={formData.certificateOfIncorporateUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate hover:underline"
+                      >
+                        View existing document
+                      </a>
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Previous job)
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1779,6 +2666,39 @@ const CreatePreApprovedJob = () => {
                           </div>
                         )}
                       </div>
+                    ) : formData.companyMemoUrls && formData.companyMemoUrls.length > 0 ? (
+                      <div className="space-y-2">
+                        {formData.companyMemoUrls.map((doc, index) => (
+                          <div key={index} className="flex items-center justify-between bg-blue-50 p-3 rounded-lg shadow-sm border border-blue-100">
+                            <div className="flex items-center">
+                              <DocumentTextIcon className="h-5 w-5 text-blue-600 mr-2" />
+                              <a
+                                href={doc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-900 font-medium truncate max-w-[200px] hover:underline"
+                              >
+                                {doc.fileName}
+                              </a>
+                              <span className="text-xs text-gray-500 ml-2">
+                                (Previous job)
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="text-center py-2">
+                          <label className="cursor-pointer block text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                            Upload new Company Memo Documents
+                            <input
+                              type="file"
+                              className="sr-only"
+                              multiple
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              onChange={(e) => handleCompanyMemoFileChange(e.target.files)}
+                            />
+                          </label>
+                        </div>
+                      </div>
                     ) : (
                       <div className="text-center py-4">
                         <CloudArrowUpIcon className="mx-auto h-10 w-10 text-gray-400 mb-3" />
@@ -1852,22 +2772,17 @@ const CreatePreApprovedJob = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
+                    <AutoSuggestPersonInput
+                      label="Name"
                       value={director.name}
-                      onChange={(e) =>
-                        handleArrayChange(
-                          "directors",
-                          index,
-                          "name",
-                          e.target.value
-                        )
+                      onChange={(name) =>
+                        handleArrayChange("directors", index, "name", name)
                       }
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      required
+                      onAutoFill={(personDetails) =>
+                        handlePersonAutoFill("directors", index, personDetails)
+                      }
+                      placeholder="Enter director name..."
+                      personType="Director"
                     />
                   </div>
 
@@ -2061,14 +2976,29 @@ const CreatePreApprovedJob = () => {
                       }
                       className="mt-1 block w-full px-3 py-2"
                     />
-                    {directorDocs[index]?.visaCopy && (
+                    {directorDocs[index]?.visaCopy ? (
                       <div className="mt-2 flex items-center text-sm text-gray-500">
                         <PaperClipIcon className="h-4 w-4 mr-1" />
                         <span className="truncate">
                           {directorDocs[index].visaCopy.name}
                         </span>
                       </div>
-                    )}
+                    ) : director.visaCopyUrl ? (
+                      <div className="mt-2 flex items-center text-sm text-blue-600">
+                        <PaperClipIcon className="h-4 w-4 mr-1" />
+                        <a
+                          href={director.visaCopyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate hover:underline"
+                        >
+                          View existing document
+                        </a>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Previous job)
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div>
@@ -2087,14 +3017,29 @@ const CreatePreApprovedJob = () => {
                       }
                       className="mt-1 block w-full px-3 py-2"
                     />
-                    {directorDocs[index]?.qidDoc && (
+                    {directorDocs[index]?.qidDoc ? (
                       <div className="mt-2 flex items-center text-sm text-gray-500">
                         <PaperClipIcon className="h-4 w-4 mr-1" />
                         <span className="truncate">
                           {directorDocs[index].qidDoc.name}
                         </span>
                       </div>
-                    )}
+                    ) : director.qidDocUrl ? (
+                      <div className="mt-2 flex items-center text-sm text-blue-600">
+                        <PaperClipIcon className="h-4 w-4 mr-1" />
+                        <a
+                          href={director.qidDocUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate hover:underline"
+                        >
+                          View existing document
+                        </a>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Previous job)
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div>
@@ -2113,14 +3058,29 @@ const CreatePreApprovedJob = () => {
                       }
                       className="mt-1 block w-full px-3 py-2"
                     />
-                    {directorDocs[index]?.nationalAddressDoc && (
+                    {directorDocs[index]?.nationalAddressDoc ? (
                       <div className="mt-2 flex items-center text-sm text-gray-500">
                         <PaperClipIcon className="h-4 w-4 mr-1" />
                         <span className="truncate">
                           {directorDocs[index].nationalAddressDoc.name}
                         </span>
                       </div>
-                    )}
+                    ) : director.nationalAddressDocUrl ? (
+                      <div className="mt-2 flex items-center text-sm text-blue-600">
+                        <PaperClipIcon className="h-4 w-4 mr-1" />
+                        <a
+                          href={director.nationalAddressDocUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate hover:underline"
+                        >
+                          View existing document
+                        </a>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Previous job)
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div>
@@ -2231,22 +3191,17 @@ const CreatePreApprovedJob = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
+                      <AutoSuggestPersonInput
+                        label="Name"
                         value={shareholder.name}
-                        onChange={(e) =>
-                          handleArrayChange(
-                            "shareholders",
-                            index,
-                            "name",
-                            e.target.value
-                          )
+                        onChange={(name) =>
+                          handleArrayChange("shareholders", index, "name", name)
                         }
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        required
+                        onAutoFill={(personDetails) =>
+                          handlePersonAutoFill("shareholders", index, personDetails)
+                        }
+                        placeholder="Enter shareholder name..."
+                        personType="Shareholder"
                       />
                     </div>
 
@@ -2269,10 +3224,998 @@ const CreatePreApprovedJob = () => {
                       />
                     </div>
 
-                    {/* Add more fields as needed */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        QID Number
+                      </label>
+                      <input
+                        type="text"
+                        value={shareholder.qidNo}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "shareholders",
+                            index,
+                            "qidNo",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Mobile Number
+                      </label>
+                      <input
+                        type="text"
+                        value={shareholder.mobileNo}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "shareholders",
+                            index,
+                            "mobileNo",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={shareholder.email}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "shareholders",
+                            index,
+                            "email",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Passport Number
+                      </label>
+                      <input
+                        type="text"
+                        value={shareholder.passportNo}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "shareholders",
+                            index,
+                            "passportNo",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
                   </div>
 
-                  {/* Add document upload fields for shareholders */}
+                  {/* Shareholder Documents */}
+                  <div className="mt-6 space-y-4">
+                    <h4 className="text-md font-medium text-gray-900">
+                      Documents for Shareholder {index + 1}
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Visa Copy
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "shareholders",
+                              index,
+                              "visaCopy",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {shareholderDocs[index]?.visaCopy ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {shareholderDocs[index].visaCopy.name}
+                            </span>
+                          </div>
+                        ) : shareholder.visaCopyUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={shareholder.visaCopyUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          QID Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "shareholders",
+                              index,
+                              "qidDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {shareholderDocs[index]?.qidDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {shareholderDocs[index].qidDoc.name}
+                            </span>
+                          </div>
+                        ) : shareholder.qidDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={shareholder.qidDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          National Address Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "shareholders",
+                              index,
+                              "nationalAddressDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {shareholderDocs[index]?.nationalAddressDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {shareholderDocs[index].nationalAddressDoc.name}
+                            </span>
+                          </div>
+                        ) : shareholder.nationalAddressDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={shareholder.nationalAddressDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Passport Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "shareholders",
+                              index,
+                              "passportDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {shareholderDocs[index]?.passportDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {shareholderDocs[index].passportDoc.name}
+                            </span>
+                          </div>
+                        ) : shareholder.passportDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={shareholder.passportDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          CV
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "shareholders",
+                              index,
+                              "cv",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {shareholderDocs[index]?.cv ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {shareholderDocs[index].cv.name}
+                            </span>
+                          </div>
+                        ) : shareholder.cvUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={shareholder.cvUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Secretaries */}
+          <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center">
+                <UserIcon className="h-6 w-6 text-green-600 mr-2" />
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Secretaries
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => addPersonToArray("secretaries")}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                <PlusCircleIcon className="h-5 w-5 mr-1" />
+                Add Secretary
+              </button>
+            </div>
+
+            {formData.secretaries.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <UserIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>No secretaries added yet. Click "Add Secretary" to get started.</p>
+              </div>
+            ) : (
+              formData.secretaries.map((secretary, index) => (
+                <div
+                  key={index}
+                  className="relative bg-green-50 rounded-xl p-6 mb-6 border border-green-200"
+                >
+                  <div className="absolute top-4 right-4">
+                    <button
+                      type="button"
+                      onClick={() => removePersonFromArray("secretaries", index)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <AutoSuggestPersonInput
+                        label="Name"
+                        value={secretary.name}
+                        onChange={(name) =>
+                          handleArrayChange("secretaries", index, "name", name)
+                        }
+                        onAutoFill={(personDetails) =>
+                          handlePersonAutoFill("secretaries", index, personDetails)
+                        }
+                        placeholder="Enter secretary name..."
+                        personType="Secretary"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Nationality
+                      </label>
+                      <input
+                        type="text"
+                        value={secretary.nationality}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "secretaries",
+                            index,
+                            "nationality",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        QID Number
+                      </label>
+                      <input
+                        type="text"
+                        value={secretary.qidNo}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "secretaries",
+                            index,
+                            "qidNo",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Mobile Number
+                      </label>
+                      <input
+                        type="text"
+                        value={secretary.mobileNo}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "secretaries",
+                            index,
+                            "mobileNo",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={secretary.email}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "secretaries",
+                            index,
+                            "email",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Secretary Documents */}
+                  <div className="mt-6 space-y-4">
+                    <h4 className="text-md font-medium text-gray-900">
+                      Documents for Secretary {index + 1}
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Visa Copy
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "secretaries",
+                              index,
+                              "visaCopy",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {secretaryDocs[index]?.visaCopy ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {secretaryDocs[index].visaCopy.name}
+                            </span>
+                          </div>
+                        ) : secretary.visaCopyUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={secretary.visaCopyUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          QID Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "secretaries",
+                              index,
+                              "qidDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {secretaryDocs[index]?.qidDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {secretaryDocs[index].qidDoc.name}
+                            </span>
+                          </div>
+                        ) : secretary.qidDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={secretary.qidDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          National Address Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "secretaries",
+                              index,
+                              "nationalAddressDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {secretaryDocs[index]?.nationalAddressDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {secretaryDocs[index].nationalAddressDoc.name}
+                            </span>
+                          </div>
+                        ) : secretary.nationalAddressDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={secretary.nationalAddressDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Passport Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "secretaries",
+                              index,
+                              "passportDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {secretaryDocs[index]?.passportDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {secretaryDocs[index].passportDoc.name}
+                            </span>
+                          </div>
+                        ) : secretary.passportDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={secretary.passportDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          CV
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "secretaries",
+                              index,
+                              "cv",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {secretaryDocs[index]?.cv ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {secretaryDocs[index].cv.name}
+                            </span>
+                          </div>
+                        ) : secretary.cvUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={secretary.cvUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* SEFs */}
+          <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center">
+                <UserIcon className="h-6 w-6 text-purple-600 mr-2" />
+                <h2 className="text-xl font-semibold text-gray-900">
+                  SEFs (Signatory and Economic File)
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => addPersonToArray("sefs")}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              >
+                <PlusCircleIcon className="h-5 w-5 mr-1" />
+                Add SEF
+              </button>
+            </div>
+
+            {formData.sefs.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <UserIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>No SEFs added yet. Click "Add SEF" to get started.</p>
+              </div>
+            ) : (
+              formData.sefs.map((sef, index) => (
+                <div
+                  key={index}
+                  className="relative bg-purple-50 rounded-xl p-6 mb-6 border border-purple-200"
+                >
+                  <div className="absolute top-4 right-4">
+                    <button
+                      type="button"
+                      onClick={() => removePersonFromArray("sefs", index)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <AutoSuggestPersonInput
+                        label="Name"
+                        value={sef.name}
+                        onChange={(name) =>
+                          handleArrayChange("sefs", index, "name", name)
+                        }
+                        onAutoFill={(personDetails) =>
+                          handlePersonAutoFill("sefs", index, personDetails)
+                        }
+                        placeholder="Enter SEF name..."
+                        personType="SEF"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Nationality
+                      </label>
+                      <input
+                        type="text"
+                        value={sef.nationality}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "sefs",
+                            index,
+                            "nationality",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        QID Number
+                      </label>
+                      <input
+                        type="text"
+                        value={sef.qidNo}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "sefs",
+                            index,
+                            "qidNo",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Mobile Number
+                      </label>
+                      <input
+                        type="text"
+                        value={sef.mobileNo}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "sefs",
+                            index,
+                            "mobileNo",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={sef.email}
+                        onChange={(e) =>
+                          handleArrayChange(
+                            "sefs",
+                            index,
+                            "email",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* SEF Documents */}
+                  <div className="mt-6 space-y-4">
+                    <h4 className="text-md font-medium text-gray-900">
+                      Documents for SEF {index + 1}
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Visa Copy
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "sefs",
+                              index,
+                              "visaCopy",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {sefDocs[index]?.visaCopy ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {sefDocs[index].visaCopy.name}
+                            </span>
+                          </div>
+                        ) : sef.visaCopyUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={sef.visaCopyUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          QID Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "sefs",
+                              index,
+                              "qidDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {sefDocs[index]?.qidDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {sefDocs[index].qidDoc.name}
+                            </span>
+                          </div>
+                        ) : sef.qidDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={sef.qidDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          National Address Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "sefs",
+                              index,
+                              "nationalAddressDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {sefDocs[index]?.nationalAddressDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {sefDocs[index].nationalAddressDoc.name}
+                            </span>
+                          </div>
+                        ) : sef.nationalAddressDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={sef.nationalAddressDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Passport Document
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "sefs",
+                              index,
+                              "passportDoc",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {sefDocs[index]?.passportDoc ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {sefDocs[index].passportDoc.name}
+                            </span>
+                          </div>
+                        ) : sef.passportDocUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={sef.passportDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          CV
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            handlePersonDocumentChange(
+                              "sefs",
+                              index,
+                              "cv",
+                              e.target.files[0]
+                            )
+                          }
+                          className="mt-1 block w-full px-3 py-2"
+                        />
+                        {sefDocs[index]?.cv ? (
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <span className="truncate">
+                              {sefDocs[index].cv.name}
+                            </span>
+                          </div>
+                        ) : sef.cvUrl ? (
+                          <div className="mt-2 flex items-center text-sm text-blue-600">
+                            <PaperClipIcon className="h-4 w-4 mr-1" />
+                            <a
+                              href={sef.cvUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              View existing document
+                            </a>
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Previous job)
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))
             )}

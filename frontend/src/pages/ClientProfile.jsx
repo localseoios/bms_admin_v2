@@ -17,6 +17,7 @@ import {
   XCircleIcon,
   BriefcaseIcon,
   ChevronDownIcon,
+  ChevronUpIcon,
   SparklesIcon,
   DocumentIcon,
   IdentificationIcon,
@@ -61,6 +62,7 @@ function ClientProfile() {
   const [expandedService, setExpandedService] = useState(null);
   const [jobTimelines, setJobTimelines] = useState({});
   const [loadingTimelines, setLoadingTimelines] = useState({});
+  const [showTimelines, setShowTimelines] = useState({}); // State to control timeline visibility for each job
 
   // Person details states
   const [activePersonTab, setActivePersonTab] = useState("company");
@@ -83,14 +85,14 @@ function ClientProfile() {
   const [isAddNewMonthOpen, setIsAddNewMonthOpen] = useState({});
   const [activePaymentTabs, setActivePaymentTabs] = useState({});
 
-// Add these new state variables at the top of ClientProfile component
-const [kycDocumentModals, setKycDocumentModals] = useState({});
-const [kycDocumentUploading, setKycDocumentUploading] = useState({});
-const [deleteConfirmModals, setDeleteConfirmModals] = useState({});
+  // Add these new state variables at the top of ClientProfile component
+  const [kycDocumentModals, setKycDocumentModals] = useState({});
+  const [kycDocumentUploading, setKycDocumentUploading] = useState({});
+  const [deleteConfirmModals, setDeleteConfirmModals] = useState({});
 
-const [braDocumentModals, setBraDocumentModals] = useState({});
-const [braDocumentUploading, setBraDocumentUploading] = useState({});
-const [braDeleteConfirmModals, setBraDeleteConfirmModals] = useState({});
+  const [braDocumentModals, setBraDocumentModals] = useState({});
+  const [braDocumentUploading, setBraDocumentUploading] = useState({});
+  const [braDeleteConfirmModals, setBraDeleteConfirmModals] = useState({});
 
   // ADD THESE STATE VARIABLES (after existing state declarations)
   const [engagementLetters, setEngagementLetters] = useState([]);
@@ -156,6 +158,14 @@ const [braDeleteConfirmModals, setBraDeleteConfirmModals] = useState({});
       fetchBraStatus(expandedService);
     }
   }, [expandedService]);
+
+  // Toggle timeline visibility for a specific job
+  const toggleTimelineVisibility = (jobId) => {
+    setShowTimelines((prev) => ({
+      ...prev,
+      [jobId]: !prev[jobId]
+    }));
+  };
 
   const fetchJobTimeline = async (jobId) => {
     if (jobTimelines[jobId]) return;
@@ -321,996 +331,1249 @@ const [braDeleteConfirmModals, setBraDeleteConfirmModals] = useState({});
     </motion.div>
   );
 
-// KYC status fetch function
-const fetchKycStatus = async (jobId) => {
-  if (kycStatuses[jobId]) return;
-  setLoadingKycStatuses((prev) => ({ ...prev, [jobId]: true }));
+  // KYC status fetch function
+  const fetchKycStatus = async (jobId) => {
+    if (kycStatuses[jobId]) return;
+    setLoadingKycStatuses((prev) => ({ ...prev, [jobId]: true }));
 
-  try {
-    const response = await axiosInstance.get(`/kyc/jobs/${jobId}/status`);
-    console.log('KYC Status Response:', response.data);
-    setKycStatuses((prev) => ({ ...prev, [jobId]: response.data }));
-  } catch (err) {
-    console.error(`Error fetching KYC status for job ${jobId}:`, err);
-  } finally {
-    setLoadingKycStatuses((prev) => ({ ...prev, [jobId]: false }));
-  }
-};
-
-
-const getStageDisplayName = (stage) => {
-  const stageNames = {
-    lmro: "LMRO",
-    dlmro: "DLMRO", 
-    ceo: "CEO"
+    try {
+      const response = await axiosInstance.get(`/kyc/jobs/${jobId}/status`);
+      console.log("KYC Status Response:", response.data);
+      setKycStatuses((prev) => ({ ...prev, [jobId]: response.data }));
+    } catch (err) {
+      console.error(`Error fetching KYC status for job ${jobId}:`, err);
+    } finally {
+      setLoadingKycStatuses((prev) => ({ ...prev, [jobId]: false }));
+    }
   };
-  return stageNames[stage] || stage.toUpperCase();
-};
 
-
-// Helper function to handle KYC document update
-const handleUpdateKycDocument = async (jobId, stage, file, notes = '') => {
-  try {
-    setKycDocumentUploading(prev => ({
-      ...prev,
-      [`${jobId}-${stage}`]: true
-    }));
-
-    const formData = new FormData();
-    formData.append('document', file);
-    if (notes) {
-      formData.append('notes', notes);
-    }
-
-    const response = await axiosInstance.put(
-      `/kyc/jobs/${jobId}/documents/${stage}/update`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
-    );
-
-    if (response.status === 200) {
-      toast.success(`${getStageDisplayName(stage)} document updated successfully!`);
-      
-      // Refresh KYC status
-      await fetchKycStatus(jobId);
-      
-      // Close modal
-      setKycDocumentModals(prev => ({
-        ...prev,
-        [`${jobId}-${stage}`]: false
-      }));
-    }
-  } catch (error) {
-    console.error(`Error updating ${stage} document:`, error);
-    toast.error(
-      error.response?.data?.message || 
-      `Failed to update ${getStageDisplayName(stage)} document`
-    );
-  } finally {
-    setKycDocumentUploading(prev => ({
-      ...prev,
-      [`${jobId}-${stage}`]: false
-    }));
-  }
-};
-
-// Helper function to handle KYC document deletion
-const handleDeleteKycDocument = async (jobId, stage) => {
-  try {
-    const response = await axiosInstance.delete(
-      `/kyc/jobs/${jobId}/documents/${stage}/delete`
-    );
-
-    if (response.status === 200) {
-      toast.success(`${getStageDisplayName(stage)} document deleted successfully!`);
-      
-      // Refresh KYC status
-      await fetchKycStatus(jobId);
-      
-      // Close confirmation modal
-      setDeleteConfirmModals(prev => ({
-        ...prev,
-        [`${jobId}-${stage}`]: false
-      }));
-    }
-  } catch (error) {
-    console.error(`Error deleting ${stage} document:`, error);
-    toast.error(
-      error.response?.data?.message || 
-      `Failed to delete ${getStageDisplayName(stage)} document`
-    );
-  }
-};
-
-// Enhanced KYC document rendering with edit/delete functionality
-const renderEnhancedKycDocumentSection = (kycData, jobId) => {
-  const documents = [];
-  
-  // Helper to create document object
-  const createDocumentInfo = (stage, approval) => {
-    if (!approval?.document?.fileUrl) return null;
-    
-    return {
-      stage,
-      stageLabel: getStageDisplayName(stage),
-      document: approval.document,
-      approval: approval,
-      canEdit: true, // You can add role-based permissions here
-      canDelete: true, // You can add role-based permissions here
+  const getStageDisplayName = (stage) => {
+    const stageNames = {
+      lmro: "LMRO",
+      dlmro: "DLMRO",
+      ceo: "CEO",
     };
+    return stageNames[stage] || stage.toUpperCase();
   };
 
-  // Collect all available documents
-  if (kycData.lmroApproval?.document?.fileUrl) {
-    documents.push(createDocumentInfo('lmro', kycData.lmroApproval));
-  }
-  
-  if (kycData.dlmroApproval?.document?.fileUrl) {
-    documents.push(createDocumentInfo('dlmro', kycData.dlmroApproval));
-  }
-  
-  if (kycData.ceoApproval?.document?.fileUrl) {
-    documents.push(createDocumentInfo('ceo', kycData.ceoApproval));
-  }
+  // Helper function to handle KYC document update
+  const handleUpdateKycDocument = async (jobId, stage, file, notes = "") => {
+    try {
+      setKycDocumentUploading((prev) => ({
+        ...prev,
+        [`${jobId}-${stage}`]: true,
+      }));
 
-  if (documents.length === 0) {
-    return (
-      <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
-        <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-        <p className="text-sm text-gray-500">
-          No KYC documents have been uploaded yet.
-        </p>
-      </div>
-    );
-  }
+      const formData = new FormData();
+      formData.append("document", file);
+      if (notes) {
+        formData.append("notes", notes);
+      }
 
-  return (
-    <div className="space-y-3">
-      {documents.map((doc) => {
-        const stageColors = {
-          lmro: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', icon: 'text-blue-600' },
-          dlmro: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', icon: 'text-purple-600' },
-          ceo: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-800', icon: 'text-indigo-600' }
-        };
-        const colors = stageColors[doc.stage];
+      const response = await axiosInstance.put(
+        `/kyc/jobs/${jobId}/documents/${stage}/update`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
-        return (
-          <div
-            key={doc.stage}
-            className={`group relative ${colors.bg} rounded-lg p-4 transition-all duration-200 hover:shadow-md ${colors.border}`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start flex-1">
-                <div className="flex-shrink-0">
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-md bg-white ${colors.icon} shadow-sm`}>
-                    {doc.stage === 'lmro' && <UserGroupIcon className="h-5 w-5" />}
-                    {doc.stage === 'dlmro' && <ClipboardDocumentCheckIcon className="h-5 w-5" />}
-                    {doc.stage === 'ceo' && <LockClosedIcon className="h-5 w-5" />}
-                  </span>
-                </div>
-                <div className="ml-4 flex-1">
-                  <h6 className={`text-sm font-medium ${colors.text}`}>
-                    {doc.stageLabel} Document
-                  </h6>
-                  <p className={`mt-1 text-xs flex items-center flex-wrap gap-2`}>
-                    <span className="flex items-center">
-                      <DocumentTextIcon className="h-3 w-3 mr-1" />
-                      {doc.document.fileName || "Document"}
-                    </span>
-                    <span className="mx-1">•</span>
-                    {doc.approval.approved ? (
-                      <span className="inline-flex items-center text-green-700">
-                        <CheckIcon className="h-3 w-3 mr-0.5" /> Approved
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center text-yellow-700">
-                        <ClockIcon className="h-3 w-3 mr-0.5" /> Pending
-                      </span>
-                    )}
-                  </p>
-                  
-                  {/* Document Details */}
-                  <div className="mt-2 space-y-1">
-                    {doc.document.uploadedBy && (
-                      <p className="text-xs text-gray-600">
-                        <UserIcon className="h-3 w-3 inline mr-1" />
-                        Uploaded by: <span className="font-medium">{doc.document.uploadedBy.name || 'Unknown User'}</span>
-                      </p>
-                    )}
-                    {doc.document.uploadedAt && (
-                      <p className="text-xs text-gray-600">
-                        <CalendarIcon className="h-3 w-3 inline mr-1" />
-                        Uploaded: {new Date(doc.document.uploadedAt).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    )}
-{doc.approval.modifiedAt && doc.approval.modifiedBy && (
-  <p className="text-xs text-amber-600">
-    <PencilIcon className="h-3 w-3 inline mr-1" />
-    Modified by: <span className="font-medium">
-      {/* DEBUG: Check what data is available */}
-      {console.log('Modified by data:', doc.approval.modifiedBy)}
-      {doc.approval.modifiedBy?.name || doc.approval.modifiedBy || 'Unknown User'}
-    </span>
-    {' '}on {new Date(doc.approval.modifiedAt).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })}
-  </p>
-)}
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="mt-3 flex items-center gap-2">
-                    <a
-                      href={doc.document.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
-                    >
-                      <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
-                      Download
-                    </a>
-                    
-                    {doc.canEdit && (
-                      <button
-                        onClick={() => setKycDocumentModals(prev => ({
-                          ...prev,
-                          [`${jobId}-${doc.stage}`]: true
-                        }))}
-                        className="inline-flex items-center text-xs text-amber-600 hover:text-amber-800 bg-white rounded-md px-2 py-1 border border-amber-200 hover:bg-amber-50 transition-colors"
-                      >
-                        <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                        Replace
-                      </button>
-                    )}
-                    
-                    {doc.canDelete && (
-                      <button
-                        onClick={() => setDeleteConfirmModals(prev => ({
-                          ...prev,
-                          [`${jobId}-${doc.stage}`]: true
-                        }))}
-                        className="inline-flex items-center text-xs text-red-600 hover:text-red-800 bg-white rounded-md px-2 py-1 border border-red-200 hover:bg-red-50 transition-colors"
-                      >
-                        <TrashIcon className="h-3.5 w-3.5 mr-1" />
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      if (response.status === 200) {
+        toast.success(
+          `${getStageDisplayName(stage)} document updated successfully!`
         );
-      })}
-    </div>
-  );
-};
 
-// Document Update Modal Component
-const KycDocumentUpdateModal = ({ isOpen, onClose, jobId, stage, onUpdate }) => {
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [notes, setNotes] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
+        // Refresh KYC status
+        await fetchKycStatus(jobId);
 
-  const handleFileSelect = (file) => {
-    setSelectedFile(file);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFileSelect(files[0]);
-    }
-  };
-
-  const handleSubmit = () => {
-    if (selectedFile) {
-      onUpdate(jobId, stage, selectedFile, notes);
-    }
-  };
-
-  const resetForm = () => {
-    setSelectedFile(null);
-    setNotes('');
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">
-            Replace {getStageDisplayName(stage)} Document
-          </h3>
-        </div>
-        
-        <div className="px-6 py-4 space-y-4">
-          {/* File Upload Area */}
-          <div 
-            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-              isDragging 
-                ? 'border-blue-400 bg-blue-50' 
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-          >
-            {selectedFile ? (
-              <div className="text-sm">
-                <DocumentTextIcon className="h-8 w-8 mx-auto text-green-500 mb-2" />
-                <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                <p className="text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                <button
-                  onClick={() => setSelectedFile(null)}
-                  className="mt-2 text-red-600 hover:text-red-800 text-sm"
-                >
-                  Remove file
-                </button>
-              </div>
-            ) : (
-              <div>
-                <DocumentTextIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                <p className="text-sm text-gray-600 mb-2">
-                  Drag and drop a file here, or click to select
-                </p>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFileSelect(e.target.files[0]);
-                    }
-                  }}
-                  className="hidden"
-                  id={`file-input-${stage}`}
-                />
-                <label
-                  htmlFor={`file-input-${stage}`}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
-                >
-                  Choose File
-                </label>
-              </div>
-            )}
-          </div>
-
-          {/* Notes Field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes (optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-              placeholder="Add any notes about this document update..."
-            />
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            onClick={() => {
-              resetForm();
-              onClose();
-            }}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!selectedFile || kycDocumentUploading[`${jobId}-${stage}`]}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-          >
-            {kycDocumentUploading[`${jobId}-${stage}`] ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                Uploading...
-              </>
-            ) : (
-              'Replace Document'
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Delete Confirmation Modal Component
-const KycDocumentDeleteModal = ({ isOpen, onClose, jobId, stage, onDelete }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        <div className="px-6 py-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-lg font-medium text-gray-900">
-                Delete {getStageDisplayName(stage)} Document
-              </h3>
-              <p className="mt-2 text-sm text-gray-500">
-                Are you sure you want to delete this document? This action cannot be undone.
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onDelete(jobId, stage)}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
-          >
-            Delete Document
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-const handleUpdateBraDocument = async (jobId, stage, file, notes = '') => {
-  try {
-    setBraDocumentUploading(prev => ({
-      ...prev,
-      [`${jobId}-${stage}`]: true
-    }));
-
-    const formData = new FormData();
-    formData.append('document', file);
-    if (notes) {
-      formData.append('notes', notes);
-    }
-
-    const response = await axiosInstance.put(
-      `/bra/jobs/${jobId}/documents/${stage}/update`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        // Close modal
+        setKycDocumentModals((prev) => ({
+          ...prev,
+          [`${jobId}-${stage}`]: false,
+        }));
       }
-    );
-
-    if (response.status === 200) {
-      toast.success(`${getStageDisplayName(stage)} document updated successfully!`);
-      await fetchBraStatus(jobId);
-      setBraDocumentModals(prev => ({
+    } catch (error) {
+      console.error(`Error updating ${stage} document:`, error);
+      toast.error(
+        error.response?.data?.message ||
+          `Failed to update ${getStageDisplayName(stage)} document`
+      );
+    } finally {
+      setKycDocumentUploading((prev) => ({
         ...prev,
-        [`${jobId}-${stage}`]: false
+        [`${jobId}-${stage}`]: false,
       }));
     }
-  } catch (error) {
-    console.error(`Error updating ${stage} document:`, error);
-    toast.error(
-      error.response?.data?.message || 
-      `Failed to update ${getStageDisplayName(stage)} document`
-    );
-  } finally {
-    setBraDocumentUploading(prev => ({
-      ...prev,
-      [`${jobId}-${stage}`]: false
-    }));
-  }
-};
-
-const handleDeleteBraDocument = async (jobId, stage) => {
-  try {
-    const response = await axiosInstance.delete(
-      `/bra/jobs/${jobId}/documents/${stage}/delete`
-    );
-
-    if (response.status === 200) {
-      toast.success(`${getStageDisplayName(stage)} document deleted successfully!`);
-      await fetchBraStatus(jobId);
-      setBraDeleteConfirmModals(prev => ({
-        ...prev,
-        [`${jobId}-${stage}`]: false
-      }));
-    }
-  } catch (error) {
-    console.error(`Error deleting ${stage} document:`, error);
-    toast.error(
-      error.response?.data?.message || 
-      `Failed to delete ${getStageDisplayName(stage)} document`
-    );
-  }
-};
-
-const renderEnhancedBraDocumentSection = (braData, jobId) => {
-  const documents = [];
-  
-  const createDocumentInfo = (stage, approval) => {
-    if (!approval?.document?.fileUrl) return null;
-    
-    return {
-      stage,
-      stageLabel: getStageDisplayName(stage),
-      document: approval.document,
-      approval: approval,
-      canEdit: true,
-      canDelete: true,
-    };
   };
 
-  if (braData.lmroApproval?.document?.fileUrl) {
-    documents.push(createDocumentInfo('lmro', braData.lmroApproval));
-  }
-  
-  if (braData.dlmroApproval?.document?.fileUrl) {
-    documents.push(createDocumentInfo('dlmro', braData.dlmroApproval));
-  }
-  
-  if (braData.ceoApproval?.document?.fileUrl) {
-    documents.push(createDocumentInfo('ceo', braData.ceoApproval));
-  }
+  // Helper function to handle KYC document deletion
+  const handleDeleteKycDocument = async (jobId, stage) => {
+    try {
+      const response = await axiosInstance.delete(
+        `/kyc/jobs/${jobId}/documents/${stage}/delete`
+      );
 
-  if (documents.length === 0) {
+      if (response.status === 200) {
+        toast.success(
+          `${getStageDisplayName(stage)} document deleted successfully!`
+        );
+
+        // Refresh KYC status
+        await fetchKycStatus(jobId);
+
+        // Close confirmation modal
+        setDeleteConfirmModals((prev) => ({
+          ...prev,
+          [`${jobId}-${stage}`]: false,
+        }));
+      }
+    } catch (error) {
+      console.error(`Error deleting ${stage} document:`, error);
+      toast.error(
+        error.response?.data?.message ||
+          `Failed to delete ${getStageDisplayName(stage)} document`
+      );
+    }
+  };
+
+  // Enhanced KYC document rendering with edit/delete functionality
+  const renderEnhancedKycDocumentSection = (kycData, jobId) => {
+    const documents = [];
+
+    // Helper to create document object
+    const createDocumentInfo = (stage, approval) => {
+      if (!approval?.document?.fileUrl) return null;
+
+      return {
+        stage,
+        stageLabel: getStageDisplayName(stage),
+        document: approval.document,
+        approval: approval,
+        canEdit: true, // You can add role-based permissions here
+        canDelete: true, // You can add role-based permissions here
+      };
+    };
+
+    // Collect all available documents
+    if (kycData.lmroApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("lmro", kycData.lmroApproval));
+    }
+
+    if (kycData.dlmroApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("dlmro", kycData.dlmroApproval));
+    }
+
+    if (kycData.ceoApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("ceo", kycData.ceoApproval));
+    }
+
+    if (documents.length === 0) {
+      return (
+        <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
+          <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-sm text-gray-500 mb-4">
+            No KYC documents have been uploaded yet.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() =>
+                setKycDocumentModals((prev) => ({
+                  ...prev,
+                  [`${jobId}-ceo`]: true,
+                }))
+              }
+              className="inline-flex items-center px-3 py-2 border border-indigo-300 rounded-md text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+            >
+              <PlusIcon className="h-4 w-4 mr-1" />
+              Upload CEO Document
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
-        <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-        <p className="text-sm text-gray-500">
-          No BRA documents have been uploaded yet.
-        </p>
-      </div>
-    );
-  }
+      <div className="space-y-3">
+        {documents.map((doc) => {
+          const stageColors = {
+            lmro: {
+              bg: "bg-blue-50",
+              border: "border-blue-200",
+              text: "text-blue-800",
+              icon: "text-blue-600",
+            },
+            dlmro: {
+              bg: "bg-purple-50",
+              border: "border-purple-200",
+              text: "text-purple-800",
+              icon: "text-purple-600",
+            },
+            ceo: {
+              bg: "bg-indigo-50",
+              border: "border-indigo-200",
+              text: "text-indigo-800",
+              icon: "text-indigo-600",
+            },
+          };
+          const colors = stageColors[doc.stage];
 
-  return (
-    <div className="space-y-3">
-      {documents.map((doc) => {
-        const stageColors = {
-          lmro: { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800', icon: 'text-teal-600' },
-          dlmro: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', icon: 'text-purple-600' },
-          ceo: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-800', icon: 'text-indigo-600' }
-        };
-        const colors = stageColors[doc.stage];
-
-        return (
-          <div
-            key={doc.stage}
-            className={`group relative ${colors.bg} rounded-lg p-4 transition-all duration-200 hover:shadow-md ${colors.border}`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start flex-1">
-                <div className="flex-shrink-0">
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-md bg-white ${colors.icon} shadow-sm`}>
-                    {doc.stage === 'lmro' && <UserGroupIcon className="h-5 w-5" />}
-                    {doc.stage === 'dlmro' && <ClipboardDocumentCheckIcon className="h-5 w-5" />}
-                    {doc.stage === 'ceo' && <LockClosedIcon className="h-5 w-5" />}
-                  </span>
-                </div>
-                <div className="ml-4 flex-1">
-                  <h6 className={`text-sm font-medium ${colors.text}`}>
-                    {doc.stageLabel} Document
-                  </h6>
-                  <p className={`mt-1 text-xs flex items-center flex-wrap gap-2`}>
-                    <span className="flex items-center">
-                      <DocumentTextIcon className="h-3 w-3 mr-1" />
-                      {doc.document.fileName || "Document"}
+          return (
+            <div
+              key={doc.stage}
+              className={`group relative ${colors.bg} rounded-lg p-4 transition-all duration-200 hover:shadow-md ${colors.border}`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-start flex-1">
+                  <div className="flex-shrink-0">
+                    <span
+                      className={`flex h-10 w-10 items-center justify-center rounded-md bg-white ${colors.icon} shadow-sm`}
+                    >
+                      {doc.stage === "lmro" && (
+                        <UserGroupIcon className="h-5 w-5" />
+                      )}
+                      {doc.stage === "dlmro" && (
+                        <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                      )}
+                      {doc.stage === "ceo" && (
+                        <LockClosedIcon className="h-5 w-5" />
+                      )}
                     </span>
-                    <span className="mx-1">•</span>
-                    {doc.approval.approved ? (
-                      <span className="inline-flex items-center text-green-700">
-                        <CheckIcon className="h-3 w-3 mr-0.5" /> Approved
+                  </div>
+                  <div className="ml-4 flex-1">
+                    <h6 className={`text-sm font-medium ${colors.text}`}>
+                      {doc.stageLabel} Document
+                    </h6>
+                    <p
+                      className={`mt-1 text-xs flex items-center flex-wrap gap-2`}
+                    >
+                      <span className="flex items-center">
+                        <DocumentTextIcon className="h-3 w-3 mr-1" />
+                        {doc.document.fileName || "Document"}
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center text-yellow-700">
-                        <ClockIcon className="h-3 w-3 mr-0.5" /> Pending
-                      </span>
-                    )}
-                  </p>
-                  
-                  <div className="mt-2 space-y-1">
-                    {doc.document.uploadedBy && (
-                      <p className="text-xs text-gray-600">
-                        <UserIcon className="h-3 w-3 inline mr-1" />
-                        Uploaded by: <span className="font-medium">{doc.document.uploadedBy.name || 'Unknown User'}</span>
-                      </p>
-                    )}
-                    {doc.document.uploadedAt && (
-                      <p className="text-xs text-gray-600">
-                        <CalendarIcon className="h-3 w-3 inline mr-1" />
-                        Uploaded: {new Date(doc.document.uploadedAt).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    )}
-                    {doc.approval.modifiedAt && doc.approval.modifiedBy && (
-                      <p className="text-xs text-amber-600">
-                        <PencilIcon className="h-3 w-3 inline mr-1" />
-                        Modified by: <span className="font-medium">
-                          {doc.approval.modifiedBy?.name || 'Unknown User'}
+                      <span className="mx-1">•</span>
+                      {doc.approval.approved ? (
+                        <span className="inline-flex items-center text-green-700">
+                          <CheckIcon className="h-3 w-3 mr-0.5" /> Approved
                         </span>
-                        {' '}on {new Date(doc.approval.modifiedAt).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    )}
-                  </div>
+                      ) : (
+                        <span className="inline-flex items-center text-yellow-700">
+                          <ClockIcon className="h-3 w-3 mr-0.5" /> Pending
+                        </span>
+                      )}
+                    </p>
 
-                  <div className="mt-3 flex items-center gap-2">
-                    <a
-                      href={doc.document.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
-                    >
-                      <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
-                      Download
-                    </a>
-                    
-                    {doc.canEdit && (
-                      <button
-                        onClick={() => setBraDocumentModals(prev => ({
-                          ...prev,
-                          [`${jobId}-${doc.stage}`]: true
-                        }))}
-                        className="inline-flex items-center text-xs text-amber-600 hover:text-amber-800 bg-white rounded-md px-2 py-1 border border-amber-200 hover:bg-amber-50 transition-colors"
+                    {/* Document Details */}
+                    <div className="mt-2 space-y-1">
+                      {doc.document.uploadedBy && (
+                        <p className="text-xs text-gray-600">
+                          <UserIcon className="h-3 w-3 inline mr-1" />
+                          Uploaded by:{" "}
+                          <span className="font-medium">
+                            {doc.document.uploadedBy.name || "Unknown User"}
+                          </span>
+                        </p>
+                      )}
+                      {doc.document.uploadedAt && (
+                        <p className="text-xs text-gray-600">
+                          <CalendarIcon className="h-3 w-3 inline mr-1" />
+                          Uploaded:{" "}
+                          {new Date(doc.document.uploadedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </p>
+                      )}
+                      {doc.approval.modifiedAt && doc.approval.modifiedBy && (
+                        <p className="text-xs text-amber-600">
+                          <PencilIcon className="h-3 w-3 inline mr-1" />
+                          Modified by:{" "}
+                          <span className="font-medium">
+                            {/* DEBUG: Check what data is available */}
+                            {console.log(
+                              "Modified by data:",
+                              doc.approval.modifiedBy
+                            )}
+                            {doc.approval.modifiedBy?.name ||
+                              doc.approval.modifiedBy ||
+                              "Unknown User"}
+                          </span>{" "}
+                          on{" "}
+                          {new Date(doc.approval.modifiedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="mt-3 flex items-center gap-2">
+                      <a
+                        href={doc.document.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
                       >
-                        <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                        Replace
-                      </button>
-                    )}
-                    
-                    {doc.canDelete && (
-                      <button
-                        onClick={() => setBraDeleteConfirmModals(prev => ({
-                          ...prev,
-                          [`${jobId}-${doc.stage}`]: true
-                        }))}
-                        className="inline-flex items-center text-xs text-red-600 hover:text-red-800 bg-white rounded-md px-2 py-1 border border-red-200 hover:bg-red-50 transition-colors"
+                        <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
+                        Download
+                      </a>
+
+                      {doc.canEdit && (
+                        <button
+                          onClick={() =>
+                            setKycDocumentModals((prev) => ({
+                              ...prev,
+                              [`${jobId}-${doc.stage}`]: true,
+                            }))
+                          }
+                          className="inline-flex items-center text-xs text-amber-600 hover:text-amber-800 bg-white rounded-md px-2 py-1 border border-amber-200 hover:bg-amber-50 transition-colors"
+                        >
+                          <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                          Replace
+                        </button>
+                      )}
+
+                      {doc.canDelete && (
+                        <button
+                          onClick={() =>
+                            setDeleteConfirmModals((prev) => ({
+                              ...prev,
+                              [`${jobId}-${doc.stage}`]: true,
+                            }))
+                          }
+                          className="inline-flex items-center text-xs text-red-600 hover:text-red-800 bg-white rounded-md px-2 py-1 border border-red-200 hover:bg-red-50 transition-colors"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5 mr-1" />
+                          Delete
+                        </button>
+                      )}
+
+                      {/* Add More Documents Button */}
+                      {/* <button
+                        onClick={() =>
+                          setKycDocumentModals((prev) => ({
+                            ...prev,
+                            [`${jobId}-${doc.stage}-additional`]: true,
+                          }))
+                        }
+                        className="inline-flex items-center text-xs text-green-600 hover:text-green-800 bg-white rounded-md px-2 py-1 border border-green-200 hover:bg-green-50 transition-colors"
+                        title={`Upload additional ${doc.stageLabel} documents`}
                       >
-                        <TrashIcon className="h-3.5 w-3.5 mr-1" />
-                        Delete
-                      </button>
-                    )}
+                        <PlusIcon className="h-3.5 w-3.5 mr-1" />
+                        + More
+                      </button> */}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
+          );
+        })}
 
-// STEP 3: ADD THESE MODAL COMPONENTS (after your existing KYC modal components)
+        {/* Upload buttons for missing CEO stage only */}
+        {(() => {
+          const existingStages = documents.map(doc => doc.stage);
+          const isCeoMissing = !existingStages.includes('ceo');
 
-const BraDocumentUpdateModal = ({ isOpen, onClose, jobId, stage, onUpdate }) => {
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [notes, setNotes] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
+          if (!isCeoMissing) return null;
 
-  const handleFileSelect = (file) => {
-    setSelectedFile(file);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFileSelect(files[0]);
-    }
-  };
-
-  const handleSubmit = () => {
-    if (selectedFile) {
-      onUpdate(jobId, stage, selectedFile, notes);
-    }
-  };
-
-  const resetForm = () => {
-    setSelectedFile(null);
-    setNotes('');
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">
-            Replace {getStageDisplayName(stage)} Document
-          </h3>
-        </div>
-        
-        <div className="px-6 py-4 space-y-4">
-          <div 
-            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-              isDragging 
-                ? 'border-teal-400 bg-teal-50' 
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-          >
-            {selectedFile ? (
-              <div className="text-sm">
-                <DocumentTextIcon className="h-8 w-8 mx-auto text-green-500 mb-2" />
-                <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                <p className="text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+          return (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-sm text-gray-600 mb-3">Upload CEO documents:</p>
+              <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => setSelectedFile(null)}
-                  className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                  onClick={() =>
+                    setKycDocumentModals((prev) => ({
+                      ...prev,
+                      [`${jobId}-ceo`]: true,
+                    }))
+                  }
+                  className="inline-flex items-center px-3 py-2 border border-indigo-300 rounded-md text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
                 >
-                  Remove file
+                  <PlusIcon className="h-4 w-4 mr-1" />
+                  Upload CEO Document
                 </button>
               </div>
-            ) : (
-              <div>
-                <DocumentTextIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                <p className="text-sm text-gray-600 mb-2">
-                  Drag and drop a file here, or click to select
-                </p>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFileSelect(e.target.files[0]);
-                    }
-                  }}
-                  className="hidden"
-                  id={`bra-file-input-${stage}`}
-                />
-                <label
-                  htmlFor={`bra-file-input-${stage}`}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
-                >
-                  Choose File
-                </label>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  };
+
+  // Document Update Modal Component
+  const KycDocumentUpdateModal = ({
+    isOpen,
+    onClose,
+    jobId,
+    stage,
+    onUpdate,
+  }) => {
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [notes, setNotes] = useState("");
+    const [isDragging, setIsDragging] = useState(false);
+
+    const handleFileSelect = (file) => {
+      setSelectedFile(file);
+    };
+
+    const handleDrop = (e) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        handleFileSelect(files[0]);
+      }
+    };
+
+    const handleSubmit = () => {
+      if (selectedFile) {
+        onUpdate(jobId, stage, selectedFile, notes);
+      }
+    };
+
+    const resetForm = () => {
+      setSelectedFile(null);
+      setNotes("");
+    };
+
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">
+              Replace {getStageDisplayName(stage)} Document
+            </h3>
+          </div>
+
+          <div className="px-6 py-4 space-y-4">
+            {/* File Upload Area */}
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                isDragging
+                  ? "border-blue-400 bg-blue-50"
+                  : "border-gray-300 hover:border-gray-400"
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+            >
+              {selectedFile ? (
+                <div className="text-sm">
+                  <DocumentTextIcon className="h-8 w-8 mx-auto text-green-500 mb-2" />
+                  <p className="font-medium text-gray-900">
+                    {selectedFile.name}
+                  </p>
+                  <p className="text-gray-500">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                  <button
+                    onClick={() => setSelectedFile(null)}
+                    className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                  >
+                    Remove file
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <DocumentTextIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-600 mb-2">
+                    Drag and drop a file here, or click to select
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileSelect(e.target.files[0]);
+                      }
+                    }}
+                    className="hidden"
+                    id={`file-input-${stage}`}
+                  />
+                  <label
+                    htmlFor={`file-input-${stage}`}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                  >
+                    Choose File
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Notes Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                placeholder="Add any notes about this document update..."
+              />
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+            <button
+              onClick={() => {
+                resetForm();
+                onClose();
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={
+                !selectedFile || kycDocumentUploading[`${jobId}-${stage}`]
+              }
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            >
+              {kycDocumentUploading[`${jobId}-${stage}`] ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                  Uploading...
+                </>
+              ) : (
+                "Replace Document"
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Delete Confirmation Modal Component
+  const KycDocumentDeleteModal = ({
+    isOpen,
+    onClose,
+    jobId,
+    stage,
+    onDelete,
+  }) => {
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+          <div className="px-6 py-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
               </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes (optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-              placeholder="Add any notes about this document update..."
-            />
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            onClick={() => {
-              resetForm();
-              onClose();
-            }}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!selectedFile || braDocumentUploading[`${jobId}-${stage}`]}
-            className="px-4 py-2 text-sm font-medium text-white bg-teal-600 border border-transparent rounded-md hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-          >
-            {braDocumentUploading[`${jobId}-${stage}`] ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                Uploading...
-              </>
-            ) : (
-              'Replace Document'
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const BraDocumentDeleteModal = ({ isOpen, onClose, jobId, stage, onDelete }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        <div className="px-6 py-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-lg font-medium text-gray-900">
-                Delete {getStageDisplayName(stage)} Document
-              </h3>
-              <p className="mt-2 text-sm text-gray-500">
-                Are you sure you want to delete this document? This action cannot be undone.
-              </p>
+              <div className="ml-3">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Delete {getStageDisplayName(stage)} Document
+                </h3>
+                <p className="mt-2 text-sm text-gray-500">
+                  Are you sure you want to delete this document? This action
+                  cannot be undone.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-        
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onDelete(jobId, stage)}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
-          >
-            Delete Document
-          </button>
+
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onDelete(jobId, stage)}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
+            >
+              Delete Document
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
+  const handleUpdateBraDocument = async (jobId, stage, file, notes = "") => {
+    try {
+      setBraDocumentUploading((prev) => ({
+        ...prev,
+        [`${jobId}-${stage}`]: true,
+      }));
 
+      const formData = new FormData();
+      formData.append("document", file);
+      if (notes) {
+        formData.append("notes", notes);
+      }
 
-// Add this updated handleUploadInvoice function to your ClientProfile.jsx
-// Replace the existing handleUploadInvoice function with this one:
+      const response = await axiosInstance.put(
+        `/bra/jobs/${jobId}/documents/${stage}/update`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
-const handleUploadInvoice = async (payment, isReplacing = false) => {
-  try {
-    console.log("handleUploadInvoice called with:", { payment, isReplacing });
-    
-    // Validate payment object and ID
-    if (!payment || (!payment._id && !payment.id)) {
-      toast.error('Invalid payment record. Please refresh the page and try again.');
-      return;
+      if (response.status === 200) {
+        toast.success(
+          `${getStageDisplayName(stage)} document updated successfully!`
+        );
+        await fetchBraStatus(jobId);
+        setBraDocumentModals((prev) => ({
+          ...prev,
+          [`${jobId}-${stage}`]: false,
+        }));
+      }
+    } catch (error) {
+      console.error(`Error updating ${stage} document:`, error);
+      toast.error(
+        error.response?.data?.message ||
+          `Failed to update ${getStageDisplayName(stage)} document`
+      );
+    } finally {
+      setBraDocumentUploading((prev) => ({
+        ...prev,
+        [`${jobId}-${stage}`]: false,
+      }));
+    }
+  };
+
+  const handleDeleteBraDocument = async (jobId, stage) => {
+    try {
+      const response = await axiosInstance.delete(
+        `/bra/jobs/${jobId}/documents/${stage}/delete`
+      );
+
+      if (response.status === 200) {
+        toast.success(
+          `${getStageDisplayName(stage)} document deleted successfully!`
+        );
+        await fetchBraStatus(jobId);
+        setBraDeleteConfirmModals((prev) => ({
+          ...prev,
+          [`${jobId}-${stage}`]: false,
+        }));
+      }
+    } catch (error) {
+      console.error(`Error deleting ${stage} document:`, error);
+      toast.error(
+        error.response?.data?.message ||
+          `Failed to delete ${getStageDisplayName(stage)} document`
+      );
+    }
+  };
+
+  const renderEnhancedBraDocumentSection = (braData, jobId) => {
+    const documents = [];
+
+    const createDocumentInfo = (stage, approval) => {
+      if (!approval?.document?.fileUrl) return null;
+
+      return {
+        stage,
+        stageLabel: getStageDisplayName(stage),
+        document: approval.document,
+        approval: approval,
+        canEdit: true,
+        canDelete: true,
+      };
+    };
+
+    if (braData.lmroApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("lmro", braData.lmroApproval));
     }
 
-    // Use _id as primary, fall back to id if _id doesn't exist
-    const paymentId = payment._id || payment.id;
-    
-    if (!paymentId || paymentId === 'undefined') {
-      toast.error('Payment ID is missing. Please refresh the page and try again.');
-      return;
+    if (braData.dlmroApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("dlmro", braData.dlmroApproval));
     }
 
-    console.log("Using paymentId:", paymentId);
+    if (braData.ceoApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("ceo", braData.ceoApproval));
+    }
 
-    // Create a file input element
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
-    
-    fileInput.onchange = async (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
+    if (documents.length === 0) {
+      return (
+        <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
+          <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-sm text-gray-500 mb-4">
+            No BRA documents have been uploaded yet.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() =>
+                setBraDocumentModals((prev) => ({
+                  ...prev,
+                  [`${jobId}-ceo`]: true,
+                }))
+              }
+              className="inline-flex items-center px-3 py-2 border border-emerald-300 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-colors"
+            >
+              <PlusIcon className="h-4 w-4 mr-1" />
+              Upload CEO Document
+            </button>
+          </div>
+        </div>
+      );
+    }
 
-      // Validate file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('File size must be less than 5MB');
+    return (
+      <div className="space-y-3">
+        {documents.map((doc) => {
+          const stageColors = {
+            lmro: {
+              bg: "bg-teal-50",
+              border: "border-teal-200",
+              text: "text-teal-800",
+              icon: "text-teal-600",
+            },
+            dlmro: {
+              bg: "bg-purple-50",
+              border: "border-purple-200",
+              text: "text-purple-800",
+              icon: "text-purple-600",
+            },
+            ceo: {
+              bg: "bg-indigo-50",
+              border: "border-indigo-200",
+              text: "text-indigo-800",
+              icon: "text-indigo-600",
+            },
+          };
+          const colors = stageColors[doc.stage];
+
+          return (
+            <div
+              key={doc.stage}
+              className={`group relative ${colors.bg} rounded-lg p-4 transition-all duration-200 hover:shadow-md ${colors.border}`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-start flex-1">
+                  <div className="flex-shrink-0">
+                    <span
+                      className={`flex h-10 w-10 items-center justify-center rounded-md bg-white ${colors.icon} shadow-sm`}
+                    >
+                      {doc.stage === "lmro" && (
+                        <UserGroupIcon className="h-5 w-5" />
+                      )}
+                      {doc.stage === "dlmro" && (
+                        <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                      )}
+                      {doc.stage === "ceo" && (
+                        <LockClosedIcon className="h-5 w-5" />
+                      )}
+                    </span>
+                  </div>
+                  <div className="ml-4 flex-1">
+                    <h6 className={`text-sm font-medium ${colors.text}`}>
+                      {doc.stageLabel} Document
+                    </h6>
+                    <p
+                      className={`mt-1 text-xs flex items-center flex-wrap gap-2`}
+                    >
+                      <span className="flex items-center">
+                        <DocumentTextIcon className="h-3 w-3 mr-1" />
+                        {doc.document.fileName || "Document"}
+                      </span>
+                      <span className="mx-1">•</span>
+                      {doc.approval.approved ? (
+                        <span className="inline-flex items-center text-green-700">
+                          <CheckIcon className="h-3 w-3 mr-0.5" /> Approved
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-yellow-700">
+                          <ClockIcon className="h-3 w-3 mr-0.5" /> Pending
+                        </span>
+                      )}
+                    </p>
+
+                    <div className="mt-2 space-y-1">
+                      {doc.document.uploadedBy && (
+                        <p className="text-xs text-gray-600">
+                          <UserIcon className="h-3 w-3 inline mr-1" />
+                          Uploaded by:{" "}
+                          <span className="font-medium">
+                            {doc.document.uploadedBy.name || "Unknown User"}
+                          </span>
+                        </p>
+                      )}
+                      {doc.document.uploadedAt && (
+                        <p className="text-xs text-gray-600">
+                          <CalendarIcon className="h-3 w-3 inline mr-1" />
+                          Uploaded:{" "}
+                          {new Date(doc.document.uploadedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </p>
+                      )}
+                      {doc.approval.modifiedAt && doc.approval.modifiedBy && (
+                        <p className="text-xs text-amber-600">
+                          <PencilIcon className="h-3 w-3 inline mr-1" />
+                          Modified by:{" "}
+                          <span className="font-medium">
+                            {doc.approval.modifiedBy?.name || "Unknown User"}
+                          </span>{" "}
+                          on{" "}
+                          {new Date(doc.approval.modifiedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <a
+                        href={doc.document.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
+                      >
+                        <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
+                        Download
+                      </a>
+
+                      {doc.canEdit && (
+                        <button
+                          onClick={() =>
+                            setBraDocumentModals((prev) => ({
+                              ...prev,
+                              [`${jobId}-${doc.stage}`]: true,
+                            }))
+                          }
+                          className="inline-flex items-center text-xs text-amber-600 hover:text-amber-800 bg-white rounded-md px-2 py-1 border border-amber-200 hover:bg-amber-50 transition-colors"
+                        >
+                          <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                          Replace
+                        </button>
+                      )}
+
+                      {doc.canDelete && (
+                        <button
+                          onClick={() =>
+                            setBraDeleteConfirmModals((prev) => ({
+                              ...prev,
+                              [`${jobId}-${doc.stage}`]: true,
+                            }))
+                          }
+                          className="inline-flex items-center text-xs text-red-600 hover:text-red-800 bg-white rounded-md px-2 py-1 border border-red-200 hover:bg-red-50 transition-colors"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5 mr-1" />
+                          Delete
+                        </button>
+                      )}
+
+                      {/* Add More Documents Button */}
+                      {/* <button
+                        onClick={() =>
+                          setBraDocumentModals((prev) => ({
+                            ...prev,
+                            [`${jobId}-${doc.stage}-additional`]: true,
+                          }))
+                        }
+                        className="inline-flex items-center text-xs text-green-600 hover:text-green-800 bg-white rounded-md px-2 py-1 border border-green-200 hover:bg-green-50 transition-colors"
+                        title={`Upload additional ${doc.stageLabel} documents`}
+                      >
+                        <PlusIcon className="h-3.5 w-3.5 mr-1" />
+                        + More
+                      </button> */}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Upload buttons for missing CEO stage only */}
+        {(() => {
+          const existingStages = documents.map(doc => doc.stage);
+          const isCeoMissing = !existingStages.includes('ceo');
+
+          if (!isCeoMissing) return null;
+
+          return (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-sm text-gray-600 mb-3">Upload CEO documents:</p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() =>
+                    setBraDocumentModals((prev) => ({
+                      ...prev,
+                      [`${jobId}-ceo`]: true,
+                    }))
+                  }
+                  className="inline-flex items-center px-3 py-2 border border-emerald-300 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-colors"
+                >
+                  <PlusIcon className="h-4 w-4 mr-1" />
+                  Upload CEO Document
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  };
+
+  // STEP 3: ADD THESE MODAL COMPONENTS (after your existing KYC modal components)
+
+  const BraDocumentUpdateModal = ({
+    isOpen,
+    onClose,
+    jobId,
+    stage,
+    onUpdate,
+  }) => {
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [notes, setNotes] = useState("");
+    const [isDragging, setIsDragging] = useState(false);
+
+    const handleFileSelect = (file) => {
+      setSelectedFile(file);
+    };
+
+    const handleDrop = (e) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        handleFileSelect(files[0]);
+      }
+    };
+
+    const handleSubmit = () => {
+      if (selectedFile) {
+        onUpdate(jobId, stage, selectedFile, notes);
+      }
+    };
+
+    const resetForm = () => {
+      setSelectedFile(null);
+      setNotes("");
+    };
+
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">
+              Replace {getStageDisplayName(stage)} Document
+            </h3>
+          </div>
+
+          <div className="px-6 py-4 space-y-4">
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                isDragging
+                  ? "border-teal-400 bg-teal-50"
+                  : "border-gray-300 hover:border-gray-400"
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+            >
+              {selectedFile ? (
+                <div className="text-sm">
+                  <DocumentTextIcon className="h-8 w-8 mx-auto text-green-500 mb-2" />
+                  <p className="font-medium text-gray-900">
+                    {selectedFile.name}
+                  </p>
+                  <p className="text-gray-500">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                  <button
+                    onClick={() => setSelectedFile(null)}
+                    className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                  >
+                    Remove file
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <DocumentTextIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-600 mb-2">
+                    Drag and drop a file here, or click to select
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileSelect(e.target.files[0]);
+                      }
+                    }}
+                    className="hidden"
+                    id={`bra-file-input-${stage}`}
+                  />
+                  <label
+                    htmlFor={`bra-file-input-${stage}`}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                  >
+                    Choose File
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                placeholder="Add any notes about this document update..."
+              />
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+            <button
+              onClick={() => {
+                resetForm();
+                onClose();
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={
+                !selectedFile || braDocumentUploading[`${jobId}-${stage}`]
+              }
+              className="px-4 py-2 text-sm font-medium text-white bg-teal-600 border border-transparent rounded-md hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            >
+              {braDocumentUploading[`${jobId}-${stage}`] ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                  Uploading...
+                </>
+              ) : (
+                "Replace Document"
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const BraDocumentDeleteModal = ({
+    isOpen,
+    onClose,
+    jobId,
+    stage,
+    onDelete,
+  }) => {
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+          <div className="px-6 py-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Delete {getStageDisplayName(stage)} Document
+                </h3>
+                <p className="mt-2 text-sm text-gray-500">
+                  Are you sure you want to delete this document? This action
+                  cannot be undone.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onDelete(jobId, stage)}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
+            >
+              Delete Document
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Add this updated handleUploadInvoice function to your ClientProfile.jsx
+  // Replace the existing handleUploadInvoice function with this one:
+
+  const handleUploadInvoice = async (payment, isReplacing = false) => {
+    try {
+      console.log("handleUploadInvoice called with:", { payment, isReplacing });
+
+      // Validate payment object and ID
+      if (!payment || (!payment._id && !payment.id)) {
+        toast.error(
+          "Invalid payment record. Please refresh the page and try again."
+        );
         return;
       }
 
-      try {
-        // Create FormData for upload
-        const formData = new FormData();
-        formData.append('paymentId', paymentId);
-        formData.append('invoiceFile', file);
-        formData.append('replaceExisting', isReplacing.toString());
-        formData.append('description', `Supporting Document - ${payment.monthName} ${payment.year}`);
-        formData.append('invoiceDate', new Date().toISOString().split('T')[0]);
-        formData.append('paymentMethod', 'Document Only'); // Use proper enum value
-        formData.append('amount', '0'); // Required field for schema
-        formData.append('option', 'DOCUMENT_ONLY'); // Special flag
+      // Use _id as primary, fall back to id if _id doesn't exist
+      const paymentId = payment._id || payment.id;
 
-        // Debug logging
-        console.log("FormData being sent:");
-        for (let [key, value] of formData.entries()) {
-          console.log(key, value);
-        }
-
-        // Show loading state
-        const loadingToast = toast.loading(
-          isReplacing ? 'Replacing document...' : 'Uploading document...'
+      if (!paymentId || paymentId === "undefined") {
+        toast.error(
+          "Payment ID is missing. Please refresh the page and try again."
         );
-
-        // Use the account service for consistency
-        const response = await accountService.uploadInvoiceDocument(formData);
-
-        // Dismiss loading toast
-        toast.dismiss(loadingToast);
-
-        console.log("Upload response:", response);
-
-        if (response.success) {
-          toast.success(
-            isReplacing 
-              ? 'Document replaced successfully!' 
-              : 'Document uploaded successfully!'
-          );
-          
-          // Trigger a refresh in the EnhancedMonthlyPaymentHistory component
-          // The component will handle its own refresh through the modal success callback
-        } else {
-          toast.error(response.message || 'Upload failed. Please try again.');
-        }
-      } catch (error) {
-        console.error('Error uploading document:', error);
-        
-        // Enhanced error handling
-        let errorMessage = 'Failed to upload document';
-        
-        if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        
-        // Show specific error messages for common issues
-        if (errorMessage.includes('API route not found')) {
-          errorMessage = 'Server route not found. Please contact support.';
-        } else if (errorMessage.includes('undefined')) {
-          errorMessage = 'Invalid payment ID. Please refresh the page and try again.';
-        }
-        
-        toast.error(errorMessage);
+        return;
       }
-    };
 
-    // Trigger file selection dialog
-    fileInput.click();
-  } catch (error) {
-    console.error('Error in handleUploadInvoice:', error);
-    toast.error('Failed to initiate upload');
-  }
-};
+      console.log("Using paymentId:", paymentId);
+
+      // Create a file input element
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = ".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png";
+
+      fileInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Validate file size (5MB limit)
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error("File size must be less than 5MB");
+          return;
+        }
+
+        try {
+          // Create FormData for upload
+          const formData = new FormData();
+          formData.append("paymentId", paymentId);
+          formData.append("invoiceFile", file);
+          formData.append("replaceExisting", isReplacing.toString());
+          formData.append(
+            "description",
+            `Supporting Document - ${payment.monthName} ${payment.year}`
+          );
+          formData.append(
+            "invoiceDate",
+            new Date().toISOString().split("T")[0]
+          );
+          formData.append("paymentMethod", "Document Only"); // Use proper enum value
+          formData.append("amount", "0"); // Required field for schema
+          formData.append("option", "DOCUMENT_ONLY"); // Special flag
+
+          // Debug logging
+          console.log("FormData being sent:");
+          for (let [key, value] of formData.entries()) {
+            console.log(key, value);
+          }
+
+          // Show loading state
+          const loadingToast = toast.loading(
+            isReplacing ? "Replacing document..." : "Uploading document..."
+          );
+
+          // Use the account service for consistency
+          const response = await accountService.uploadInvoiceDocument(formData);
+
+          // Dismiss loading toast
+          toast.dismiss(loadingToast);
+
+          console.log("Upload response:", response);
+
+          if (response.success) {
+            toast.success(
+              isReplacing
+                ? "Document replaced successfully!"
+                : "Document uploaded successfully!"
+            );
+
+            // Trigger a refresh in the EnhancedMonthlyPaymentHistory component
+            // The component will handle its own refresh through the modal success callback
+          } else {
+            toast.error(response.message || "Upload failed. Please try again.");
+          }
+        } catch (error) {
+          console.error("Error uploading document:", error);
+
+          // Enhanced error handling
+          let errorMessage = "Failed to upload document";
+
+          if (error.response?.data?.message) {
+            errorMessage = error.response.data.message;
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+
+          // Show specific error messages for common issues
+          if (errorMessage.includes("API route not found")) {
+            errorMessage = "Server route not found. Please contact support.";
+          } else if (errorMessage.includes("undefined")) {
+            errorMessage =
+              "Invalid payment ID. Please refresh the page and try again.";
+          }
+
+          toast.error(errorMessage);
+        }
+      };
+
+      // Trigger file selection dialog
+      fileInput.click();
+    } catch (error) {
+      console.error("Error in handleUploadInvoice:", error);
+      toast.error("Failed to initiate upload");
+    }
+  };
 
   // Add this function alongside the fetchKycStatus function:
   const fetchBraStatus = async (jobId) => {
@@ -1455,78 +1718,82 @@ const handleUploadInvoice = async (payment, isReplacing = false) => {
 
   // Add this function alongside getBRAStatusInfo in your ClientProfile component
 
-const getKYCStatusInfo = (kycData) => {
-  if (!kycData.exists && kycData.jobStatus === "completed") {
+  const getKYCStatusInfo = (kycData) => {
+    if (!kycData.exists && kycData.jobStatus === "completed") {
+      return {
+        label: "Ready for KYC",
+        color: "bg-blue-50 text-blue-700 ring-blue-600/20",
+        icon: <ArrowPathIcon className="h-5 w-5 text-blue-500" />,
+        description: "Job completed. Ready to initialize KYC process.",
+      };
+    }
+    if (!kycData.exists && kycData.jobStatus === "kyc_pending") {
+      return {
+        label: "KYC Review Pending",
+        color: "bg-yellow-50 text-yellow-700 ring-yellow-600/20",
+        icon: <UserGroupIcon className="h-5 w-5 text-yellow-500" />,
+        description: "KYC has been initialized. Waiting for LMRO review.",
+      };
+    }
+    if (!kycData.exists) {
+      return {
+        label: "KYC Status Unknown",
+        color: "bg-gray-50 text-gray-700 ring-gray-600/20",
+        icon: <ShieldExclamationIcon className="h-5 w-5 text-gray-500" />,
+        description: "Unable to determine current KYC status.",
+      };
+    }
+
+    const stage = kycData.currentApprovalStage;
+
+    if (kycData.status === "rejected") {
+      return {
+        label: "KYC Rejected",
+        color: "bg-red-50 text-red-700 ring-red-600/20",
+        icon: <XMarkIcon className="h-5 w-5 text-red-500" />,
+        description:
+          "KYC request has been rejected. See rejection reason below.",
+      };
+    } else if (kycData.status === "completed") {
+      return {
+        label: "KYC Completed",
+        color: "bg-green-50 text-green-700 ring-green-600/20",
+        icon: <CheckIcon className="h-5 w-5 text-green-500" />,
+        description: "KYC process is complete. All approvals obtained.",
+      };
+    } else if (stage === "lmro") {
+      return {
+        label: "LMRO Review",
+        color: "bg-blue-50 text-blue-700 ring-blue-600/20",
+        icon: <UserGroupIcon className="h-5 w-5 text-blue-500" />,
+        description:
+          "Currently under review by Local Money Laundering Reporting Officer.",
+      };
+    } else if (stage === "dlmro") {
+      return {
+        label: "DLMRO Review",
+        color: "bg-purple-50 text-purple-700 ring-purple-600/20",
+        icon: (
+          <ClipboardDocumentCheckIcon className="h-5 w-5 text-purple-500" />
+        ),
+        description: "LMRO approved. Currently under review by Deputy LMRO.",
+      };
+    } else if (stage === "ceo") {
+      return {
+        label: "CEO Review",
+        color: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
+        icon: <LockClosedIcon className="h-5 w-5 text-indigo-500" />,
+        description: "LMRO and DLMRO approved. Awaiting final CEO approval.",
+      };
+    }
+
     return {
-      label: "Ready for KYC",
-      color: "bg-blue-50 text-blue-700 ring-blue-600/20",
-      icon: <ArrowPathIcon className="h-5 w-5 text-blue-500" />,
-      description: "Job completed. Ready to initialize KYC process.",
-    };
-  }
-  if (!kycData.exists && kycData.jobStatus === "kyc_pending") {
-    return {
-      label: "KYC Review Pending",
-      color: "bg-yellow-50 text-yellow-700 ring-yellow-600/20",
-      icon: <UserGroupIcon className="h-5 w-5 text-yellow-500" />,
-      description: "KYC has been initialized. Waiting for LMRO review.",
-    };
-  }
-  if (!kycData.exists) {
-    return {
-      label: "KYC Status Unknown",
+      label: "Processing",
       color: "bg-gray-50 text-gray-700 ring-gray-600/20",
-      icon: <ShieldExclamationIcon className="h-5 w-5 text-gray-500" />,
-      description: "Unable to determine current KYC status.",
+      icon: <ArrowPathIcon className="h-5 w-5 text-gray-500" />,
+      description: "KYC process is in progress.",
     };
-  }
-  
-  const stage = kycData.currentApprovalStage;
-  
-  if (kycData.status === "rejected") {
-    return {
-      label: "KYC Rejected",
-      color: "bg-red-50 text-red-700 ring-red-600/20",
-      icon: <XMarkIcon className="h-5 w-5 text-red-500" />,
-      description: "KYC request has been rejected. See rejection reason below.",
-    };
-  } else if (kycData.status === "completed") {
-    return {
-      label: "KYC Completed",
-      color: "bg-green-50 text-green-700 ring-green-600/20",
-      icon: <CheckIcon className="h-5 w-5 text-green-500" />,
-      description: "KYC process is complete. All approvals obtained.",
-    };
-  } else if (stage === "lmro") {
-    return {
-      label: "LMRO Review",
-      color: "bg-blue-50 text-blue-700 ring-blue-600/20",
-      icon: <UserGroupIcon className="h-5 w-5 text-blue-500" />,
-      description: "Currently under review by Local Money Laundering Reporting Officer.",
-    };
-  } else if (stage === "dlmro") {
-    return {
-      label: "DLMRO Review",
-      color: "bg-purple-50 text-purple-700 ring-purple-600/20",
-      icon: <ClipboardDocumentCheckIcon className="h-5 w-5 text-purple-500" />,
-      description: "LMRO approved. Currently under review by Deputy LMRO.",
-    };
-  } else if (stage === "ceo") {
-    return {
-      label: "CEO Review",
-      color: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
-      icon: <LockClosedIcon className="h-5 w-5 text-indigo-500" />,
-      description: "LMRO and DLMRO approved. Awaiting final CEO approval.",
-    };
-  }
-  
-  return {
-    label: "Processing",
-    color: "bg-gray-50 text-gray-700 ring-gray-600/20",
-    icon: <ArrowPathIcon className="h-5 w-5 text-gray-500" />,
-    description: "KYC process is in progress.",
   };
-};
 
   // Add this function alongside renderKycDocumentLink:
   const renderBraDocumentLink = (braData) => {
@@ -2617,15 +2884,20 @@ const getKYCStatusInfo = (kycData) => {
                   ))
                 : // Handle legacy single document format - only show if valid URL exists
                   (() => {
-                    const crExtractUrl = company.crExtract ||
+                    const crExtractUrl =
+                      company.crExtract ||
                       company.CRExtract ||
                       company.cr_extract;
-                    
+
                     // Only show if there's a valid URL (not empty, null, undefined, or just whitespace)
-                    if (!crExtractUrl || typeof crExtractUrl !== 'string' || crExtractUrl.trim() === '') {
+                    if (
+                      !crExtractUrl ||
+                      typeof crExtractUrl !== "string" ||
+                      crExtractUrl.trim() === ""
+                    ) {
                       return null;
                     }
-                    
+
                     return (
                       <a
                         href={crExtractUrl}
@@ -3167,109 +3439,108 @@ const getKYCStatusInfo = (kycData) => {
     );
   };
 
-// Get KYC approval status - UPDATED to include compliance documents
-// const getKycStatus = asyncHandler(async (req, res) => {
-//   const { jobId } = req.params;
+  // Get KYC approval status - UPDATED to include compliance documents
+  // const getKycStatus = asyncHandler(async (req, res) => {
+  //   const { jobId } = req.params;
 
-//   try {
-//     // Check if the job exists first
-//     const job = await Job.findById(jobId);
+  //   try {
+  //     // Check if the job exists first
+  //     const job = await Job.findById(jobId);
 
-//     if (!job) {
-//       return res.status(404).json({
-//         message: "Job not found",
-//         jobId,
-//       });
-//     }
+  //     if (!job) {
+  //       return res.status(404).json({
+  //         message: "Job not found",
+  //         jobId,
+  //       });
+  //     }
 
-//     // Now check for KYC approval with populated user details
-//     const kycApproval = await KycApproval.findOne({ jobId })
-//       .populate("lmroApproval.approvedBy", "name email")
-//       .populate("dlmroApproval.approvedBy", "name email")
-//       .populate("ceoApproval.approvedBy", "name email")
-//       .populate("rejectedBy", "name email")
-//       // Add document uploader population
-//       .populate("lmroApproval.document.uploadedBy", "name email")
-//       .populate("dlmroApproval.document.uploadedBy", "name email")
-//       .populate("ceoApproval.document.uploadedBy", "name email")
-//       // ADD THESE NEW LINES FOR MODIFIED BY FIELDS
-//       .populate("lmroApproval.modifiedBy", "name email")
-//       .populate("dlmroApproval.modifiedBy", "name email")
-//       .populate("ceoApproval.modifiedBy", "name email")
-//       // ADD THESE NEW LINES FOR DELETED BY FIELDS
-//       .populate("lmroApproval.deletedBy", "name email")
-//       .populate("dlmroApproval.deletedBy", "name email")
-//       .populate("ceoApproval.deletedBy", "name email");
+  //     // Now check for KYC approval with populated user details
+  //     const kycApproval = await KycApproval.findOne({ jobId })
+  //       .populate("lmroApproval.approvedBy", "name email")
+  //       .populate("dlmroApproval.approvedBy", "name email")
+  //       .populate("ceoApproval.approvedBy", "name email")
+  //       .populate("rejectedBy", "name email")
+  //       // Add document uploader population
+  //       .populate("lmroApproval.document.uploadedBy", "name email")
+  //       .populate("dlmroApproval.document.uploadedBy", "name email")
+  //       .populate("ceoApproval.document.uploadedBy", "name email")
+  //       // ADD THESE NEW LINES FOR MODIFIED BY FIELDS
+  //       .populate("lmroApproval.modifiedBy", "name email")
+  //       .populate("dlmroApproval.modifiedBy", "name email")
+  //       .populate("ceoApproval.modifiedBy", "name email")
+  //       // ADD THESE NEW LINES FOR DELETED BY FIELDS
+  //       .populate("lmroApproval.deletedBy", "name email")
+  //       .populate("dlmroApproval.deletedBy", "name email")
+  //       .populate("ceoApproval.deletedBy", "name email");
 
-//     if (!kycApproval) {
-//       // Return 200 with exists:false instead of 404
-//       return res.status(200).json({
-//         exists: false,
-//         message: "KYC approval not initiated yet",
-//         jobId,
-//         jobStatus: job.status,
-//         canInitialize: job.status === "om_completed",
-//         jobInfo: {
-//           clientName: job.clientName,
-//           serviceType: job.serviceType,
-//           createdAt: job.createdAt,
-//           // Include compliance approval document and notes
-//           approvalDocument: job.approvalDocument,
-//           approvalNotes: job.approvalNotes
-//         },
-//       });
-//     }
+  //     if (!kycApproval) {
+  //       // Return 200 with exists:false instead of 404
+  //       return res.status(200).json({
+  //         exists: false,
+  //         message: "KYC approval not initiated yet",
+  //         jobId,
+  //         jobStatus: job.status,
+  //         canInitialize: job.status === "om_completed",
+  //         jobInfo: {
+  //           clientName: job.clientName,
+  //           serviceType: job.serviceType,
+  //           createdAt: job.createdAt,
+  //           // Include compliance approval document and notes
+  //           approvalDocument: job.approvalDocument,
+  //           approvalNotes: job.approvalNotes
+  //         },
+  //       });
+  //     }
 
-//     // When returning an existing KYC approval, include exists:true and job details
-//     res.status(200).json({
-//       exists: true,
-//       ...kycApproval.toObject(),
-//       // Include job details with compliance documents
-//       jobInfo: {
-//         clientName: job.clientName,
-//         serviceType: job.serviceType,
-//         createdAt: job.createdAt,
-//         approvalDocument: job.approvalDocument,
-//         approvalNotes: job.approvalNotes
-//       }
-//     });
-//   } catch (error) {
-//     console.error(`Error in getKycStatus for job ${jobId}:`, error);
-//     res.status(500).json({
-//       message: "Server error retrieving KYC status",
-//       error: error.message,
-//     });
-//   }
-// });
+  //     // When returning an existing KYC approval, include exists:true and job details
+  //     res.status(200).json({
+  //       exists: true,
+  //       ...kycApproval.toObject(),
+  //       // Include job details with compliance documents
+  //       jobInfo: {
+  //         clientName: job.clientName,
+  //         serviceType: job.serviceType,
+  //         createdAt: job.createdAt,
+  //         approvalDocument: job.approvalDocument,
+  //         approvalNotes: job.approvalNotes
+  //       }
+  //     });
+  //   } catch (error) {
+  //     console.error(`Error in getKycStatus for job ${jobId}:`, error);
+  //     res.status(500).json({
+  //       message: "Server error retrieving KYC status",
+  //       error: error.message,
+  //     });
+  //   }
+  // });
 
-// Helper function to safely get KYC status - UPDATED with better population
-const getKycStatusSafely = async (jobId) => {
-  try {
-    const kycApproval = await KycApproval.findOne({ jobId })
-      .populate("lmroApproval.approvedBy", "name email")
-      .populate("dlmroApproval.approvedBy", "name email")
-      .populate("ceoApproval.approvedBy", "name email")
-      .populate("rejectedBy", "name email")
-      // Document uploader population
-      .populate("lmroApproval.document.uploadedBy", "name email")
-      .populate("dlmroApproval.document.uploadedBy", "name email")
-      .populate("ceoApproval.document.uploadedBy", "name email")
-      // FIXED: Modified by population
-      .populate("lmroApproval.modifiedBy", "name email")
-      .populate("dlmroApproval.modifiedBy", "name email")
-      .populate("ceoApproval.modifiedBy", "name email")
-      // FIXED: Deleted by population
-      .populate("lmroApproval.deletedBy", "name email")
-      .populate("dlmroApproval.deletedBy", "name email")
-      .populate("ceoApproval.deletedBy", "name email");
+  // Helper function to safely get KYC status - UPDATED with better population
+  const getKycStatusSafely = async (jobId) => {
+    try {
+      const kycApproval = await KycApproval.findOne({ jobId })
+        .populate("lmroApproval.approvedBy", "name email")
+        .populate("dlmroApproval.approvedBy", "name email")
+        .populate("ceoApproval.approvedBy", "name email")
+        .populate("rejectedBy", "name email")
+        // Document uploader population
+        .populate("lmroApproval.document.uploadedBy", "name email")
+        .populate("dlmroApproval.document.uploadedBy", "name email")
+        .populate("ceoApproval.document.uploadedBy", "name email")
+        // FIXED: Modified by population
+        .populate("lmroApproval.modifiedBy", "name email")
+        .populate("dlmroApproval.modifiedBy", "name email")
+        .populate("ceoApproval.modifiedBy", "name email")
+        // FIXED: Deleted by population
+        .populate("lmroApproval.deletedBy", "name email")
+        .populate("dlmroApproval.deletedBy", "name email")
+        .populate("ceoApproval.deletedBy", "name email");
 
-    return kycApproval;
-  } catch (error) {
-    console.error(`Error getting KYC status for job ${jobId}:`, error);
-    return null;
-  }
-};
-
+      return kycApproval;
+    } catch (error) {
+      console.error(`Error getting KYC status for job ${jobId}:`, error);
+      return null;
+    }
+  };
 
   const renderKycDocumentLink = (kycData) => {
     let document = null;
@@ -3860,10 +4131,31 @@ const getKycStatusSafely = async (jobId) => {
                           transition={{ delay: 0.3 }}
                           className="mt-6"
                         >
-                          <h4 className="text-base font-medium text-gray-900 mb-4">
-                            Service Timeline
-                          </h4>
-                          <div className="flow-root">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-base font-medium text-gray-900">
+                              Service Timeline
+                            </h4>
+                            <button
+                              onClick={() => toggleTimelineVisibility(job._id)}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                              title={showTimelines[job._id] === false ? "Show Timeline" : "Hide Timeline"}
+                            >
+                              {showTimelines[job._id] === false ? (
+                                <ChevronDownIcon className="h-4 w-4" />
+                              ) : (
+                                <ChevronUpIcon className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                          <AnimatePresence mode="wait">
+                          {showTimelines[job._id] !== false ? (
+                            <motion.div 
+                              key="timeline-visible"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="flow-root">
                             <ul className="-mb-8">
                               {mapTimelineData(job._id).map(
                                 (event, eventIdx) => (
@@ -3933,7 +4225,20 @@ const getKycStatusSafely = async (jobId) => {
                                 )
                               )}
                             </ul>
-                          </div>
+                          </motion.div>
+                          ) : (
+                            <motion.div
+                              key="timeline-hidden"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="text-center py-3 bg-gray-50 rounded-lg"
+                            >
+                              <p className="text-sm text-gray-500">Timeline hidden. Click the arrow to show.</p>
+                            </motion.div>
+                          )}
+                          </AnimatePresence>
                         </motion.div>
 
                         {/* Enhanced KYC Management Section */}
@@ -4009,8 +4314,8 @@ const getKycStatusSafely = async (jobId) => {
                               {kycStatuses[job._id].exists && (
                                 <div className="mb-6">
                                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                                    <span>LMRO</span>
-                                    <span>DLMRO</span>
+                                    <span>MLRO</span>
+                                    <span>DMLRO</span>
                                     <span>CEO</span>
                                   </div>
                                   <div className="flex items-center gap-1">
@@ -4047,52 +4352,63 @@ const getKycStatusSafely = async (jobId) => {
                                 </div>
                               )}
 
-{/* Enhanced KYC Documents Section */}
-{kycStatuses[job._id].exists && (
-  <div>
-    <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
-      <DocumentTextIcon className="h-4 w-4 mr-1.5 text-blue-600" />
-      KYC Documents
-    </h5>
-    {renderEnhancedKycDocumentSection(kycStatuses[job._id], job._id)}
-  </div>
-)}
+                              {/* Enhanced KYC Documents Section */}
+                              {kycStatuses[job._id].exists && (
+                                <div>
+                                  <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
+                                    <DocumentTextIcon className="h-4 w-4 mr-1.5 text-blue-600" />
+                                    KYC Documents
+                                  </h5>
+                                  {renderEnhancedKycDocumentSection(
+                                    kycStatuses[job._id],
+                                    job._id
+                                  )}
+                                </div>
+                              )}
 
-{/* KYC Document Update Modals */}
-{Object.entries(kycDocumentModals).map(([key, isOpen]) => {
-  const [jobId, stage] = key.split('-');
-  return (
-    <KycDocumentUpdateModal
-      key={key}
-      isOpen={isOpen}
-      onClose={() => setKycDocumentModals(prev => ({
-        ...prev,
-        [key]: false
-      }))}
-      jobId={jobId}
-      stage={stage}
-      onUpdate={handleUpdateKycDocument}
-    />
-  );
-})}
+                              {/* KYC Document Update Modals */}
+                              {Object.entries(kycDocumentModals).map(
+                                ([key, isOpen]) => {
+                                  const [jobId, stage] = key.split("-");
+                                  return (
+                                    <KycDocumentUpdateModal
+                                      key={key}
+                                      isOpen={isOpen}
+                                      onClose={() =>
+                                        setKycDocumentModals((prev) => ({
+                                          ...prev,
+                                          [key]: false,
+                                        }))
+                                      }
+                                      jobId={jobId}
+                                      stage={stage}
+                                      onUpdate={handleUpdateKycDocument}
+                                    />
+                                  );
+                                }
+                              )}
 
-{/* KYC Document Delete Confirmation Modals */}
-{Object.entries(deleteConfirmModals).map(([key, isOpen]) => {
-  const [jobId, stage] = key.split('-');
-  return (
-    <KycDocumentDeleteModal
-      key={key}
-      isOpen={isOpen}
-      onClose={() => setDeleteConfirmModals(prev => ({
-        ...prev,
-        [key]: false
-      }))}
-      jobId={jobId}
-      stage={stage}
-      onDelete={handleDeleteKycDocument}
-    />
-  );
-})}
+                              {/* KYC Document Delete Confirmation Modals */}
+                              {Object.entries(deleteConfirmModals).map(
+                                ([key, isOpen]) => {
+                                  const [jobId, stage] = key.split("-");
+                                  return (
+                                    <KycDocumentDeleteModal
+                                      key={key}
+                                      isOpen={isOpen}
+                                      onClose={() =>
+                                        setDeleteConfirmModals((prev) => ({
+                                          ...prev,
+                                          [key]: false,
+                                        }))
+                                      }
+                                      jobId={jobId}
+                                      stage={stage}
+                                      onDelete={handleDeleteKycDocument}
+                                    />
+                                  );
+                                }
+                              )}
 
                               {/* Rejection Reason (if KYC is rejected) */}
                               {kycStatuses[job._id].exists &&
@@ -4201,8 +4517,8 @@ const getKycStatusSafely = async (jobId) => {
                               {braStatuses[job._id].exists && (
                                 <div className="mb-6">
                                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                                    <span>LMRO</span>
-                                    <span>DLMRO</span>
+                                    <span>MLRO</span>
+                                    <span>DMLRO</span>
                                     <span>CEO</span>
                                   </div>
                                   <div className="flex items-center gap-1">
@@ -4239,51 +4555,62 @@ const getKycStatusSafely = async (jobId) => {
                                 </div>
                               )}
 
-{/* Enhanced BRA Documents Section */}
-{braStatuses[job._id].exists && (
-  <div>
-    <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
-      <DocumentTextIcon className="h-4 w-4 mr-1.5 text-teal-600" />
-      BRA Documents
-    </h5>
-    {renderEnhancedBraDocumentSection(braStatuses[job._id], job._id)}
-  </div>
-)}
-{/* BRA Document Update Modals */}
-{Object.entries(braDocumentModals).map(([key, isOpen]) => {
-  const [jobId, stage] = key.split('-');
-  return (
-    <BraDocumentUpdateModal
-      key={key}
-      isOpen={isOpen}
-      onClose={() => setBraDocumentModals(prev => ({
-        ...prev,
-        [key]: false
-      }))}
-      jobId={jobId}
-      stage={stage}
-      onUpdate={handleUpdateBraDocument}
-    />
-  );
-})}
+                              {/* Enhanced BRA Documents Section */}
+                              {braStatuses[job._id].exists && (
+                                <div>
+                                  <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
+                                    <DocumentTextIcon className="h-4 w-4 mr-1.5 text-teal-600" />
+                                    BRA Documents
+                                  </h5>
+                                  {renderEnhancedBraDocumentSection(
+                                    braStatuses[job._id],
+                                    job._id
+                                  )}
+                                </div>
+                              )}
+                              {/* BRA Document Update Modals */}
+                              {Object.entries(braDocumentModals).map(
+                                ([key, isOpen]) => {
+                                  const [jobId, stage] = key.split("-");
+                                  return (
+                                    <BraDocumentUpdateModal
+                                      key={key}
+                                      isOpen={isOpen}
+                                      onClose={() =>
+                                        setBraDocumentModals((prev) => ({
+                                          ...prev,
+                                          [key]: false,
+                                        }))
+                                      }
+                                      jobId={jobId}
+                                      stage={stage}
+                                      onUpdate={handleUpdateBraDocument}
+                                    />
+                                  );
+                                }
+                              )}
 
-{/* BRA Document Delete Confirmation Modals */}
-{Object.entries(braDeleteConfirmModals).map(([key, isOpen]) => {
-  const [jobId, stage] = key.split('-');
-  return (
-    <BraDocumentDeleteModal
-      key={key}
-      isOpen={isOpen}
-      onClose={() => setBraDeleteConfirmModals(prev => ({
-        ...prev,
-        [key]: false
-      }))}
-      jobId={jobId}
-      stage={stage}
-      onDelete={handleDeleteBraDocument}
-    />
-  );
-})}
+                              {/* BRA Document Delete Confirmation Modals */}
+                              {Object.entries(braDeleteConfirmModals).map(
+                                ([key, isOpen]) => {
+                                  const [jobId, stage] = key.split("-");
+                                  return (
+                                    <BraDocumentDeleteModal
+                                      key={key}
+                                      isOpen={isOpen}
+                                      onClose={() =>
+                                        setBraDeleteConfirmModals((prev) => ({
+                                          ...prev,
+                                          [key]: false,
+                                        }))
+                                      }
+                                      jobId={jobId}
+                                      stage={stage}
+                                      onDelete={handleDeleteBraDocument}
+                                    />
+                                  );
+                                }
+                              )}
                               {/* Rejection Reason (if BRA is rejected) */}
                               {braStatuses[job._id].exists &&
                                 braStatuses[job._id].status === "rejected" && (
@@ -4320,170 +4647,188 @@ const getKycStatusSafely = async (jobId) => {
                       </div>
 
                       {/* Monthly Payment Records Section */}
-<motion.div
-  initial={{ y: 20, opacity: 0 }}
-  animate={{ y: 0, opacity: 1 }}
-  transition={{ delay: 0.6 }}
-  className="mt-6"
->
-  <div className="flex items-center justify-between mb-4">
-    <h4 className="text-base font-medium text-gray-900 flex items-center">
-      <CalendarIcon className="h-5 w-5 mr-2 text-blue-600" />
-      Monthly Payment Records
-    </h4>
-    <div className="flex items-center space-x-2">
-      {/* Quick Stats */}
-      <div className="bg-blue-50 px-3 py-1 rounded-lg">
-        <span className="text-xs text-blue-700 font-medium">
-          Payment Management
-        </span>
-      </div>
-    </div>
-  </div>
+                      <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ delay: 0.6 }}
+                        className="mt-6"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-base font-medium text-gray-900 flex items-center">
+                            <CalendarIcon className="h-5 w-5 mr-2 text-blue-600" />
+                            Monthly Payment Records
+                          </h4>
+                          <div className="flex items-center space-x-2">
+                            {/* Quick Stats */}
+                            <div className="bg-blue-50 px-3 py-1 rounded-lg">
+                              <span className="text-xs text-blue-700 font-medium">
+                                Payment Management
+                              </span>
+                            </div>
+                          </div>
+                        </div>
 
-{/* Tabbed Navigation */}
-  <div className="border-b border-gray-200 mb-4">
-    <nav className="flex space-x-8" aria-label="Tabs">
-      <button
-        onClick={() => setActivePaymentTab(job._id, "add")}
-        className={`${
-          activePaymentTabs[job._id] === "add" ||
-          !activePaymentTabs[job._id]
-            ? "border-blue-500 text-blue-600"
-            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
-      >
-        <PlusIcon className="h-4 w-4 mr-2" />
-        Add New Month
-      </button>
-      <button
-        onClick={() => setActivePaymentTab(job._id, "history")}
-        className={`${
-          activePaymentTabs[job._id] === "history"
-            ? "border-blue-500 text-blue-600"
-            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-        } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
-      >
-        <DocumentTextIcon className="h-4 w-4 mr-2" />
-        View & Manage History
-      </button>
-    </nav>
-  </div>
+                        {/* Tabbed Navigation */}
+                        <div className="border-b border-gray-200 mb-4">
+                          <nav className="flex space-x-8" aria-label="Tabs">
+                            <button
+                              onClick={() =>
+                                setActivePaymentTab(job._id, "add")
+                              }
+                              className={`${
+                                activePaymentTabs[job._id] === "add" ||
+                                !activePaymentTabs[job._id]
+                                  ? "border-blue-500 text-blue-600"
+                                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
+                            >
+                              <PlusIcon className="h-4 w-4 mr-2" />
+                              Add New Month
+                            </button>
+                            <button
+                              onClick={() =>
+                                setActivePaymentTab(job._id, "history")
+                              }
+                              className={`${
+                                activePaymentTabs[job._id] === "history"
+                                  ? "border-blue-500 text-blue-600"
+                                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
+                            >
+                              <DocumentTextIcon className="h-4 w-4 mr-2" />
+                              View & Manage History
+                            </button>
+                          </nav>
+                        </div>
 
-{/* Add New Month View */}
-  {(!activePaymentTabs[job._id] ||
-    activePaymentTabs[job._id] === "add") && (
-    <div>
-      <div className="mb-4">
-        <button
-          onClick={() =>
-            setIsAddNewMonthOpen((prev) => ({
-              ...prev,
-              [job._id]: true,
-            }))
-          }
-          className="w-full sm:w-auto px-6 py-3 text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg"
-        >
-          <PlusIcon className="h-5 w-5 mr-2" />
-          <span className="font-medium">Add New Monthly Payment</span>
-        </button>
-        
-        {/* Information Box */}
-        <div className="mt-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-          <div className="flex items-start">
-            <InformationCircleIcon className="h-5 w-5 text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
-            <div>
-              <h4 className="text-sm font-medium text-blue-800 mb-1">
-                Payment Record Management
-              </h4>
-              <p className="text-sm text-blue-700">
-                Add monthly payment records with multiple invoices. Each record can contain
-                payment invoices and supporting documents. You can edit, add, or delete 
-                individual invoices after creating the monthly record.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+                        {/* Add New Month View */}
+                        {(!activePaymentTabs[job._id] ||
+                          activePaymentTabs[job._id] === "add") && (
+                          <div>
+                            <div className="mb-4">
+                              <button
+                                onClick={() =>
+                                  setIsAddNewMonthOpen((prev) => ({
+                                    ...prev,
+                                    [job._id]: true,
+                                  }))
+                                }
+                                className="w-full sm:w-auto px-6 py-3 text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg"
+                              >
+                                <PlusIcon className="h-5 w-5 mr-2" />
+                                <span className="font-medium">
+                                  Add New Monthly Payment
+                                </span>
+                              </button>
 
-      {isAddNewMonthOpen && isAddNewMonthOpen[job._id] && (
-        <MonthlyPaymentForm
-          jobId={job._id}
-          jobType={job.serviceType}
-          onClose={() =>
-            setIsAddNewMonthOpen((prev) => ({
-              ...prev,
-              [job._id]: false,
-            }))
-          }
-          onSuccess={() => {
-            setIsAddNewMonthOpen((prev) => ({
-              ...prev,
-              [job._id]: false,
-            }));
-            // Switch to history tab after successful creation
-            setActivePaymentTab(job._id, "history");
-            // Show success message
-            toast.success("Monthly payment record created successfully!");
-          }}
-        />
-      )}
-    </div>
-  )}
+                              {/* Information Box */}
+                              <div className="mt-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+                                <div className="flex items-start">
+                                  <InformationCircleIcon className="h-5 w-5 text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
+                                  <div>
+                                    <h4 className="text-sm font-medium text-blue-800 mb-1">
+                                      Payment Record Management
+                                    </h4>
+                                    <p className="text-sm text-blue-700">
+                                      Add monthly payment records with multiple
+                                      invoices. Each record can contain payment
+                                      invoices and supporting documents. You can
+                                      edit, add, or delete individual invoices
+                                      after creating the monthly record.
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
 
-{/* History View with Enhanced Invoice Management */}
-  {activePaymentTabs[job._id] === "history" && (
-    <div>
-      {/* Management Instructions */}
-      <div className="mb-6 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-4">
-        <div className="flex items-start">
-          <SparklesIcon className="h-5 w-5 text-indigo-500 mt-0.5 mr-3 flex-shrink-0" />
-          <div>
-            <h4 className="text-sm font-medium text-indigo-800 mb-2">
-              Invoice Management Features
-            </h4>
-            <ul className="text-sm text-indigo-700 space-y-1">
-              <li className="flex items-center">
-                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
-                <strong>Edit Invoices:</strong> Click the "Edit" button on any invoice to modify details
-              </li>
-              <li className="flex items-center">
-                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
-                <strong>Add Invoices:</strong> Use "Add Invoice" to add new invoices to existing months
-              </li>
-              <li className="flex items-center">
-                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
-                <strong>Upload Documents:</strong> Use "Upload Document" for supporting files
-              </li>
-              <li className="flex items-center">
-                <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
-                <strong>View Details:</strong> Click "View" to see invoice information in detail
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
+                            {isAddNewMonthOpen &&
+                              isAddNewMonthOpen[job._id] && (
+                                <MonthlyPaymentForm
+                                  jobId={job._id}
+                                  jobType={job.serviceType}
+                                  onClose={() =>
+                                    setIsAddNewMonthOpen((prev) => ({
+                                      ...prev,
+                                      [job._id]: false,
+                                    }))
+                                  }
+                                  onSuccess={() => {
+                                    setIsAddNewMonthOpen((prev) => ({
+                                      ...prev,
+                                      [job._id]: false,
+                                    }));
+                                    // Switch to history tab after successful creation
+                                    setActivePaymentTab(job._id, "history");
+                                    // Show success message
+                                    toast.success(
+                                      "Monthly payment record created successfully!"
+                                    );
+                                  }}
+                                />
+                              )}
+                          </div>
+                        )}
 
-      <EnhancedMonthlyPaymentHistory
-        jobId={job._id}
-        jobType={job.serviceType}
-        onUploadInvoice={handleUploadInvoice}
-        onInvoiceUpdate={() => {
-          // Callback for when invoices are updated
-          toast.success("Invoice updated successfully!");
-        }}
-        onInvoiceAdd={() => {
-          // Callback for when invoices are added
-          toast.success("Invoice added successfully!");
-        }}
-        onInvoiceDelete={() => {
-          // Callback for when invoices are deleted
-          toast.success("Invoice deleted successfully!");
-        }}
-      />
-    </div>
-  )}
-</motion.div>
+                        {/* History View with Enhanced Invoice Management */}
+                        {activePaymentTabs[job._id] === "history" && (
+                          <div>
+                            {/* Management Instructions */}
+                            <div className="mb-6 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-4">
+                              <div className="flex items-start">
+                                <SparklesIcon className="h-5 w-5 text-indigo-500 mt-0.5 mr-3 flex-shrink-0" />
+                                <div>
+                                  <h4 className="text-sm font-medium text-indigo-800 mb-2">
+                                    Invoice Management Features
+                                  </h4>
+                                  <ul className="text-sm text-indigo-700 space-y-1">
+                                    <li className="flex items-center">
+                                      <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                                      <strong>Edit Invoices:</strong> Click the
+                                      "Edit" button on any invoice to modify
+                                      details
+                                    </li>
+                                    <li className="flex items-center">
+                                      <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                                      <strong>Add Invoices:</strong> Use "Add
+                                      Invoice" to add new invoices to existing
+                                      months
+                                    </li>
+                                    <li className="flex items-center">
+                                      <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                                      <strong>Upload Documents:</strong> Use
+                                      "Upload Document" for supporting files
+                                    </li>
+                                    <li className="flex items-center">
+                                      <CheckIcon className="h-3 w-3 mr-2 text-indigo-500" />
+                                      <strong>View Details:</strong> Click
+                                      "View" to see invoice information in
+                                      detail
+                                    </li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+
+                            <EnhancedMonthlyPaymentHistory
+                              jobId={job._id}
+                              jobType={job.serviceType}
+                              onUploadInvoice={handleUploadInvoice}
+                              onInvoiceUpdate={() => {
+                                // Callback for when invoices are updated
+                                toast.success("Invoice updated successfully!");
+                              }}
+                              onInvoiceAdd={() => {
+                                // Callback for when invoices are added
+                                toast.success("Invoice added successfully!");
+                              }}
+                              onInvoiceDelete={() => {
+                                // Callback for when invoices are deleted
+                                toast.success("Invoice deleted successfully!");
+                              }}
+                            />
+                          </div>
+                        )}
+                      </motion.div>
                     </motion.div>
                   )}
                 </AnimatePresence>

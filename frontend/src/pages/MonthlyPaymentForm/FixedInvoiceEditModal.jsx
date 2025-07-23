@@ -28,6 +28,7 @@ const FixedInvoiceEditModal = ({
     invoiceDate: "",
     description: "",
     amount: "",
+    currency: "QAR",
     option: "",
     paymentMethod: "Bank Transfer",
   });
@@ -51,6 +52,7 @@ const FixedInvoiceEditModal = ({
         invoiceDate: invoice.invoiceDate ? format(new Date(invoice.invoiceDate), "yyyy-MM-dd") : "",
         description: invoice.description || "",
         amount: invoice.amount?.toString() || "",
+        currency: invoice.currency || "QAR",
         option: invoice.option || "",
         paymentMethod: invoice.paymentMethod || "Bank Transfer",
       };
@@ -61,6 +63,7 @@ const FixedInvoiceEditModal = ({
         invoiceDate: format(new Date(), "yyyy-MM-dd"),
         description: "",
         amount: "",
+        currency: "QAR",
         option: "",
         paymentMethod: "Bank Transfer",
       };
@@ -363,7 +366,7 @@ const FixedInvoiceEditModal = ({
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Invoice Date */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -399,6 +402,25 @@ const FixedInvoiceEditModal = ({
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
                         required
                       />
+                    </div>
+
+                    {/* Currency */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <CurrencyDollarIcon className="h-4 w-4 inline mr-1" />
+                        Currency
+                      </label>
+                      <select
+                        name="currency"
+                        value={formData.currency}
+                        onChange={handleInputChange}
+                        disabled={mode === "view"}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                        required
+                      >
+                        <option value="QAR">QAR</option>
+                        <option value="USD">USD</option>
+                      </select>
                     </div>
                   </div>
 

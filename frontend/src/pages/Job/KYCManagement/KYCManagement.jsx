@@ -1006,8 +1006,8 @@ function KYCManagement() {
                       {job.kycApproval && (
                         <div className="mt-3">
                           <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                            <span>LMRO</span>
-                            <span>DLMRO</span>
+                            <span>MLRO</span>
+                            <span>DMLRO</span>
                             <span>CEO</span>
                           </div>
                           <div className="flex items-center gap-1">

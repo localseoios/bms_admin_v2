@@ -146,13 +146,31 @@ const EnhancedMonthlyPaymentHistory = ({ jobId, jobType, onUploadInvoice }) => {
     setModalMode("edit");
   };
 
-const formatCurrency = (amount) => {
-  // ‘en-QA’ (or just ‘en’) + currency:'QAR' ➜ “QAR 6,076.25”
-  return new Intl.NumberFormat('en-QA', {
+const formatCurrency = (amount, currency = 'QAR') => {
+  // Format based on currency type
+  const locale = currency === 'USD' ? 'en-US' : 'en-QA';
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'QAR',
+    currency: currency,
     minimumFractionDigits: 2,
   }).format(amount ?? 0);
+};
+
+// Helper function to calculate and format total by currencies
+const formatTotalByCurrency = (invoices) => {
+  if (!invoices || invoices.length === 0) return 'No invoices';
+  
+  const totals = invoices.reduce((acc, invoice) => {
+    const currency = invoice.currency || 'QAR';
+    acc[currency] = (acc[currency] || 0) + (invoice.amount || 0);
+    return acc;
+  }, {});
+  
+  const formatted = Object.entries(totals).map(([currency, amount]) => 
+    formatCurrency(amount, currency)
+  );
+  
+  return formatted.join(' + ');
 };
 
   const formatDate = (dateString) => {
@@ -378,7 +396,7 @@ const formatCurrency = (amount) => {
                         {payment.monthName} {payment.year}
                       </h4>
                       <p className="text-sm text-gray-500">
-                        {payment.invoices?.length || 0} invoices • {formatCurrency(payment.totalAmount)} •{" "}
+                        {payment.invoices?.length || 0} invoices • {formatTotalByCurrency(payment.invoices)} •{" "}
                         <span
                           className={`${
                             payment.status === "Paid"
@@ -553,13 +571,13 @@ const formatCurrency = (amount) => {
                                                 )}
                                               </h5>
                                               <p className="text-sm text-gray-500">
-                                                {formatDate(invoice.invoiceDate)} • {formatCurrency(invoice.amount)}
+                                                {formatDate(invoice.invoiceDate)} • {formatCurrency(invoice.amount, invoice.currency)}
                                               </p>
                                             </div>
                                           </div>
                                           <div className="text-right">
                                             <span className="text-lg font-semibold text-gray-900">
-                                              {formatCurrency(invoice.amount)}
+                                              {formatCurrency(invoice.amount, invoice.currency)}
                                             </span>
                                           </div>
                                         </div>

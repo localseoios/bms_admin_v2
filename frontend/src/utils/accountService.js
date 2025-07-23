@@ -286,6 +286,9 @@ const accountService = {
       if (invoiceData.invoiceDate) formData.append("invoiceDate", invoiceData.invoiceDate);
       if (invoiceData.description) formData.append("description", invoiceData.description);
       if (invoiceData.amount) formData.append("amount", invoiceData.amount.toString());
+      // Always send currency, even if empty (will default to QAR on backend)
+      formData.append("currency", invoiceData.currency || "QAR");
+      console.log("Sending currency to backend:", invoiceData.currency);
       if (invoiceData.option) formData.append("option", invoiceData.option);
       if (invoiceData.paymentMethod) formData.append("paymentMethod", invoiceData.paymentMethod);
       
@@ -327,6 +330,9 @@ const accountService = {
       if (invoiceData.invoiceDate) formData.append("invoiceDate", invoiceData.invoiceDate);
       if (invoiceData.description) formData.append("description", invoiceData.description);
       if (invoiceData.amount) formData.append("amount", invoiceData.amount.toString());
+      // Always send currency, even if empty (will default to QAR on backend)
+      formData.append("currency", invoiceData.currency || "QAR");
+      console.log("Sending currency to backend:", invoiceData.currency);
       if (invoiceData.option) formData.append("option", invoiceData.option);
       if (invoiceData.paymentMethod) formData.append("paymentMethod", invoiceData.paymentMethod);
       

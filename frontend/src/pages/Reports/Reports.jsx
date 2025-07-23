@@ -1,15 +1,48 @@
 // pages/Reports/Reports.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   DocumentTextIcon, 
   ChartBarIcon,
   BanknotesIcon,
-  DocumentChartBarIcon 
+  DocumentChartBarIcon,
+  ExclamationTriangleIcon
 } from "@heroicons/react/24/outline";
+import { useAuth } from "../../context/AuthContext";
 import FinancialDocuments from "./FinancialDocuments";
 
 const Reports = () => {
   const [activeTab, setActiveTab] = useState("financial_statement");
+  const { checkPermission } = useAuth();
+
+  // Check if user has permission to access financial reports - ONLY Audited Financial permissions allowed
+  // We explicitly prevent admin bypass for this specific page to enforce strict access control
+  const { user } = useAuth();
+  const hasFinancialReportAccess = user && user.role && user.role.permissions && (
+    user.role.permissions.clientManagement?.auditedFinancial?.viewer === true ||
+    user.role.permissions.clientManagement?.auditedFinancial?.editor === true
+  );
+
+  // If user doesn't have permission, show access denied
+  if (!hasFinancialReportAccess) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
+          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-500 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Access Denied
+          </h3>
+          <p className="text-gray-600 mb-4">
+            You don't have permission to access Financial Reports. Please contact your administrator to request "Audited Financial" access.
+          </p>
+          <div className="bg-red-50 border border-red-200 rounded-md p-3">
+            <p className="text-sm text-red-700">
+              Required permission: <span className="font-mono">Audited Financial</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   const tabs = [
     {

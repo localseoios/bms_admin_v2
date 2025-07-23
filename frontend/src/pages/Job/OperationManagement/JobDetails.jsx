@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import AutoSuggestPersonInput from "../../../components/AutoSuggestPersonInput";
 import {
   ArrowLeftIcon,
   DocumentTextIcon,
@@ -39,6 +40,7 @@ import axiosInstance from "../../../utils/axios";
 import {
   TextInputWithHistory,
   DateInputWithHistory,
+  TextInputWithHistoryAndAutoSuggest,
 } from "./PersonDetailsHistory";
 import * as XLSX from "xlsx";
 import operationService from "../../../utils/operationService";
@@ -63,6 +65,7 @@ function JobDetails() {
   // Timeline state
   const [timeline, setTimeline] = useState([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(true); // State to control timeline visibility
 
   // Action states
   const [submitting, setSubmitting] = useState(false);
@@ -91,7 +94,7 @@ const [deletedCompanyMemoIds, setDeletedCompanyMemoIds] = useState([]); // ADD T
       nationality: "Sri Lankan",
       email: "sarath@newoon.com",
       mobileNo: "33631831",
-      qidNo: "27979201938",
+      qidNo: "27914405663",
       passportNo: "P0196918",
     },
   ];
@@ -1838,18 +1841,6 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
         "Documents Status"
       );
 
-      // Sheet 7: Timeline (if available)
-      if (timeline && timeline.length > 0) {
-        const timelineData = timeline.map((event, index) => ({
-          Entry: index + 1,
-          Status: event.status || "",
-          Description: event.description || "",
-          Timestamp: new Date(event.timestamp).toLocaleString(),
-          "Updated By": event.updatedBy?.name || "System",
-        }));
-        const timelineSheet = XLSX.utils.json_to_sheet(timelineData);
-        XLSX.utils.book_append_sheet(workbook, timelineSheet, "Timeline");
-      }
 
       // Generate filename with timestamp
       const timestamp = new Date()
@@ -3438,6 +3429,43 @@ const handleSaveCompanyDetails = async () => {
     }
   };
 
+  // Handle person auto-fill
+  const handlePersonAutoFill = (section, index, personDetails) => {
+    if (!personDetails) return;
+    
+    const personData = {
+      name: personDetails.name || '',
+      nationality: personDetails.nationality || '',
+      email: personDetails.email || '',
+      mobileNo: personDetails.mobileNo || '',
+      qidNo: personDetails.qidNo || '',
+      qidExpiry: personDetails.qidExpiry || '',
+      nationalAddress: personDetails.nationalAddress || '',
+      nationalAddressExpiry: personDetails.nationalAddressExpiry || '',
+      passportNo: personDetails.passportNo || '',
+      passportExpiry: personDetails.passportExpiry || '',
+    };
+
+    // Update the appropriate section
+    if (section === 'director') {
+      const newDetails = [...directorDetails];
+      newDetails[index] = { ...newDetails[index], ...personData };
+      setDirectorDetails(newDetails);
+    } else if (section === 'shareholder') {
+      const newDetails = [...shareholderDetails];
+      newDetails[index] = { ...newDetails[index], ...personData };
+      setShareholderDetails(newDetails);
+    } else if (section === 'secretary') {
+      const newDetails = [...secretaryDetails];
+      newDetails[index] = { ...newDetails[index], ...personData };
+      setSecretaryDetails(newDetails);
+    } else if (section === 'sef') {
+      const newDetails = [...sefDetails];
+      newDetails[index] = { ...newDetails[index], ...personData };
+      setSefDetails(newDetails);
+    }
+  };
+
   // Delete person entry
   const handleDeletePersonEntry = async (section, index) => {
     try {
@@ -3562,8 +3590,8 @@ const handleSaveCompanyDetails = async () => {
                   )}
               </label>
 
-              {/* Replace standard input with history-aware input */}
-              <TextInputWithHistory
+              {/* Replace standard input with history-aware input with auto-suggest */}
+              <TextInputWithHistoryAndAutoSuggest
                 fieldName="name"
                 personId={entry._id}
                 personType={section}
@@ -3573,6 +3601,9 @@ const handleSaveCompanyDetails = async () => {
                   const newDetails = [...details];
                   newDetails[index].name = e.target.value;
                   setDetails(newDetails);
+                }}
+                onAutoFill={(personDetails) => {
+                  handlePersonAutoFill(section, index, personDetails);
                 }}
                 className={`mt-1 block w-full rounded-lg ${
                   job &&
@@ -5840,6 +5871,49 @@ const renderCompanyDetailsSection = () => {
     }
   };
 
+  // Timeline utility functions
+  const getTimelineStatusIcon = (status) => {
+    switch (status?.toLowerCase()) {
+      case "created":
+      case "pending":
+        return <ClockIcon className="h-4 w-4 text-blue-500" />;
+      case "approved":
+      case "completed":
+      case "screening_done":
+        return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
+      case "rejected":
+        return <ExclamationTriangleIcon className="h-4 w-4 text-red-500" />;
+      case "corrected":
+      case "updated":
+        return <PencilIcon className="h-4 w-4 text-yellow-500" />;
+      default:
+        return <ClockIcon className="h-4 w-4 text-gray-400" />;
+    }
+  };
+
+  const getTimelineTitle = (status) => {
+    switch (status?.toLowerCase()) {
+      case "created":
+        return "Service Created";
+      case "pending":
+        return "Pending Review";
+      case "approved":
+        return "Approved";
+      case "completed":
+        return "Service Completed";
+      case "screening_done":
+        return "Screening Completed";
+      case "rejected":
+        return "Service Rejected";
+      case "corrected":
+        return "Service Corrected";
+      case "updated":
+        return "Details Updated";
+      default:
+        return status?.charAt(0)?.toUpperCase() + status?.slice(1) || "Unknown";
+    }
+  };
+
   const tabs = [
     {
       id: "company",
@@ -6204,80 +6278,6 @@ const renderCompanyDetailsSection = () => {
                   </div>
                 </div>
 
-                {/* Job Timeline */}
-                <div className="mt-8">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-gray-100">
-                    Timeline
-                  </h3>
-
-                  {timelineLoading ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600 mx-auto"></div>
-                      <p className="mt-4 text-sm text-gray-500">
-                        Loading timeline...
-                      </p>
-                    </div>
-                  ) : timeline && timeline.length > 0 ? (
-                    <div className="flow-root bg-gray-50 p-6 rounded-xl border border-gray-100">
-                      <ul className="-mb-8">
-                        {timeline.map((event, index) => (
-                          <li key={index}>
-                            <div className="relative pb-8">
-                              {index !== timeline.length - 1 ? (
-                                <span
-                                  className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-indigo-200"
-                                  aria-hidden="true"
-                                />
-                              ) : null}
-                              <div className="relative flex items-start space-x-3">
-                                <div className="relative">
-                                  <div
-                                    className={`h-10 w-10 rounded-full flex items-center justify-center shadow-md ${
-                                      getStatusColor(event.status).split(" ")[0]
-                                    }`}
-                                  >
-                                    {getStatusIcon(event.status)}
-                                  </div>
-                                </div>
-                                <div className="min-w-0 flex-1 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                                  <div>
-                                    <div className="text-sm font-bold text-gray-900">
-                                      {event.status
-                                        .replace("_", " ")
-                                        .charAt(0)
-                                        .toUpperCase() +
-                                        event.status.replace("_", " ").slice(1)}
-                                    </div>
-                                    <p className="mt-1 text-sm text-gray-500">
-                                      {new Date(
-                                        event.timestamp
-                                      ).toLocaleString()}
-                                      {event.updatedBy &&
-                                        ` • By: ${
-                                          event.updatedBy.name || "System"
-                                        }`}
-                                    </p>
-                                  </div>
-                                  {event.description && (
-                                    <div className="mt-2 text-sm text-gray-700 bg-gray-50 p-2 rounded-lg">
-                                      <p>{event.description}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 text-center">
-                      <p className="text-sm text-gray-500 italic">
-                        No timeline events available
-                      </p>
-                    </div>
-                  )}
-                </div>
               </div>
             </motion.div>
 
@@ -6480,7 +6480,6 @@ const renderCompanyDetailsSection = () => {
                       <li>Secretary information</li>
                       <li>SEF details</li>
                       <li>Document status</li>
-                      <li>Job timeline</li>
                     </ul>
                   </div>
                 </div>
@@ -6849,6 +6848,119 @@ companyDetails.engagementLetters.length > 0 ? (
                       </button>
                     </div>
                   )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Service Timeline Section */}
+            {showTimeline && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
+              >
+                <div className="px-6 py-8">
+                  <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-100">
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                      <ClockIcon className="h-5 w-5 text-indigo-600 mr-2" />
+                      Service Timeline
+                    </h2>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setShowTimeline(false)}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Hide Timeline"
+                      >
+                        <ChevronUpIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {timelineLoading ? (
+                    <div className="space-y-4">
+                      {[...Array(3)].map((_, index) => (
+                        <div key={index} className="animate-pulse">
+                          <div className="flex items-start space-x-3">
+                            <div className="h-8 w-8 bg-gray-200 rounded-full"></div>
+                            <div className="flex-1 space-y-2">
+                              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : timeline.length > 0 ? (
+                    <div className="flow-root">
+                      <ul className="-mb-8">
+                        {timeline.map((event, index) => (
+                          <li key={index}>
+                            <div className="relative pb-8">
+                              {index !== timeline.length - 1 ? (
+                                <span
+                                  className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200"
+                                  aria-hidden="true"
+                                />
+                              ) : null}
+                              <div className="relative flex items-start space-x-3">
+                                <div className="relative">
+                                  <div className="h-8 w-8 bg-gray-50 rounded-full border-2 border-gray-200 flex items-center justify-center">
+                                    {getTimelineStatusIcon(event.status)}
+                                  </div>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {getTimelineTitle(event.status)}
+                                    </p>
+                                    {event.description && (
+                                      <p className="text-sm text-gray-500 mt-1">
+                                        {event.description}
+                                      </p>
+                                    )}
+                                    <p className="text-xs text-gray-400 mt-1">
+                                      {new Date(event.timestamp).toLocaleString()}
+                                      {event.updatedBy?.name && (
+                                        <span className="ml-2">
+                                          by {event.updatedBy.name}
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <ClockIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                      <p className="text-sm text-gray-500">No timeline events yet</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Show Timeline Button when hidden */}
+            {!showTimeline && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3 }}
+                className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden"
+              >
+                <div className="px-6 py-4">
+                  <button
+                    onClick={() => setShowTimeline(true)}
+                    className="w-full flex items-center justify-center space-x-2 text-gray-600 hover:text-indigo-600 transition-colors"
+                  >
+                    <ChevronDownIcon className="h-4 w-4" />
+                    <span className="text-sm font-medium">Show Service Timeline</span>
+                  </button>
                 </div>
               </motion.div>
             )}

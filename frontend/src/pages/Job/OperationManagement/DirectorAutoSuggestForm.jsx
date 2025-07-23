@@ -8,7 +8,7 @@ const DIRECTOR_SUGGESTIONS = [
     nationality: "Sri Lankan",
     email: "sarath@newoon.com",
     mobileNo: "33631831",
-    qidNo: "27979201938",
+    qidNo: "27914405663",
     passportNo: "P0196918"
   }
 ];

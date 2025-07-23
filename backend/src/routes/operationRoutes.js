@@ -1,4 +1,5 @@
 // routes/operationRoutes.js - Fixed with correct middleware references
+console.log("🚀 Loading operationRoutes.js");
 const express = require("express");
 const router = express.Router();
 const { protect, checkPermission } = require("../middleware/authMiddleware");
@@ -24,6 +25,7 @@ const {
   getExpiringJobsStats,
   updateJobExpiryDate,
   deleteEngagementLetter,
+  getJobDataByEmail,
 } = require("../controllers/operationController");
 
 
@@ -90,6 +92,25 @@ router.get(
   protect,
   checkPermission("operationManagement"),
   checkJobNumber
+);
+
+// Email lookup for auto-fill functionality
+console.log("🔵 Registering email lookup route: /lookup-by-email/:email");
+
+// Simple test route without middleware
+router.get("/test-simple", (req, res) => {
+  res.json({ message: "Simple test works" });
+});
+
+router.get(
+  "/lookup-by-email/:email",
+  protect,
+  checkPermission("operationManagement"),
+  (req, res, next) => {
+    console.log("📧 Email lookup route hit:", req.params.email);
+    next();
+  },
+  getJobDataByEmail
 );
 
 // FIXED: Dashboard expiring jobs route - corrected middleware
@@ -370,5 +391,7 @@ router.delete(
   deleteEngagementLetter
 );
 
+console.log("✅ operationRoutes.js loaded, routes registered");
+console.log("📋 Available functions:", { getJobDataByEmail: typeof getJobDataByEmail });
 
 module.exports = router;

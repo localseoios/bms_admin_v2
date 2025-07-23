@@ -21,6 +21,12 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    currency: {
+      type: String,
+      required: true,
+      enum: ["QAR", "USD"],
+      default: "QAR",
+    },
     option: {
       type: String,
       trim: true,

@@ -34,6 +34,7 @@ const EnhancedMonthlyPaymentForm = ({
       invoiceDate: format(new Date(), "yyyy-MM-dd"),
       description: "",
       amount: "",
+      currency: "QAR",
       option: "",
       paymentMethod: "",
       file: null,
@@ -68,6 +69,7 @@ const EnhancedMonthlyPaymentForm = ({
         invoiceDate: format(new Date(), "yyyy-MM-dd"),
         description: "",
         amount: "",
+        currency: "QAR",
         option: "",
         paymentMethod: "",
         file: null,
@@ -154,6 +156,7 @@ const EnhancedMonthlyPaymentForm = ({
         invoiceDate: row.invoiceDate,
         description: row.description,
         amount: row.amount,
+        currency: row.currency,
         option: row.option || "",
         paymentMethod: row.paymentMethod,
         fileIndex: index, // Add fileIndex to match with uploaded files
@@ -338,6 +341,12 @@ const EnhancedMonthlyPaymentForm = ({
                     scope="col"
                     className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
+                    Currency*
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     Option
                   </th>
                   <th
@@ -416,6 +425,20 @@ const EnhancedMonthlyPaymentForm = ({
                         disabled={loading}
                         required
                       />
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap text-sm">
+                      <select
+                        value={row.currency}
+                        onChange={(e) =>
+                          handleInputChange(index, "currency", e.target.value)
+                        }
+                        className="focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md shadow-sm"
+                        disabled={loading}
+                        required
+                      >
+                        <option value="QAR">QAR</option>
+                        <option value="USD">USD</option>
+                      </select>
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap text-sm">
                       <select
