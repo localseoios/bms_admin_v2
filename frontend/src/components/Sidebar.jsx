@@ -66,6 +66,16 @@ const navigation = [
         href: "/compliance",
         icon: ShieldCheckIcon,
       },
+      {
+        name: "BRA Management",
+        href: "/bra-management",
+        icon: ClipboardIcon,
+      },
+      {
+        name: "KYC Management",
+        href: "/kyc-management",
+        icon: IdentificationIcon,
+      },
     ],
   },
   {
@@ -87,16 +97,7 @@ const navigation = [
         href: "/all-clients",
         icon: UsersIcon,
       },
-      {
-        name: "BRA Management",
-        href: "/bra-management",
-        icon: ClipboardIcon,
-      },
-      {
-        name: "KYC Management",
-        href: "/kyc-management",
-        icon: IdentificationIcon,
-      },
+      
     ],
   },
   //   {
