@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Notifications from "./pages/Notifications/Notifications";
 import Layout from "./components/Layout";
 import UserManagement from "./pages/UserManagement/UserManagement";
@@ -32,6 +32,7 @@ function App() {
 
           {/* Protected Routes Wrapped in Layout */}
           <Route path="/" element={<Layout />}>
+            <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="user-management" element={<UserManagement />} />
             <Route path="create-job" element={<CreateJob />} />
             <Route path="admin/jobs" element={<AdminJobs />} />
