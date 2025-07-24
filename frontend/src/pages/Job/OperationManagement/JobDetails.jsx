@@ -630,9 +630,12 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                   const cursorPosition = e.target.selectionStart;
                   const inputElement = e.target;
 
-                  // Update state
+                  // Update state with deep copy to prevent reference issues
                   const newDetails = [...details];
-                  newDetails[index].name = inputValue;
+                  newDetails[index] = {
+                    ...newDetails[index],
+                    name: inputValue
+                  };
                   setDetails(newDetails);
 
                   // Preserve focus and cursor position
@@ -883,7 +886,10 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                       value={entry.qidExpiry || ""}
                       onChange={(e) => {
                         const newDetails = [...details];
-                        newDetails[index].qidExpiry = e.target.value;
+                        newDetails[index] = {
+                          ...newDetails[index],
+                          qidExpiry: e.target.value
+                        };
                         setDetails(newDetails);
                       }}
                       className={`block w-full rounded-lg ${
@@ -1017,7 +1023,10 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                     value={entry.nationalAddress || ""}
                     onChange={(e) => {
                       const newDetails = [...details];
-                      newDetails[index].nationalAddress = e.target.value;
+                      newDetails[index] = {
+                        ...newDetails[index],
+                        nationalAddress: e.target.value
+                      };
                       setDetails(newDetails);
                     }}
                     className={`block w-full rounded-lg ${
@@ -1148,8 +1157,10 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         value={entry.nationalAddressExpiry || ""}
                         onChange={(e) => {
                           const newDetails = [...details];
-                          newDetails[index].nationalAddressExpiry =
-                            e.target.value;
+                          newDetails[index] = {
+                            ...newDetails[index],
+                            nationalAddressExpiry: e.target.value
+                          };
                           setDetails(newDetails);
                         }}
                         className={`block w-full rounded-lg ${
@@ -1258,7 +1269,10 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                       value={entry.passportExpiry || ""}
                       onChange={(e) => {
                         const newDetails = [...details];
-                        newDetails[index].passportExpiry = e.target.value;
+                        newDetails[index] = {
+                          ...newDetails[index],
+                          passportExpiry: e.target.value
+                        };
                         setDetails(newDetails);
                       }}
                       className={`block w-full rounded-lg ${
@@ -2815,8 +2829,8 @@ const handleSaveCompanyDetails = async () => {
       formData.append("mobileNo", entry.mobileNo || "");
       formData.append("email", entry.email || "");
 
-      // Add synchronization option - ALWAYS sync across jobs by default
-      formData.append("syncAcrossJobs", "true");
+      // Add synchronization option - DON'T sync across jobs by default for individual entry updates
+      formData.append("syncAcrossJobs", "false");
 
       // Add file fields if they are File objects (not URLs)
       const fileFields = [
@@ -3807,7 +3821,10 @@ const handleSaveCompanyDetails = async () => {
                     value={entry.qidNo}
                     onChange={(e) => {
                       const newDetails = [...details];
-                      newDetails[index].qidNo = e.target.value;
+                      newDetails[index] = {
+                        ...newDetails[index],
+                        qidNo: e.target.value
+                      };
                       setDetails(newDetails);
                     }}
                     className={`block w-full rounded-lg ${
@@ -3837,7 +3854,10 @@ const handleSaveCompanyDetails = async () => {
                       value={entry.qidExpiry}
                       onChange={(e) => {
                         const newDetails = [...details];
-                        newDetails[index].qidExpiry = e.target.value;
+                        newDetails[index] = {
+                          ...newDetails[index],
+                          qidExpiry: e.target.value
+                        };
                         setDetails(newDetails);
                       }}
                       className={`block w-full rounded-lg ${
@@ -4078,8 +4098,10 @@ const handleSaveCompanyDetails = async () => {
                         value={entry.nationalAddressExpiry}
                         onChange={(e) => {
                           const newDetails = [...details];
-                          newDetails[index].nationalAddressExpiry =
-                            e.target.value;
+                          newDetails[index] = {
+                            ...newDetails[index],
+                            nationalAddressExpiry: e.target.value
+                          };
                           setDetails(newDetails);
                         }}
                         className={`block w-full rounded-lg ${
@@ -4173,7 +4195,10 @@ const handleSaveCompanyDetails = async () => {
                       value={entry.passportExpiry}
                       onChange={(e) => {
                         const newDetails = [...details];
-                        newDetails[index].passportExpiry = e.target.value;
+                        newDetails[index] = {
+                          ...newDetails[index],
+                          passportExpiry: e.target.value
+                        };
                         setDetails(newDetails);
                       }}
                       className={`block w-full rounded-lg ${
