@@ -531,6 +531,24 @@ if (!Array.isArray(companyDetails.companyMemo)) {
   }
   */
 
+  // === CLEANUP: Remove invalid crExtract entries ===
+  if (Array.isArray(companyDetails.crExtract)) {
+    companyDetails.crExtract = companyDetails.crExtract.filter(extract => {
+      // Keep only valid entries that have fileUrl
+      return extract && extract.fileUrl && typeof extract.fileUrl === 'string' && extract.fileUrl.trim() !== '';
+    });
+    console.log(`🧹 Cleaned crExtract array. Valid entries: ${companyDetails.crExtract.length}`);
+  }
+
+  // === CLEANUP: Remove invalid companyMemo entries ===
+  if (Array.isArray(companyDetails.companyMemo)) {
+    companyDetails.companyMemo = companyDetails.companyMemo.filter(memo => {
+      // Keep only valid entries that have fileUrl
+      return memo && memo.fileUrl && typeof memo.fileUrl === 'string' && memo.fileUrl.trim() !== '';
+    });
+    console.log(`🧹 Cleaned companyMemo array. Valid entries: ${companyDetails.companyMemo.length}`);
+  }
+
   const updatedCompanyDetails = await companyDetails.save();
 
   // Add a timeline entry for the job
