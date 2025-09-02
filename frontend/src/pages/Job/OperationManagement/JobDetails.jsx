@@ -793,14 +793,14 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(
-                            section,
-                            "visaCopy",
-                            index,
-                            null
-                          )
-                        }
+                        onClick={async () => {
+                          if (window.confirm(`Are you sure you want to delete this Visa Copy document?\n\nThis action cannot be undone.`)) {
+                            // Delete from UI state first
+                            handlePersonFileChange(section, "visaCopy", index, null);
+                            // Then delete from database
+                            await handleDeletePersonDocument(section, index, "visaCopy");
+                          }
+                        }}
                         className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                         title="Remove document"
                       >
@@ -959,14 +959,12 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "qidDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={async () => {
+                              if (window.confirm(`Are you sure you want to delete this QID Document?\n\nThis action cannot be undone.`)) {
+                                handlePersonFileChange(section, "qidDoc", index, null);
+                                await handleDeletePersonDocument(section, index, "qidDoc");
+                              }
+                            }}
                             className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                             title="Remove document"
                           >
@@ -1100,14 +1098,12 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "nationalAddressDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={async () => {
+                              if (window.confirm(`Are you sure you want to delete this National Address Document?\n\nThis action cannot be undone.`)) {
+                                handlePersonFileChange(section, "nationalAddressDoc", index, null);
+                                await handleDeletePersonDocument(section, index, "nationalAddressDoc");
+                              }
+                            }}
                             className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                             title="Remove document"
                           >
@@ -1342,14 +1338,12 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "passportDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={async () => {
+                              if (window.confirm(`Are you sure you want to delete this Passport Document?\n\nThis action cannot be undone.`)) {
+                                handlePersonFileChange(section, "passportDoc", index, null);
+                                await handleDeletePersonDocument(section, index, "passportDoc");
+                              }
+                            }}
                             className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                             title="Remove document"
                           >
@@ -1516,9 +1510,12 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(section, "cv", index, null)
-                        }
+                        onClick={async () => {
+                          if (window.confirm(`Are you sure you want to delete this CV document?\n\nThis action cannot be undone.`)) {
+                            handlePersonFileChange(section, "cv", index, null);
+                            await handleDeletePersonDocument(section, index, "cv");
+                          }
+                        }}
                         className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                         title="Remove document"
                       >
@@ -1591,7 +1588,10 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
           <div className="mt-6 flex justify-end">
             <button
               type="button"
-              onClick={() => handleSavePersonEntry(section, index)}
+              onClick={() => {
+                console.log("🔘 Update Entry button clicked for:", { section, index });
+                handleSavePersonEntry(section, index);
+              }}
               disabled={submitting}
               className={`px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 ${
                 submitting ? "opacity-50 cursor-not-allowed" : ""
@@ -1651,6 +1651,8 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
     activeStatus: "yes",
     documents: [],
   });
+  const [kycDocumentFiles, setKycDocumentFiles] = useState([]);
+  const [deletedKycDocumentIds, setDeletedKycDocumentIds] = useState([]);
 
   // Company details state
   const [companyDetails, setCompanyDetails] = useState({
@@ -1911,6 +1913,17 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       ...prev,
       [field]: file,
     }));
+
+    // Show message when deleting
+    if (file === null) {
+      setActionMessage({
+        type: "info",
+        message: `Document marked for deletion. Click "Save" to confirm.`,
+      });
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    }
   };
 
   // Enhanced export function for multiple companies (if you need to export multiple jobs)
@@ -2566,6 +2579,9 @@ const handleSaveCompanyDetails = async () => {
     fileFields.forEach((field) => {
       if (companyDetails[field] && companyDetails[field] instanceof File) {
         formData.append(field, companyDetails[field]);
+      } else if (companyDetails[field] === null) {
+        // Explicitly mark files for deletion
+        formData.append(`delete_${field}`, "true");
       }
     });
 
@@ -2646,13 +2662,38 @@ const handleSaveCompanyDetails = async () => {
     try {
       setSubmitting(true);
 
-      await axiosInstance.put(`/operations/jobs/${jobId}/kyc-documents`, {
-        activeStatus: kycDetails.activeStatus,
+      const formData = new FormData();
+      formData.append('activeStatus', kycDetails.activeStatus);
+      
+      // Add existing documents that weren't deleted
+      const existingDocs = kycDetails.documents.filter(
+        doc => !deletedKycDocumentIds.includes(doc._id)
+      );
+      formData.append('existingDocuments', JSON.stringify(existingDocs));
+      
+      // Add new documents
+      kycDocumentFiles.forEach(file => {
+        formData.append('kycDocuments', file.file);
+        formData.append('descriptions[]', file.description || '');
+        formData.append('expiryDates[]', file.expiryDate || '');
       });
+
+      await axiosInstance.put(`/operations/jobs/${jobId}/kyc-documents`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      // Reset state after successful save
+      setKycDocumentFiles([]);
+      setDeletedKycDocumentIds([]);
+      
+      // Refresh KYC details
+      await fetchKycDetails();
 
       setActionMessage({
         type: "success",
-        message: "KYC status updated successfully",
+        message: "KYC documents updated successfully",
       });
 
       setTimeout(() => {
@@ -2717,10 +2758,13 @@ const handleSaveCompanyDetails = async () => {
 
     updateState((prev) => {
       const newDetails = [...prev];
+      console.log(`Setting ${field} to:`, file);
+      console.log(`Previous value was:`, newDetails[index][field]);
       newDetails[index] = {
         ...newDetails[index],
-        [field]: file,
+        [field]: file, // Set to null when deleting, or File object when uploading
       };
+      console.log(`New value is:`, newDetails[index][field]);
       return newDetails;
     });
   };
@@ -2797,8 +2841,10 @@ const handleSaveCompanyDetails = async () => {
     });
   };
 
-  // Save person details entry
-  const handleSavePersonEntry = async (section, index) => {
+  // Delete and save person document
+  const handleDeletePersonDocument = async (section, index, field) => {
+    console.log("🗑️ handleDeletePersonDocument called with:", { section, index, field });
+    
     try {
       setSubmitting(true);
 
@@ -2809,7 +2855,153 @@ const handleSaveCompanyDetails = async () => {
         sef: sefDetails,
       }[section];
 
+      const entry = { ...details[index] };
+      
+      // Create FormData for the request
+      const formData = new FormData();
+
+      // Add text fields
+      formData.append("name", entry.name || "");
+      formData.append("nationality", entry.nationality || "");
+      formData.append("qidNo", entry.qidNo || "");
+      formData.append("qidExpiry", entry.qidExpiry || "");
+      formData.append("nationalAddress", entry.nationalAddress || "");
+      formData.append("nationalAddressExpiry", entry.nationalAddressExpiry || "");
+      formData.append("passportNo", entry.passportNo || "");
+      formData.append("passportExpiry", entry.passportExpiry || "");
+      formData.append("mobileNo", entry.mobileNo || "");
+      formData.append("email", entry.email || "");
+      formData.append("syncAcrossJobs", "false");
+
+      // Mark the specific field for deletion
+      console.log(`📝 Marking ${field} for deletion`);
+      formData.append(`delete_${field}`, "true");
+
+      if (entry._id) {
+        const updateUrl = `/operations/jobs/${jobId}/person-details/${section}/${entry._id}`;
+        console.log("🌐 DELETE PUT URL:", updateUrl);
+        
+        const response = await axiosInstance.put(updateUrl, formData);
+        console.log("✅ Document deleted successfully. Response:", response);
+
+        // Update the UI state to reflect the deletion
+        const updateState = {
+          director: setDirectorDetails,
+          shareholder: setShareholderDetails,
+          secretary: setSecretaryDetails,
+          sef: setSefDetails,
+        }[section];
+
+        updateState((prev) => {
+          const newEntries = [...prev];
+          newEntries[index] = {
+            ...response.data,
+            [field]: null, // Ensure the field is null in UI
+          };
+          return newEntries;
+        });
+
+        setActionMessage({
+          type: "success",
+          message: `Document deleted successfully.`,
+        });
+        
+        setTimeout(() => {
+          setActionMessage({ type: null, message: null });
+        }, 3000);
+      }
+    } catch (err) {
+      console.error(`❌ Error deleting document:`, err);
+      setActionMessage({
+        type: "error",
+        message: err.response?.data?.message || `Failed to delete document`,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Delete and save company document
+  const handleDeleteCompanyDocument = async (field) => {
+    console.log("🗑️ handleDeleteCompanyDocument called with field:", field);
+    
+    try {
+      setSubmitting(true);
+
+      const formData = new FormData();
+      
+      // Add all company details fields
+      formData.append("companyName", companyDetails.companyName || "");
+      formData.append("qfcNo", companyDetails.qfcNo || "");
+      formData.append("registeredAddress", companyDetails.registeredAddress || "");
+      formData.append("incorporationDate", companyDetails.incorporationDate || "");
+      formData.append("serviceType", companyDetails.serviceType || "");
+      formData.append("mainPurpose", companyDetails.mainPurpose || "");
+      formData.append("expiryDate", companyDetails.expiryDate || "");
+      formData.append("companyComputerCard", companyDetails.companyComputerCard || "");
+      formData.append("companyComputerCardExpiry", companyDetails.companyComputerCardExpiry || "");
+      formData.append("taxCard", companyDetails.taxCard || "");
+      formData.append("taxCardExpiry", companyDetails.taxCardExpiry || "");
+      formData.append("crExtractExpiry", companyDetails.crExtractExpiry || "");
+      formData.append("scopeOfLicense", companyDetails.scopeOfLicense || "");
+      formData.append("scopeOfLicenseExpiry", companyDetails.scopeOfLicenseExpiry || "");
+      formData.append("articleOfAssociate", companyDetails.articleOfAssociate || "");
+      formData.append("certificateOfIncorporate", companyDetails.certificateOfIncorporate || "");
+
+      // Mark the specific field for deletion
+      console.log(`📝 Marking ${field} for deletion`);
+      formData.append(`delete_${field}`, "true");
+
+      const updateUrl = `/operations/jobs/${jobId}/company-details`;
+      console.log("🌐 DELETE PUT URL:", updateUrl);
+      
+      const response = await axiosInstance.put(updateUrl, formData);
+      console.log("✅ Company document deleted successfully. Response:", response);
+
+      // Update the UI state to reflect the deletion
+      setCompanyDetails(prev => ({
+        ...prev,
+        [field]: null
+      }));
+
+      setActionMessage({
+        type: "success",
+        message: `Document deleted successfully.`,
+      });
+      
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+      
+    } catch (err) {
+      console.error(`❌ Error deleting company document:`, err);
+      setActionMessage({
+        type: "error",
+        message: err.response?.data?.message || `Failed to delete document`,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Save person details entry
+  const handleSavePersonEntry = async (section, index) => {
+    console.log("🚀 handleSavePersonEntry called with:", { section, index });
+    
+    try {
+      console.log("✅ Setting submitting to true");
+      setSubmitting(true);
+
+      const details = {
+        director: directorDetails,
+        shareholder: shareholderDetails,
+        secretary: secretaryDetails,
+        sef: sefDetails,
+      }[section];
+
+      console.log("📋 Details array:", details);
       const entry = details[index];
+      console.log("👤 Entry to save:", entry);
 
       // Create FormData for the request
       const formData = new FormData();
@@ -2842,20 +3034,37 @@ const handleSaveCompanyDetails = async () => {
       ];
 
       fileFields.forEach((field) => {
+        console.log(`Checking field ${field}:`, entry[field]);
         if (entry[field] && entry[field] instanceof File) {
+          console.log(`${field} is a File, appending to FormData`);
           formData.append(field, entry[field]);
+        } else if (entry[field] === null) {
+          console.log(`${field} is null, marking for deletion`);
+          // Explicitly mark files for deletion
+          formData.append(`delete_${field}`, "true");
+        } else if (typeof entry[field] === 'string') {
+          console.log(`${field} is a string (existing URL):`, entry[field]);
         }
       });
 
       let response;
 
+      // Log FormData contents
+      console.log("FormData contents:");
+      for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ' + pair[1]);
+      }
+
       // Update or create entry based on whether _id exists
       if (entry._id) {
+        console.log(`🔄 Updating existing entry with ID: ${entry._id}`);
+        const updateUrl = `/operations/jobs/${jobId}/person-details/${section}/${entry._id}`;
+        console.log("🌐 PUT URL:", updateUrl);
+        console.log("📤 About to send PUT request...");
+        
         // Update existing entry
-        response = await axiosInstance.put(
-          `/operations/jobs/${jobId}/person-details/${section}/${entry._id}`,
-          formData
-        );
+        response = await axiosInstance.put(updateUrl, formData);
+        console.log("✅ PUT request completed. Response:", response);
 
         // Update the entry in state with returned data
         const updateState = {
@@ -2961,13 +3170,17 @@ const handleSaveCompanyDetails = async () => {
         setActionMessage({ type: null, message: null });
       }, 3000);
     } catch (err) {
-      console.error(`Error saving ${section} details:`, err);
+      console.error(`❌ Error saving ${section} details:`, err);
+      console.error("❌ Error response:", err.response);
+      console.error("❌ Error message:", err.message);
+      console.error("❌ Error stack:", err.stack);
       setActionMessage({
         type: "error",
         message:
           err.response?.data?.message || `Failed to save ${section} details`,
       });
     } finally {
+      console.log("🏁 Setting submitting to false");
       setSubmitting(false);
     }
   };
@@ -3745,14 +3958,14 @@ const handleSaveCompanyDetails = async () => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(
-                            section,
-                            "visaCopy",
-                            index,
-                            null
-                          )
-                        }
+                        onClick={async () => {
+                          if (window.confirm(`Are you sure you want to delete this Visa Copy document?\n\nThis action cannot be undone.`)) {
+                            // Delete from UI state first
+                            handlePersonFileChange(section, "visaCopy", index, null);
+                            // Then delete from database
+                            await handleDeletePersonDocument(section, index, "visaCopy");
+                          }
+                        }}
                         className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                         title="Remove document"
                       >
@@ -3927,14 +4140,12 @@ const handleSaveCompanyDetails = async () => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "qidDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={async () => {
+                              if (window.confirm(`Are you sure you want to delete this QID Document?\n\nThis action cannot be undone.`)) {
+                                handlePersonFileChange(section, "qidDoc", index, null);
+                                await handleDeletePersonDocument(section, index, "qidDoc");
+                              }
+                            }}
                             className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                             title="Remove document"
                           >
@@ -4041,14 +4252,12 @@ const handleSaveCompanyDetails = async () => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "nationalAddressDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={async () => {
+                              if (window.confirm(`Are you sure you want to delete this National Address Document?\n\nThis action cannot be undone.`)) {
+                                handlePersonFileChange(section, "nationalAddressDoc", index, null);
+                                await handleDeletePersonDocument(section, index, "nationalAddressDoc");
+                              }
+                            }}
                             className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                             title="Remove document"
                           >
@@ -4268,14 +4477,12 @@ const handleSaveCompanyDetails = async () => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "passportDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={async () => {
+                              if (window.confirm(`Are you sure you want to delete this Passport Document?\n\nThis action cannot be undone.`)) {
+                                handlePersonFileChange(section, "passportDoc", index, null);
+                                await handleDeletePersonDocument(section, index, "passportDoc");
+                              }
+                            }}
                             className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                             title="Remove document"
                           >
@@ -4455,9 +4662,12 @@ const handleSaveCompanyDetails = async () => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(section, "cv", index, null)
-                        }
+                        onClick={async () => {
+                          if (window.confirm(`Are you sure you want to delete this CV document?\n\nThis action cannot be undone.`)) {
+                            handlePersonFileChange(section, "cv", index, null);
+                            await handleDeletePersonDocument(section, index, "cv");
+                          }
+                        }}
                         className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
                         title="Remove document"
                       >
@@ -4501,7 +4711,10 @@ const handleSaveCompanyDetails = async () => {
           <div className="mt-6 flex justify-end">
             <button
               type="button"
-              onClick={() => handleSavePersonEntry(section, index)}
+              onClick={() => {
+                console.log("🔘 Update Entry button clicked for:", { section, index });
+                handleSavePersonEntry(section, index);
+              }}
               disabled={submitting}
               className={`px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 ${
                 submitting ? "opacity-50 cursor-not-allowed" : ""
@@ -4736,16 +4949,19 @@ const renderCompanyDetailsSection = () => {
                       </label>
                     )}
 
-                    {/* Remove Document Button */}
-                    {editingCompanyDetails && (
-                      <button
-                        onClick={() => handleCompanyFileChange(documentField, null)}
-                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                      </button>
-                    )}
+                    {/* Remove Document Button - Always visible */}
+                    <button
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to delete this ${label} document?\n\nThis action cannot be undone.`)) {
+                          handleCompanyFileChange(documentField, null);
+                          await handleDeleteCompanyDocument(documentField);
+                        }
+                      }}
+                      className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                      title="Remove document"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -4811,7 +5027,7 @@ const renderCompanyDetailsSection = () => {
         {/* Expiry Date Section - Takes 2 columns on large screens */}
         <div className="lg:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Expiry Date
+            Expiry Date <span className="text-gray-400 text-xs font-normal">(Optional)</span>
             {isExpired && (
               <span className="ml-2 text-xs text-red-600 font-bold">
                 EXPIRED
@@ -5137,7 +5353,7 @@ const renderCompanyDetailsSection = () => {
 
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Expiry Date
+            Expiry Date <span className="text-gray-400 text-xs font-normal">(Optional)</span>
           </label>
           <div className="flex items-center space-x-2">
             <input
@@ -5247,22 +5463,22 @@ const renderCompanyDetailsSection = () => {
                           >
                             View
                           </a>
-                          {editingCompanyDetails && (
-                            <button
-                              onClick={() => {
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete this CR Extract document?\n\nThis action cannot be undone.`)) {
                                 const newCrExtract = [...companyDetails.crExtract];
                                 newCrExtract.splice(index, 1);
                                 setCompanyDetails({
                                   ...companyDetails,
                                   crExtract: newCrExtract
                                 });
-                              }}
-                              className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                              title="Remove document"
-                            >
-                              <XMarkIcon className="h-3 w-3" />
-                            </button>
-                          )}
+                              }
+                            }}
+                            className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                            title="Remove document"
+                          >
+                            <XMarkIcon className="h-3 w-3" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -5367,7 +5583,7 @@ const renderCompanyDetailsSection = () => {
           {/* CR Extract Expiry date section */}
           <div className="lg:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Expiry Date
+              Expiry Date <span className="text-gray-400 text-xs font-normal">(Optional)</span>
             </label>
             <div className="flex items-center space-x-2">
               <input
@@ -5475,17 +5691,18 @@ const renderCompanyDetailsSection = () => {
                       </label>
                     )}
 
-                    {editingCompanyDetails && (
-                      <button
-                        onClick={() =>
-                          handleCompanyFileChange("articleOfAssociate", null)
+                    <button
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to delete the Article of Associate document?\n\nThis action cannot be undone.`)) {
+                          handleCompanyFileChange("articleOfAssociate", null);
+                          await handleDeleteCompanyDocument("articleOfAssociate");
                         }
-                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
+                      }}
+                      className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                      title="Remove document"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -5582,20 +5799,18 @@ const renderCompanyDetailsSection = () => {
                       </label>
                     )}
 
-                    {editingCompanyDetails && (
-                      <button
-                        onClick={() =>
-                          handleCompanyFileChange(
-                            "certificateOfIncorporate",
-                            null
-                          )
+                    <button
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to delete the Certificate of Incorporate document?\n\nThis action cannot be undone.`)) {
+                          handleCompanyFileChange("certificateOfIncorporate", null);
+                          await handleDeleteCompanyDocument("certificateOfIncorporate");
                         }
-                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
+                      }}
+                      className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
+                      title="Remove document"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -6401,6 +6616,131 @@ const renderCompanyDetailsSection = () => {
                               <option value="no">no</option>
                             </select>
                           </div>
+                        </div>
+                      </div>
+
+                      {/* Existing Documents */}
+                      {kycDetails.documents && kycDetails.documents.length > 0 && (
+                        <div className="mb-6">
+                          <h4 className="text-sm font-medium text-gray-700 mb-3">Existing Documents</h4>
+                          <div className="space-y-2">
+                            {kycDetails.documents
+                              .filter(doc => !deletedKycDocumentIds.includes(doc._id))
+                              .map((doc, index) => (
+                                <div key={doc._id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {doc.description || `Document ${index + 1}`}
+                                    </p>
+                                    {doc.expiryDate && (
+                                      <p className="text-xs text-gray-500">
+                                        Expires: {new Date(doc.expiryDate).toLocaleDateString()}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    {doc.file && (
+                                      <a
+                                        href={doc.file}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-indigo-600 hover:text-indigo-800"
+                                      >
+                                        <DocumentArrowDownIcon className="h-5 w-5" />
+                                      </a>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (window.confirm(`Are you sure you want to delete this KYC document?\n\n"${doc.description || `Document ${index + 1}`}"\n\nThis action cannot be undone.`)) {
+                                          setDeletedKycDocumentIds([...deletedKycDocumentIds, doc._id]);
+                                        }
+                                      }}
+                                      className="text-red-600 hover:text-red-800"
+                                    >
+                                      <XMarkIcon className="h-5 w-5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* New Document Upload */}
+                      <div className="mb-6">
+                        <h4 className="text-sm font-medium text-gray-700 mb-3">Upload New Documents</h4>
+                        <div className="space-y-3">
+                          {kycDocumentFiles.map((docFile, index) => (
+                            <div key={index} className="border border-gray-200 rounded-lg p-4">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    Document
+                                  </label>
+                                  <input
+                                    type="file"
+                                    onChange={(e) => {
+                                      const newFiles = [...kycDocumentFiles];
+                                      newFiles[index].file = e.target.files[0];
+                                      setKycDocumentFiles(newFiles);
+                                    }}
+                                    className="block w-full text-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    Description
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={docFile.description || ''}
+                                    onChange={(e) => {
+                                      const newFiles = [...kycDocumentFiles];
+                                      newFiles[index].description = e.target.value;
+                                      setKycDocumentFiles(newFiles);
+                                    }}
+                                    placeholder="Document description"
+                                    className="block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    Expiry Date (Optional)
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={docFile.expiryDate || ''}
+                                    onChange={(e) => {
+                                      const newFiles = [...kycDocumentFiles];
+                                      newFiles[index].expiryDate = e.target.value;
+                                      setKycDocumentFiles(newFiles);
+                                    }}
+                                    className="block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setKycDocumentFiles(kycDocumentFiles.filter((_, i) => i !== index));
+                                }}
+                                className="mt-2 text-sm text-red-600 hover:text-red-800"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setKycDocumentFiles([...kycDocumentFiles, { file: null, description: '', expiryDate: '' }]);
+                            }}
+                            className="flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            <PlusIcon className="h-4 w-4 mr-2" />
+                            Add Document
+                          </button>
                         </div>
                       </div>
 

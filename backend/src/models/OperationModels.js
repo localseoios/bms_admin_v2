@@ -206,6 +206,7 @@ const kycDocumentSchema = new mongoose.Schema(
         file: { type: String }, // URL to document
         description: { type: String },
         date: { type: Date },
+        expiryDate: { type: Date }, // Optional expiry date
       },
     ],
     updatedBy: {

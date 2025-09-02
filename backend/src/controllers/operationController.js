@@ -319,6 +319,17 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
 
   companyDetails.updatedBy = req.user._id;
 
+  // Handle document deletions first
+  const fileFields = ["companyComputerCard", "taxCard", "scopeOfLicense", "articleOfAssociate", "certificateOfIncorporate"];
+  
+  fileFields.forEach(field => {
+    if (req.body[`delete_${field}`] === "true") {
+      console.log(`🗑️ DELETING ${field} for company details - Previous value: ${companyDetails[field]}`);
+      companyDetails[field] = null;
+      console.log(`✅ ${field} set to null`);
+    }
+  });
+
   // Handle document uploads
   if (req.files) {
     // Engagement Letters
@@ -483,7 +494,10 @@ if (!Array.isArray(companyDetails.companyMemo)) {
     companyDetails.scopeOfLicenseExpiry = parseDateField(req.body.scopeOfLicenseExpiry);
   }
 
-  // === Validate that expiry dates exist for uploaded or existing documents ===
+  // === COMMENTED OUT: Expiry dates are now optional ===
+  // The validation below has been commented out to make expiry dates optional
+  // as requested by the client
+  /*
   const ensureExpiry = (docField, expiryValue, label) => {
     if (docField && !expiryValue) {
       throw new Error(`${label} expiry date is required`);
@@ -515,6 +529,7 @@ if (!Array.isArray(companyDetails.companyMemo)) {
     res.status(400);
     throw validationError;
   }
+  */
 
   const updatedCompanyDetails = await companyDetails.save();
 
@@ -950,6 +965,26 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
   if (email !== undefined) personDetails.email = email;
   personDetails.updatedBy = req.user._id;
 
+  // Handle document deletions first
+  const fileFields = ["visaCopy", "qidDoc", "nationalAddressDoc", "passportDoc", "cv"];
+  
+  console.log("📝 Checking for document deletions...");
+  console.log("Request body delete flags:", {
+    delete_visaCopy: req.body.delete_visaCopy,
+    delete_qidDoc: req.body.delete_qidDoc,
+    delete_nationalAddressDoc: req.body.delete_nationalAddressDoc,
+    delete_passportDoc: req.body.delete_passportDoc,
+    delete_cv: req.body.delete_cv
+  });
+  
+  fileFields.forEach(field => {
+    if (req.body[`delete_${field}`] === "true") {
+      console.log(`🗑️ DELETING ${field} for ${personType} - Previous value: ${personDetails[field]}`);
+      personDetails[field] = null;
+      console.log(`✅ ${field} set to null for ${personType}`);
+    }
+  });
+
   // Handle document uploads
   if (req.files) {
     // Visa Copy
@@ -1037,8 +1072,25 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
 
   console.log(`Field history now has ${personDetails.fieldHistory.length} entries`);
 
+  // Log the state before saving
+  console.log("📊 Final document state before saving:", {
+    visaCopy: personDetails.visaCopy ? "Has file" : "NULL",
+    qidDoc: personDetails.qidDoc ? "Has file" : "NULL",
+    nationalAddressDoc: personDetails.nationalAddressDoc ? "Has file" : "NULL",
+    passportDoc: personDetails.passportDoc ? "Has file" : "NULL",
+    cv: personDetails.cv ? "Has file" : "NULL"
+  });
+  
   // Save the updated document with history entries
   const updatedPerson = await personDetails.save();
+  
+  console.log("💾 Saved successfully! Document state after save:", {
+    visaCopy: updatedPerson.visaCopy ? "Has file" : "NULL",
+    qidDoc: updatedPerson.qidDoc ? "Has file" : "NULL",
+    nationalAddressDoc: updatedPerson.nationalAddressDoc ? "Has file" : "NULL",
+    passportDoc: updatedPerson.passportDoc ? "Has file" : "NULL",
+    cv: updatedPerson.cv ? "Has file" : "NULL"
+  });
 
   // Add a timeline entry for the job
   job.timeline.push({
@@ -1229,7 +1281,7 @@ const getKycDocuments = asyncHandler(async (req, res) => {
 // Update KYC documents
 const updateKycDocuments = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
-  const { activeStatus, documents } = req.body;
+  const { activeStatus, existingDocuments, descriptions, expiryDates } = req.body;
 
   // Check if job exists and if user has permission to access it
   const job = await Job.findById(jobId);
@@ -1272,8 +1324,24 @@ const updateKycDocuments = asyncHandler(async (req, res) => {
     kycDocuments.updatedBy = req.user._id;
   }
 
-  // Handle document uploads
+  // Parse existing documents if provided
+  let parsedExistingDocs = [];
+  if (existingDocuments) {
+    try {
+      parsedExistingDocs = JSON.parse(existingDocuments);
+    } catch (e) {
+      parsedExistingDocs = [];
+    }
+  }
+
+  // Start with existing documents that weren't deleted
+  kycDocuments.documents = parsedExistingDocs;
+
+  // Handle new document uploads
   if (req.files && req.files.length > 0) {
+    const descriptionsArray = Array.isArray(descriptions) ? descriptions : [descriptions].filter(Boolean);
+    const expiryDatesArray = Array.isArray(expiryDates) ? expiryDates : [expiryDates].filter(Boolean);
+
     const uploadPromises = req.files.map(async (file, index) => {
       const uploadResult = await safeCloudinaryUpload(file.path);
 
@@ -1281,34 +1349,16 @@ const updateKycDocuments = asyncHandler(async (req, res) => {
         if (err) console.error("Error deleting temp file:", err);
       });
 
-      // Get description and date from request body if available
-      const description = req.body[`description_${index}`] || "";
-      const date = req.body[`date_${index}`] || new Date();
-
       return {
         file: uploadResult.url,
-        description,
-        date,
+        description: descriptionsArray[index] || "",
+        date: new Date(),
+        expiryDate: expiryDatesArray[index] ? new Date(expiryDatesArray[index]) : undefined,
       };
     });
 
     const uploadedDocuments = await Promise.all(uploadPromises);
-
-    // If documents array in request body, merge with uploads
-    if (documents && Array.isArray(documents)) {
-      kycDocuments.documents = [
-        ...kycDocuments.documents,
-        ...uploadedDocuments,
-      ];
-    } else {
-      kycDocuments.documents = [
-        ...kycDocuments.documents,
-        ...uploadedDocuments,
-      ];
-    }
-  } else if (documents && Array.isArray(documents)) {
-    // If only document metadata in request body (no files)
-    kycDocuments.documents = documents;
+    kycDocuments.documents = [...kycDocuments.documents, ...uploadedDocuments];
   }
 
   const updatedKycDocuments = await kycDocuments.save();
