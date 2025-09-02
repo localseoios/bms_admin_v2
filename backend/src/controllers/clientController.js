@@ -457,9 +457,23 @@ const getAllClients = asyncHandler(async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const search = req.query.search || '';
+    const status = req.query.status || '';
 
-    const totalClients = await Client.countDocuments();
-    const clients = await Client.find()
+    // Build search query
+    let searchQuery = {};
+    if (search) {
+      searchQuery = {
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { gmail: { $regex: search, $options: 'i' } },
+          { startingPoint: { $regex: search, $options: 'i' } }
+        ]
+      };
+    }
+
+    const totalClients = await Client.countDocuments(searchQuery);
+    const clients = await Client.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

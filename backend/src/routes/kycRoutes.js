@@ -30,6 +30,9 @@ router.post(
 // Get KYC status - accessible to any authenticated user with KYC role
 router.get("/jobs/:jobId/status", protect, checkKycPermission, getKycStatus);
 
+// Get KYC status for compliance (no auth required)
+router.get("/compliance/jobs/:jobId/status", getKycStatus);
+
 // Get all KYC jobs for management page
 router.get("/jobs", protect, checkKycPermission, getAllKycJobs);
 

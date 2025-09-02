@@ -222,6 +222,12 @@ const getCompanyDetails = asyncHandler(async (req, res) => {
 
 const updateCompanyDetails = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
+  
+  console.log("🔍 UPDATE COMPANY DETAILS DEBUG:");
+  console.log("📁 Available file fields:", req.files ? Object.keys(req.files) : "No files");
+  if (req.files && req.files["crExtract"]) {
+    console.log("📋 CR Extract files found:", req.files["crExtract"].length);
+  }
   const {
     companyName,
     qfcNo,
@@ -355,12 +361,14 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
       });
     }
 
-    // Handle multiple CR Extract files (1-2 files)
+    // Handle multiple CR Extract files - REPLACE existing files
     if (req.files["crExtract"]) {
-      // Initialize crExtract as array if it doesn't exist
-      if (!Array.isArray(companyDetails.crExtract)) {
-        companyDetails.crExtract = [];
-      }
+      console.log(`🔄 CR Extract replacement: Found ${req.files["crExtract"].length} new files`);
+      console.log(`📂 Existing CR Extract files before replacement: ${Array.isArray(companyDetails.crExtract) ? companyDetails.crExtract.length : 0}`);
+      
+      // REPLACE existing array instead of adding to it
+      companyDetails.crExtract = [];
+      console.log("🗑️ Cleared existing CR Extract files");
 
       // Process each uploaded CR Extract file
       for (const file of req.files["crExtract"]) {
@@ -381,6 +389,7 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       }
+      console.log(`✅ CR Extract replacement completed: Now has ${companyDetails.crExtract.length} files`);
     }
 
     // Scope of License
@@ -483,38 +492,8 @@ if (!Array.isArray(companyDetails.companyMemo)) {
     companyDetails.scopeOfLicenseExpiry = parseDateField(req.body.scopeOfLicenseExpiry);
   }
 
-  // === Validate that expiry dates exist for uploaded or existing documents ===
-  const ensureExpiry = (docField, expiryValue, label) => {
-    if (docField && !expiryValue) {
-      throw new Error(`${label} expiry date is required`);
-    }
-  };
-
-  try {
-    ensureExpiry(
-      companyDetails.companyComputerCard,
-      companyDetails.companyComputerCardExpiry,
-      'Company Computer Card'
-    );
-    ensureExpiry(
-      companyDetails.taxCard,
-      companyDetails.taxCardExpiry,
-      'Tax Card'
-    );
-    ensureExpiry(
-      Array.isArray(companyDetails.crExtract) && companyDetails.crExtract.length,
-      companyDetails.crExtractExpiry,
-      'CR Extract'
-    );
-    ensureExpiry(
-      companyDetails.scopeOfLicense,
-      companyDetails.scopeOfLicenseExpiry,
-      'Scope of License'
-    );
-  } catch (validationError) {
-    res.status(400);
-    throw validationError;
-  }
+  // === Expiry dates are now optional - removed validation ===
+  // Documents can exist without expiry dates as per user requirement
 
   const updatedCompanyDetails = await companyDetails.save();
 
@@ -4592,6 +4571,151 @@ const deleteEngagementLetter = asyncHandler(async (req, res) => {
   }
 });
 
+// Delete company document
+const deleteCompanyDocument = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { documentType, documentIndex } = req.body;
+
+  try {
+    console.log(`🗑️ Deleting company document: ${documentType} for job ${jobId}`);
+
+    const companyDetails = await CompanyDetails.findOne({ jobId });
+    if (!companyDetails) {
+      return res.status(404).json({ message: "Company details not found" });
+    }
+
+    // Handle array documents (crExtract, companyMemo, engagementLetters)
+    if (['crExtract', 'companyMemo', 'engagementLetters'].includes(documentType)) {
+      if (documentIndex === undefined || documentIndex === null) {
+        return res.status(400).json({ message: "Document index required for array documents" });
+      }
+
+      const documentArray = companyDetails[documentType];
+      if (!Array.isArray(documentArray) || documentIndex >= documentArray.length) {
+        return res.status(400).json({ message: "Invalid document index" });
+      }
+
+      // Remove the document from array
+      documentArray.splice(documentIndex, 1);
+      companyDetails[documentType] = documentArray;
+    } else {
+      // Handle single documents
+      if (!companyDetails[documentType]) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Set the document field to null
+      companyDetails[documentType] = null;
+      
+      // Also clear expiry date if applicable
+      const expiryField = `${documentType}Expiry`;
+      if (companyDetails[expiryField] !== undefined) {
+        companyDetails[expiryField] = null;
+      }
+    }
+
+    await companyDetails.save();
+
+    console.log(`✅ Successfully deleted ${documentType} document`);
+    res.status(200).json({
+      success: true,
+      message: `${documentType} document deleted successfully`,
+      companyDetails
+    });
+  } catch (error) {
+    console.error("Error deleting company document:", error);
+    res.status(500).json({
+      message: "Failed to delete document",
+      error: error.message
+    });
+  }
+});
+
+// Delete person document
+const deletePersonDocument = asyncHandler(async (req, res) => {
+  const { jobId, personType, personId } = req.params;
+  const { documentType } = req.body;
+
+  try {
+    console.log(`🗑️ Deleting ${personType} document: ${documentType} for person ${personId}`);
+
+    const personDetails = await PersonDetails.findOne({
+      _id: personId,
+      jobId,
+      personType
+    });
+
+    if (!personDetails) {
+      return res.status(404).json({ message: "Person details not found" });
+    }
+
+    // Set the document field to null
+    if (!personDetails[documentType]) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    personDetails[documentType] = null;
+    
+    // Also clear expiry date if applicable
+    const expiryField = `${documentType.replace('Doc', '')}Expiry`;
+    if (personDetails[expiryField] !== undefined) {
+      personDetails[expiryField] = null;
+    }
+
+    await personDetails.save();
+
+    console.log(`✅ Successfully deleted ${documentType} document for ${personType}`);
+    res.status(200).json({
+      success: true,
+      message: `${documentType} document deleted successfully`,
+      personDetails
+    });
+  } catch (error) {
+    console.error("Error deleting person document:", error);
+    res.status(500).json({
+      message: "Failed to delete document",
+      error: error.message
+    });
+  }
+});
+
+// Delete KYC document
+const deleteKycSignedDocument = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { documentIndex } = req.body;
+
+  try {
+    console.log(`🗑️ Deleting KYC signed document at index ${documentIndex} for job ${jobId}`);
+
+    const kycDocument = await KycDocument.findOne({ jobId });
+    if (!kycDocument) {
+      return res.status(404).json({ message: "KYC documents not found" });
+    }
+
+    if (documentIndex === undefined || documentIndex === null || 
+        documentIndex >= kycDocument.documents.length) {
+      return res.status(400).json({ message: "Invalid document index" });
+    }
+
+    // Remove the document from array
+    kycDocument.documents.splice(documentIndex, 1);
+    await kycDocument.save();
+
+    console.log(`✅ Successfully deleted KYC document at index ${documentIndex}`);
+    res.status(200).json({
+      success: true,
+      message: "KYC document deleted successfully",
+      kycDocument
+    });
+  } catch (error) {
+    console.error("Error deleting KYC document:", error);
+    res.status(500).json({
+      message: "Failed to delete document",
+      error: error.message
+    });
+  }
+});
+
 // Get job data by email for auto-fill functionality
 const getJobDataByEmail = asyncHandler(async (req, res) => {
   const { email } = req.params;
@@ -4809,6 +4933,9 @@ module.exports = {
   updateJobExpiryDate,
   getExpiringJobsStats,
   deleteEngagementLetter,
-  getJobDataByEmail
+  getJobDataByEmail,
+  deleteCompanyDocument,
+  deletePersonDocument,
+  deleteKycSignedDocument
 };
 

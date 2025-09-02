@@ -275,6 +275,7 @@ const markAsRead = async (userId, notificationIds = []) => {
   }
 };
 
+
 module.exports = {
   createNotification,
   getUserNotifications,

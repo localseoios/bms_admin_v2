@@ -542,7 +542,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
               }
               className="text-green-600 hover:text-green-800"
             >
-              <XMarkIcon className="h-4 w-4" />
+              <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
             </button>
           </div>
           <p className="text-sm text-green-700 mt-1">
@@ -618,7 +618,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Name Field with Auto-suggestion */}
             <div className="space-y-1">
               <AutoSuggestInput
@@ -793,18 +793,20 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(
-                            section,
-                            "visaCopy",
-                            index,
-                            null
-                          )
-                        }
-                        className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
+                        onClick={() => {
+                          if (entry._id) {
+                            handleDeletePersonDocument(section, entry._id, 'visaCopy')
+                          } else {
+                            handlePersonFileChange(section, "visaCopy", index, null)
+                          }
+                        }}
+                        disabled={submitting}
+                        className={`p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                          submitting ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                        title="Delete document permanently"
                       >
-                        <XMarkIcon className="h-4 w-4" />
+                        <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                       </button>
                     </div>
                   </div>
@@ -857,7 +859,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                     </span>
                   )}
               </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">
                     QID Number
@@ -959,16 +961,18 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "qidDoc",
-                                index,
-                                null
-                              )
-                            }
-                            className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                            title="Remove document"
+                            onClick={() => {
+                              if (entry._id) {
+                                handleDeletePersonDocument(section, entry._id, 'qidDoc')
+                              } else {
+                                handlePersonFileChange(section, "qidDoc", index, null)
+                              }
+                            }}
+                            disabled={submitting}
+                            className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                              submitting ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            title="Delete document permanently"
                           >
                             <XMarkIcon className="h-3 w-3" />
                           </button>
@@ -1100,18 +1104,17 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "nationalAddressDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={() => {
+                              if (entry._id) {
+                                handleDeletePersonDocument(section, entry._id, 'nationalAddressDoc')
+                              } else {
+                                handlePersonFileChange(section, "nationalAddressDoc", index, null)
+                              }
+                            }}
                             className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                            title="Remove document"
+                            title="Delete document permanently"
                           >
-                            <XMarkIcon className="h-4 w-4" />
+                            <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                           </button>
                         </div>
                       </div>
@@ -1211,7 +1214,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                     </span>
                   )}
               </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">
                     Passport Number
@@ -1342,16 +1345,18 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "passportDoc",
-                                index,
-                                null
-                              )
-                            }
-                            className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                            title="Remove document"
+                            onClick={() => {
+                              if (entry._id) {
+                                handleDeletePersonDocument(section, entry._id, 'passportDoc')
+                              } else {
+                                handlePersonFileChange(section, "passportDoc", index, null)
+                              }
+                            }}
+                            disabled={submitting}
+                            className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                              submitting ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            title="Delete document permanently"
                           >
                             <XMarkIcon className="h-3 w-3" />
                           </button>
@@ -1516,13 +1521,20 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(section, "cv", index, null)
-                        }
-                        className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
+                        onClick={() => {
+                          if (entry._id) {
+                            handleDeletePersonDocument(section, entry._id, 'cv')
+                          } else {
+                            handlePersonFileChange(section, "cv", index, null)
+                          }
+                        }}
+                        disabled={submitting}
+                        className={`p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                          submitting ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                        title="Delete document permanently"
                       >
-                        <XMarkIcon className="h-4 w-4" />
+                        <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                       </button>
                     </div>
                   </div>
@@ -1890,9 +1902,8 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
   // Add function to handle CR Extract file changes
   const handleCrExtractFileChange = (files) => {
     const fileArray = Array.from(files);
-    // Limit to 2 files maximum
-    const limitedFiles = fileArray.slice(0, 2);
-    setCrExtractFiles(limitedFiles);
+    // No limit on number of files
+    setCrExtractFiles(fileArray);
   };
 
   // Add function to remove CR Extract file
@@ -1911,6 +1922,159 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       ...prev,
       [field]: file,
     }));
+  };
+
+  // Delete company document function
+  const handleDeleteCompanyDocument = async (documentType, documentIndex = null) => {
+    const documentName = documentType.replace(/([A-Z])/g, ' $1').trim();
+    
+    if (!window.confirm(`Are you sure you want to delete this ${documentName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: `Deleting ${documentName}...`,
+      });
+
+      const response = await axiosInstance.delete(
+        `/operations/jobs/${jobId}/company-document`,
+        {
+          data: { documentType, documentIndex }
+        }
+      );
+
+      if (response.data.success) {
+        // Update local state with the returned company details
+        setCompanyDetails(response.data.companyDetails);
+        
+        setActionMessage({
+          type: "success",
+          message: `${documentName} deleted successfully`,
+        });
+
+        setTimeout(() => {
+          setActionMessage({ type: null, message: null });
+        }, 3000);
+      }
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      setActionMessage({
+        type: "error",
+        message: error.response?.data?.message || "Failed to delete document",
+      });
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Delete person document function
+  const handleDeletePersonDocument = async (personType, personId, documentType) => {
+    const documentName = documentType.replace(/([A-Z])/g, ' $1').trim();
+    
+    if (!window.confirm(`Are you sure you want to delete this ${documentName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: `Deleting ${documentName}...`,
+      });
+
+      const response = await axiosInstance.delete(
+        `/operations/jobs/${jobId}/person-document/${personType}/${personId}`,
+        {
+          data: { documentType }
+        }
+      );
+
+      if (response.data.success) {
+        // Update local state based on person type
+        const updateState = {
+          director: setDirectorDetails,
+          shareholder: setShareholderDetails,
+          secretary: setSecretaryDetails,
+          sef: setSefDetails,
+        }[personType];
+
+        // Refresh person details
+        await fetchPersonDetails(personType, updateState);
+        
+        setActionMessage({
+          type: "success",
+          message: `${documentName} deleted successfully`,
+        });
+
+        setTimeout(() => {
+          setActionMessage({ type: null, message: null });
+        }, 3000);
+      }
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      setActionMessage({
+        type: "error",
+        message: error.response?.data?.message || "Failed to delete document",
+      });
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Delete KYC signed document function
+  const handleDeleteKycDocument = async (documentIndex) => {
+    if (!window.confirm("Are you sure you want to delete this KYC document? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: "Deleting KYC document...",
+      });
+
+      const response = await axiosInstance.delete(
+        `/operations/jobs/${jobId}/kyc-document`,
+        {
+          data: { documentIndex }
+        }
+      );
+
+      if (response.data.success) {
+        // Update local state with the returned KYC documents
+        setKycDocuments(response.data.kycDocument.documents || []);
+        
+        setActionMessage({
+          type: "success",
+          message: "KYC document deleted successfully",
+        });
+
+        setTimeout(() => {
+          setActionMessage({ type: null, message: null });
+        }, 3000);
+      }
+    } catch (error) {
+      console.error("Error deleting KYC document:", error);
+      setActionMessage({
+        type: "error",
+        message: error.response?.data?.message || "Failed to delete KYC document",
+      });
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Enhanced export function for multiple companies (if you need to export multiple jobs)
@@ -3586,7 +3750,7 @@ const handleSaveCompanyDetails = async () => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
                 Name
@@ -3745,18 +3909,20 @@ const handleSaveCompanyDetails = async () => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(
-                            section,
-                            "visaCopy",
-                            index,
-                            null
-                          )
-                        }
-                        className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
+                        onClick={() => {
+                          if (entry._id) {
+                            handleDeletePersonDocument(section, entry._id, 'visaCopy')
+                          } else {
+                            handlePersonFileChange(section, "visaCopy", index, null)
+                          }
+                        }}
+                        disabled={submitting}
+                        className={`p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                          submitting ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                        title="Delete document permanently"
                       >
-                        <XMarkIcon className="h-4 w-4" />
+                        <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                       </button>
                     </div>
                   </div>
@@ -3808,7 +3974,7 @@ const handleSaveCompanyDetails = async () => {
                     </span>
                   )}
               </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">
                     QID Number
@@ -3927,16 +4093,18 @@ const handleSaveCompanyDetails = async () => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "qidDoc",
-                                index,
-                                null
-                              )
-                            }
-                            className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                            title="Remove document"
+                            onClick={() => {
+                              if (entry._id) {
+                                handleDeletePersonDocument(section, entry._id, 'qidDoc')
+                              } else {
+                                handlePersonFileChange(section, "qidDoc", index, null)
+                              }
+                            }}
+                            disabled={submitting}
+                            className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                              submitting ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            title="Delete document permanently"
                           >
                             <XMarkIcon className="h-3 w-3" />
                           </button>
@@ -4041,18 +4209,17 @@ const handleSaveCompanyDetails = async () => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "nationalAddressDoc",
-                                index,
-                                null
-                              )
-                            }
+                            onClick={() => {
+                              if (entry._id) {
+                                handleDeletePersonDocument(section, entry._id, 'nationalAddressDoc')
+                              } else {
+                                handlePersonFileChange(section, "nationalAddressDoc", index, null)
+                              }
+                            }}
                             className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                            title="Remove document"
+                            title="Delete document permanently"
                           >
-                            <XMarkIcon className="h-4 w-4" />
+                            <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                           </button>
                         </div>
                       </div>
@@ -4152,7 +4319,7 @@ const handleSaveCompanyDetails = async () => {
                     </span>
                   )}
               </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">
                     Passport Number
@@ -4268,16 +4435,18 @@ const handleSaveCompanyDetails = async () => {
                             </a>
                           )}
                           <button
-                            onClick={() =>
-                              handlePersonFileChange(
-                                section,
-                                "passportDoc",
-                                index,
-                                null
-                              )
-                            }
-                            className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                            title="Remove document"
+                            onClick={() => {
+                              if (entry._id) {
+                                handleDeletePersonDocument(section, entry._id, 'passportDoc')
+                              } else {
+                                handlePersonFileChange(section, "passportDoc", index, null)
+                              }
+                            }}
+                            disabled={submitting}
+                            className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                              submitting ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            title="Delete document permanently"
                           >
                             <XMarkIcon className="h-3 w-3" />
                           </button>
@@ -4455,13 +4624,20 @@ const handleSaveCompanyDetails = async () => {
                         </a>
                       )}
                       <button
-                        onClick={() =>
-                          handlePersonFileChange(section, "cv", index, null)
-                        }
-                        className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
+                        onClick={() => {
+                          if (entry._id) {
+                            handleDeletePersonDocument(section, entry._id, 'cv')
+                          } else {
+                            handlePersonFileChange(section, "cv", index, null)
+                          }
+                        }}
+                        disabled={submitting}
+                        className={`p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                          submitting ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                        title="Delete document permanently"
                       >
-                        <XMarkIcon className="h-4 w-4" />
+                        <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                       </button>
                     </div>
                   </div>
@@ -4648,23 +4824,23 @@ const renderCompanyDetailsSection = () => {
     const expiryStyle = getExpiryStatusStyle(expiryDate);
 
     return (
-      <div className={`grid grid-cols-1 lg:grid-cols-5 gap-4 items-start p-4 rounded-lg shadow-sm border-2 ${
+      <div className={`grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start p-3 sm:p-4 rounded-lg shadow-sm border-2 ${
         isExpired ? 'border-red-300 bg-red-50' : 'bg-yellow-50 border-yellow-200'
       }`}>
         
         {/* Document Upload Section - Takes 3 columns on large screens */}
         <div className="lg:col-span-3">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
             {label}
             {isExpired && (
-              <span className="ml-2 px-2 py-1 text-xs font-bold text-red-800 bg-red-200 rounded-full animate-pulse">
+              <span className="ml-1 sm:ml-2 px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-bold text-red-800 bg-red-200 rounded-full animate-pulse">
                 EXPIRED
               </span>
             )}
           </label>
           
           <div
-            className={`border-2 border-dashed rounded-lg p-3 transition-all duration-300 ${
+            className={`border-2 border-dashed rounded-lg p-2 sm:p-3 transition-all duration-300 ${
               isDragging && editingCompanyDetails
                 ? "border-indigo-500 bg-indigo-50 shadow-md"
                 : hasDocument
@@ -4736,16 +4912,15 @@ const renderCompanyDetailsSection = () => {
                       </label>
                     )}
 
-                    {/* Remove Document Button */}
-                    {editingCompanyDetails && (
-                      <button
-                        onClick={() => handleCompanyFileChange(documentField, null)}
-                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                      </button>
-                    )}
+                    {/* Delete Document Button - Always visible, not just in edit mode */}
+                    <button
+                      onClick={() => handleDeleteCompanyDocument(documentField)}
+                      disabled={submitting}
+                      className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Delete document permanently"
+                    >
+                      <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -4811,7 +4986,7 @@ const renderCompanyDetailsSection = () => {
         {/* Expiry Date Section - Takes 2 columns on large screens */}
         <div className="lg:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Expiry Date
+            Expiry Date <span className="text-xs text-gray-500">(optional)</span>
             {isExpired && (
               <span className="ml-2 text-xs text-red-600 font-bold">
                 EXPIRED
@@ -4836,6 +5011,9 @@ const renderCompanyDetailsSection = () => {
                     : "border-gray-300"
                 } ${isExpired ? "border-red-500 bg-red-50" : ""}`}
                 disabled={!editingCompanyDetails}
+                required={false}
+                title="Expiry date is optional"
+                placeholder=""
               />
               
               {/* Renew Date Button */}
@@ -4955,9 +5133,9 @@ const renderCompanyDetailsSection = () => {
         )}
 
       {/* Basic Company Information */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 flex items-center">
             Company Name
             {companyDetails.companyName && !editingCompanyDetails && (
               <span className="ml-2 text-xs text-indigo-600">
@@ -4974,7 +5152,7 @@ const renderCompanyDetailsSection = () => {
                 companyName: e.target.value,
               })
             }
-            className={`block w-full rounded-lg ${
+            className={`block w-full rounded-lg text-sm sm:text-base px-3 py-2 sm:px-4 sm:py-3 ${
               editingCompanyDetails
                 ? "border-indigo-500 ring-1 ring-indigo-500"
                 : "border-gray-300"
@@ -5198,7 +5376,7 @@ const renderCompanyDetailsSection = () => {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
           <div className="lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              CR Extract (Max 2 files)
+              CR Extract
             </label>
             <div
               className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
@@ -5217,15 +5395,21 @@ const renderCompanyDetailsSection = () => {
                 e.preventDefault();
                 e.stopPropagation();
                 setIsDragging(false);
-                const files = Array.from(e.dataTransfer.files).slice(0, 2);
+                const files = Array.from(e.dataTransfer.files);
                 if (files.length > 0) {
                   setCrExtractFiles(files);
+                  // Clear existing database files when new files are dropped
+                  setCompanyDetails({
+                    ...companyDetails,
+                    crExtract: []
+                  });
                 }
               }}
             >
-              {/* Show existing documents */}
+              {/* Show existing documents only if no new files are selected */}
               {Array.isArray(companyDetails.crExtract) &&
-                companyDetails.crExtract.length > 0 && (
+                companyDetails.crExtract.length > 0 && 
+                crExtractFiles.length === 0 && (
                   <div className="space-y-2 mb-2">
                     {companyDetails.crExtract.map((doc, index) => (
                       <div
@@ -5247,22 +5431,15 @@ const renderCompanyDetailsSection = () => {
                           >
                             View
                           </a>
-                          {editingCompanyDetails && (
-                            <button
-                              onClick={() => {
-                                const newCrExtract = [...companyDetails.crExtract];
-                                newCrExtract.splice(index, 1);
-                                setCompanyDetails({
-                                  ...companyDetails,
-                                  crExtract: newCrExtract
-                                });
-                              }}
-                              className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                              title="Remove document"
-                            >
-                              <XMarkIcon className="h-3 w-3" />
-                            </button>
-                          )}
+                          {/* Delete button always visible */}
+                          <button
+                            onClick={() => handleDeleteCompanyDocument('crExtract', index)}
+                            disabled={submitting}
+                            className="p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Delete document permanently"
+                          >
+                            <XMarkIcon className="h-3 w-3" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -5280,8 +5457,12 @@ const renderCompanyDetailsSection = () => {
                             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                             onChange={(e) => {
                               const newFiles = Array.from(e.target.files);
-                              const filesToAdd = newFiles.slice(0, 2);
-                              setCrExtractFiles(filesToAdd);
+                              setCrExtractFiles(newFiles);
+                              // Clear existing database files when replacing all
+                              setCompanyDetails({
+                                ...companyDetails,
+                                crExtract: []
+                              });
                             }}
                           />
                         </label>
@@ -5322,18 +5503,14 @@ const renderCompanyDetailsSection = () => {
               )}
 
               {/* Upload area */}
-              {editingCompanyDetails && crExtractFiles.length < 2 && (
+              {editingCompanyDetails && (
                 <div className="text-center py-3">
                   <span className="text-xs text-gray-500 block mb-2">
-                    {crExtractFiles.length === 0
-                      ? "(Upload 1-2 documents)"
-                      : "(Upload 1 more document)"}
+                    (Upload documents)
                   </span>
                   <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
                     Upload{" "}
-                    {crExtractFiles.length === 0
-                      ? "Documents"
-                      : "Another Document"}
+                    Documents
                     <input
                       type="file"
                       className="sr-only"
@@ -5341,9 +5518,12 @@ const renderCompanyDetailsSection = () => {
                       accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                       onChange={(e) => {
                         const newFiles = Array.from(e.target.files);
-                        const remainingSlots = 2 - crExtractFiles.length;
-                        const filesToAdd = newFiles.slice(0, remainingSlots);
-                        setCrExtractFiles((prev) => [...prev, ...filesToAdd]);
+                        setCrExtractFiles(newFiles);
+                        // Clear existing database files when new files are selected
+                        setCompanyDetails({
+                          ...companyDetails,
+                          crExtract: []
+                        });
                       }}
                     />
                   </label>
@@ -5475,17 +5655,15 @@ const renderCompanyDetailsSection = () => {
                       </label>
                     )}
 
-                    {editingCompanyDetails && (
-                      <button
-                        onClick={() =>
-                          handleCompanyFileChange("articleOfAssociate", null)
-                        }
-                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
+                    {/* Delete button always visible */}
+                    <button
+                      onClick={() => handleDeleteCompanyDocument('articleOfAssociate')}
+                      disabled={submitting}
+                      className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Delete document permanently"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -5582,20 +5760,15 @@ const renderCompanyDetailsSection = () => {
                       </label>
                     )}
 
-                    {editingCompanyDetails && (
-                      <button
-                        onClick={() =>
-                          handleCompanyFileChange(
-                            "certificateOfIncorporate",
-                            null
-                          )
-                        }
-                        className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200"
-                        title="Remove document"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
+                    {/* Delete button always visible */}
+                    <button
+                      onClick={() => handleDeleteCompanyDocument('certificateOfIncorporate')}
+                      disabled={submitting}
+                      className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Delete document permanently"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -5687,22 +5860,21 @@ const renderCompanyDetailsSection = () => {
                   >
                     View
                   </a>
-                  {editingCompanyDetails && (
-                    <button
-                      onClick={() => handleDeleteCompanyMemo(doc._id, doc.fileName, index)}
-                      disabled={submitting}
-                      className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
-                        submitting ? "opacity-50 cursor-not-allowed" : ""
-                      }`}
-                      title="Delete document"
-                    >
-                      {submitting ? (
-                        <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></span>
-                      ) : (
-                        <XMarkIcon className="h-3 w-3" />
-                      )}
-                    </button>
-                  )}
+                  {/* Delete button always visible */}
+                  <button
+                    onClick={() => handleDeleteCompanyDocument('companyMemo', index)}
+                    disabled={submitting}
+                    className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
+                      submitting ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
+                    title="Delete document permanently"
+                  >
+                    {submitting ? (
+                      <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></span>
+                    ) : (
+                      <XMarkIcon className="h-3 w-3" />
+                    )}
+                  </button>
                 </div>
               </div>
             ))}
@@ -5943,32 +6115,32 @@ const renderCompanyDetailsSection = () => {
     {
       id: "company",
       name: "Company Details",
-      icon: <BuildingOfficeIcon className="h-4 w-4" />,
+      icon: <BuildingOfficeIcon className="h-3 w-3 sm:h-4 sm:w-4" />,
     },
     {
       id: "director",
       name: "Director Details",
-      icon: <UserIcon className="h-4 w-4" />,
+      icon: <UserIcon className="h-3 w-3 sm:h-4 sm:w-4" />,
     },
     {
       id: "shareholder",
       name: "Shareholder Details",
-      icon: <BriefcaseIcon className="h-4 w-4" />,
+      icon: <BriefcaseIcon className="h-3 w-3 sm:h-4 sm:w-4" />,
     },
     {
       id: "secretary",
       name: "Secretary Details",
-      icon: <DocumentDuplicateIcon className="h-4 w-4" />,
+      icon: <DocumentDuplicateIcon className="h-3 w-3 sm:h-4 sm:w-4" />,
     },
     {
       id: "sef",
       name: "SEF Details",
-      icon: <LightBulbIcon className="h-4 w-4" />,
+      icon: <LightBulbIcon className="h-3 w-3 sm:h-4 sm:w-4" />,
     },
     {
       id: "kyc",
       name: "Signed KYC",
-      icon: <ShieldCheckIcon className="h-4 w-4" />,
+      icon: <ShieldCheckIcon className="h-3 w-3 sm:h-4 sm:w-4" />,
     },
   ];
 
@@ -6049,7 +6221,7 @@ const renderCompanyDetailsSection = () => {
 
   // Main render
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 py-4 sm:py-8 lg:py-12 px-2 sm:px-4 lg:px-8">
       <div className="max-w-7xl mx-auto">
         {/* Success/Error Messages */}
         <AnimatePresence>
@@ -6058,7 +6230,7 @@ const renderCompanyDetailsSection = () => {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className={`fixed top-20 right-4 z-50 p-4 rounded-xl shadow-xl ${
+              className={`fixed top-20 right-2 sm:right-4 z-50 p-3 sm:p-4 rounded-xl shadow-xl max-w-xs sm:max-w-sm ${
                 actionMessage.type === "success"
                   ? "bg-green-100 text-green-800 border border-green-200"
                   : actionMessage.type === "error"
@@ -6091,18 +6263,18 @@ const renderCompanyDetailsSection = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between mb-8 bg-white p-4 rounded-2xl shadow-lg border border-gray-100"
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 sm:mb-8 bg-white p-3 sm:p-4 rounded-2xl shadow-lg border border-gray-100"
         >
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
             <button
               onClick={() => navigate("/operation-management")}
-              className="inline-flex items-center px-4 py-2 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200"
+              className="inline-flex items-center px-3 py-2 sm:px-4 sm:py-2 rounded-xl text-sm sm:text-base text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200"
             >
-              <ArrowLeftIcon className="h-5 w-5 mr-2" />
+              <ArrowLeftIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" />
               Back to Jobs
             </button>
-            <div className="pl-2 border-l-2 border-gray-200">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+            <div className="pl-0 sm:pl-2 border-l-0 sm:border-l-2 border-gray-200">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
                 Job Details
               </h1>
               <p className="mt-1 text-sm text-gray-500">
@@ -6131,29 +6303,29 @@ const renderCompanyDetailsSection = () => {
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+          <div className="xl:col-span-2 space-y-4 sm:space-y-6 lg:space-y-8">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
+              className="bg-white rounded-lg sm:rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
             >
-              <div className="px-6 py-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100">
+              <div className="px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 pb-2 sm:pb-3 border-b border-gray-100">
                   Job Details
                 </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-3 p-3 rounded-xl bg-blue-50/50 border border-blue-100">
-                      <div className="p-2 bg-blue-100 rounded-lg">
-                        <BuildingOfficeIcon className="h-5 w-5 text-blue-600" />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg sm:rounded-xl bg-blue-50/50 border border-blue-100">
+                      <div className="p-1.5 sm:p-2 bg-blue-100 rounded-md sm:rounded-lg">
+                        <BuildingOfficeIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm font-medium text-gray-500">
                           Service Type
                         </p>
-                        <p className="text-sm font-bold text-gray-900">
+                        <p className="text-sm sm:text-base font-bold text-gray-900 truncate">
                           {job.serviceType}
                         </p>
                       </div>
@@ -6325,7 +6497,7 @@ const renderCompanyDetailsSection = () => {
                       <select
                         value={activeTab}
                         onChange={(e) => setActiveTab(e.target.value)}
-                        className="block w-full rounded-lg border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 bg-white shadow-sm"
+                        className="block w-full rounded-lg border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 bg-white shadow-sm text-sm py-2.5 px-3"
                       >
                         {tabs.map((tab) => (
                           <option key={tab.id} value={tab.id}>
@@ -6337,7 +6509,7 @@ const renderCompanyDetailsSection = () => {
                     <div className="hidden sm:block">
                       <div className="border-b border-gray-200">
                         <nav
-                          className="-mb-px flex space-x-2 overflow-x-auto"
+                          className="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto scrollbar-hide"
                           aria-label="Tabs"
                         >
                           {tabs.map((tab) => (
@@ -6348,7 +6520,7 @@ const renderCompanyDetailsSection = () => {
                                 activeTab === tab.id
                                   ? "border-indigo-500 text-indigo-600 bg-indigo-50"
                                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                              } whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm flex items-center space-x-2 transition-all duration-200 rounded-t-lg`}
+                              } whitespace-nowrap py-2 sm:py-3 px-2 sm:px-4 border-b-2 font-medium text-xs sm:text-sm flex items-center space-x-1 sm:space-x-2 transition-all duration-200 rounded-t-lg`}
                               aria-current={
                                 activeTab === tab.id ? "page" : undefined
                               }
@@ -6402,6 +6574,60 @@ const renderCompanyDetailsSection = () => {
                             </select>
                           </div>
                         </div>
+                      </div>
+
+                      {/* KYC Documents List */}
+                      <div className="mt-6">
+                        <h4 className="text-lg font-semibold text-gray-900 mb-4">Signed KYC Documents</h4>
+                        {kycDetails.documents && kycDetails.documents.length > 0 ? (
+                          <div className="space-y-3">
+                            {kycDetails.documents.map((doc, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200"
+                              >
+                                <div className="flex items-center flex-1 min-w-0">
+                                  <DocumentTextIcon className="h-5 w-5 text-indigo-600 mr-3 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium text-gray-900 truncate block">
+                                      {doc.description || `KYC Document ${index + 1}`}
+                                    </span>
+                                    {doc.date && (
+                                      <span className="text-xs text-gray-500">
+                                        {new Date(doc.date).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2 ml-4">
+                                  {doc.file && (
+                                    <a
+                                      href={doc.file}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                                    >
+                                      View Document
+                                    </a>
+                                  )}
+                                  <button
+                                    onClick={() => handleDeleteKycDocument(index)}
+                                    disabled={submitting}
+                                    className="p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Delete document permanently"
+                                  >
+                                    <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                            <p className="text-gray-500">No KYC documents found</p>
+                          </div>
+                        )}
                       </div>
 
                       <div className="mt-6 flex justify-end">
@@ -6613,20 +6839,25 @@ companyDetails.engagementLetters.length > 0 ? (
       </div>
     </div>
 
-    {companyDetails.engagementLetters.map((letter, index) => (
+    {companyDetails.engagementLetters.map((letter, index) => {
+      console.log('Engagement Letter Data:', letter);
+      return (
       <div
         key={letter._id || index}
-        className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+        className="flex items-center justify-between p-3 sm:p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow gap-3"
       >
-        <div className="flex items-center space-x-3">
-          <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
-          <div>
-            <span className="text-sm font-medium text-gray-900">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+          <DocumentTextIcon className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600 flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <span className="text-sm font-bold text-gray-900 block truncate bg-yellow-100 px-1" style={{minHeight: '20px'}}>
               {letter.fileName ||
                 `Engagement Letter ${index + 1}`}
             </span>
+            <div className="text-xs text-blue-600 bg-blue-50 p-1 mt-1 rounded">
+              DEBUG: fileName="{letter.fileName || 'undefined'}"
+            </div>
             {letter.description && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 truncate">
                 {letter.description}
               </p>
             )}
@@ -6638,21 +6869,22 @@ companyDetails.engagementLetters.length > 0 ? (
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
           <a
             href={letter.fileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+            className="px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
           >
-            View Document
+            <span className="hidden sm:inline">View Document</span>
+            <span className="sm:hidden">View</span>
           </a>
           
           {/* Delete Button */}
           <button
             onClick={() => handleDeleteEngagementLetter(letter._id, letter.fileName)}
             disabled={submitting}
-            className={`px-3 py-2 text-sm font-medium text-red-600 hover:text-white hover:bg-red-600 bg-red-50 rounded-lg shadow-sm border border-red-200 hover:shadow-md transition-all duration-200 ${
+            className={`px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium text-red-600 hover:text-white hover:bg-red-600 bg-red-50 rounded-lg shadow-sm border border-red-200 hover:shadow-md transition-all duration-200 ${
               submitting ? "opacity-50 cursor-not-allowed" : ""
             }`}
             title="Delete engagement letter"
@@ -6660,12 +6892,13 @@ companyDetails.engagementLetters.length > 0 ? (
             {submitting ? (
               <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></span>
             ) : (
-              <XMarkIcon className="h-4 w-4" />
+              <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
             )}
           </button>
         </div>
       </div>
-    ))}
+      );
+    })}
 
     {/* Add button to upload additional engagement letters */}
     <div className="mt-4">
@@ -6691,22 +6924,25 @@ companyDetails.engagementLetters.length > 0 ? (
         {engagementLetters.map((letter, index) => (
           <div
             key={index}
-            className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border border-gray-200"
+            className="flex items-center justify-between bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200 gap-3"
           >
-            <div className="flex items-center space-x-3">
-              <DocumentTextIcon className="h-5 w-5 text-blue-600" />
-              <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                {letter.name}
-              </span>
-              <span className="text-xs text-gray-500">
-                {(letter.size / 1024).toFixed(1)}KB
-              </span>
+            <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+              <DocumentTextIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-gray-900 block truncate">
+                  {letter.name}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {(letter.size / 1024).toFixed(1)}KB
+                </span>
+              </div>
             </div>
             <button
               onClick={() => removeEngagementLetter(index)}
-              className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+              className="p-1.5 sm:p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors flex-shrink-0"
+              title="Remove file"
             >
-              <XMarkIcon className="h-5 w-5" />
+              <XMarkIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
         ))}
@@ -6761,22 +6997,25 @@ companyDetails.engagementLetters.length > 0 ? (
                           {engagementLetters.map((letter, index) => (
                             <div
                               key={index}
-                              className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm"
+                              className="flex items-center justify-between bg-white p-3 sm:p-4 rounded-lg shadow-sm gap-3"
                             >
-                              <div className="flex items-center space-x-3">
-                                <DocumentTextIcon className="h-5 w-5 text-green-600" />
-                                <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                                  {letter.name}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {(letter.size / 1024).toFixed(1)}KB
-                                </span>
+                              <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                                <DocumentTextIcon className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-sm font-medium text-gray-900 block truncate">
+                                    {letter.name}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {(letter.size / 1024).toFixed(1)}KB
+                                  </span>
+                                </div>
                               </div>
                               <button
                                 onClick={() => removeEngagementLetter(index)}
-                                className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+                                className="p-1.5 sm:p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors flex-shrink-0"
+                                title="Remove file"
                               >
-                                <XMarkIcon className="h-5 w-5" />
+                                <XMarkIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                               </button>
                             </div>
                           ))}
@@ -6897,7 +7136,7 @@ companyDetails.engagementLetters.length > 0 ? (
                         className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                         title="Hide Timeline"
                       >
-                        <ChevronUpIcon className="h-4 w-4" />
+                        <ChevronUpIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                       </button>
                     </div>
                   </div>
@@ -6983,7 +7222,7 @@ companyDetails.engagementLetters.length > 0 ? (
                     onClick={() => setShowTimeline(true)}
                     className="w-full flex items-center justify-center space-x-2 text-gray-600 hover:text-indigo-600 transition-colors"
                   >
-                    <ChevronDownIcon className="h-4 w-4" />
+                    <ChevronDownIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span className="text-sm font-medium">Show Service Timeline</span>
                   </button>
                 </div>

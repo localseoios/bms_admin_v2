@@ -3600,7 +3600,7 @@ function ClientProfile() {
         >
           <div className="flex items-center space-x-4">
             <Link
-              to="/compliance"
+              to="/compliance-selection"
               className="inline-flex items-center px-4 py-2 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-white/50 transition-all duration-200"
             >
               <ArrowLeftIcon className="h-5 w-5 mr-2" />

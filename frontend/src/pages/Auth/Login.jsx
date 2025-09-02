@@ -33,7 +33,7 @@ function Login() {
       if (rememberMe) {
         localStorage.setItem("user", JSON.stringify(user));
       }
-      navigate("/");
+      navigate("/mode-selection");
     } catch (err) {
       setError(err.response?.data?.message || "An error occurred during login");
     } finally {

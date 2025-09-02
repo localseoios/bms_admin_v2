@@ -20,6 +20,7 @@ const cron = require("node-cron");
 const {
   sendExpiryNotifications,
 } = require("./src/controllers/operationController");
+const { checkExpiringComplianceDocuments } = require("./src/services/complianceNotificationService");
 
 // Ensure temp uploads directory exists
 const tempUploadsDir = path.join(__dirname, "src/temp-uploads");
@@ -36,6 +37,15 @@ app.use((req, res, next) => {
   // Only log for API routes to reduce noise
   if (req.url.startsWith("/api/")) {
     console.log(`${req.method} ${req.url}`);
+    
+    // Enhanced logging for file uploads
+    if (req.method === 'POST' || req.method === 'PUT') {
+      if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+        console.log('📤 File upload detected!');
+        console.log('Content-Type:', req.headers['content-type']);
+        console.log('Content-Length:', req.headers['content-length']);
+      }
+    }
   }
   next();
 });
@@ -44,9 +54,14 @@ app.use((req, res, next) => {
 cron.schedule("0 9 * * *", async () => {
   console.log("🏃 Running daily expiry notification job at 09:00");
   try {
-    // Running the sendExpiryNotifications function
+    // Running the sendExpiryNotifications function (existing job notifications)
     const result = await sendExpiryNotifications();
-    console.log("Expiry notifications sent:", result.notificationsSent);
+    console.log("Job expiry notifications sent:", result.notificationsSent);
+    
+    // Running the separate compliance document expiry check
+    console.log("📋 Checking for expiring compliance documents...");
+    const complianceResult = await checkExpiringComplianceDocuments();
+    console.log("Compliance document expiry check completed:", complianceResult);
   } catch (err) {
     console.error("Error in cron expiry job:", err);
   }
@@ -218,6 +233,12 @@ app.use("/api/account", require("./src/routes/accountManagementRoutes"));
 app.use("/api/services", serviceRoutes);
 // Add this line with your other route definitions
 app.use("/api/financial-documents", require("./src/routes/financialDocumentRoutes"));
+app.use("/api/screening", require("./src/routes/screeningRoutes"));
+app.use("/api/compliance-resources", require("./src/routes/complianceResourceRoutes"));
+app.use("/api/section-settings", require("./src/routes/sectionSettingsRoutes"));
+app.use("/api/compliance-culture", require("./src/routes/complianceCultureRoutes"));
+app.use("/api/compliance-staff", require("./src/routes/complianceStaffRoutes"));
+app.use("/api/compliance-notifications", require("./src/routes/complianceNotificationRoutes"));
 
 
 // Add a catch-all route AFTER all your API routes to debug 404s
@@ -244,6 +265,7 @@ app.use((err, req, res, next) => {
         message: "File too large",
         error: `Maximum file size is ${(err.size || 50) / (1024 * 1024)}MB`,
       });
+      
     }
 
     return res.status(400).json({

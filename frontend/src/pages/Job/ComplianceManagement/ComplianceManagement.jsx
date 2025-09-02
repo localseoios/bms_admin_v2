@@ -1043,15 +1043,24 @@ function ComplianceManagement() {
               )}
             </p>
           </div>
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={exportData}
-            className="inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"
-          >
-            <ArrowDownTrayIcon className="h-5 w-5 mr-2 group-hover:animate-bounce" />
-            Export Data
-          </motion.button>
+          <div className="flex gap-3">
+            <Link
+              to="/compliance/clients"
+              className="inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"
+            >
+              <UserGroupIcon className="h-5 w-5 mr-2 group-hover:animate-pulse" />
+              Compliance Clients
+            </Link>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={exportData}
+              className="inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"
+            >
+              <ArrowDownTrayIcon className="h-5 w-5 mr-2 group-hover:animate-bounce" />
+              Export Data
+            </motion.button>
+          </div>
         </motion.div>
 
         {/* Search and Filters */}

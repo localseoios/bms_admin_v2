@@ -29,9 +29,15 @@ router.get(
   getAllClients
 );
 
+// Route to get all clients for compliance (no auth needed for now)
+router.get("/compliance/all", getAllClients);
+
 // Route to get client details by email (encoded in URL)
 // Note: We keep the :gmail parameter name for backward compatibility
 router.get("/:gmail", protect, getClientByGmail);
+
+// Route to get client details for compliance (no auth needed for now)
+router.get("/compliance/:gmail", getClientByGmail);
 
 // New route to get engagement letter specifically
 router.get("/:gmail/engagement-letter", protect, getEngagementLetterByGmail);

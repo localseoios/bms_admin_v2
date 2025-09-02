@@ -26,6 +26,9 @@ const {
   updateJobExpiryDate,
   deleteEngagementLetter,
   getJobDataByEmail,
+  deleteCompanyDocument,
+  deletePersonDocument,
+  deleteKycSignedDocument,
 } = require("../controllers/operationController");
 
 
@@ -177,7 +180,7 @@ router.put(
     { name: "engagementLetters", maxCount: 1 },
     { name: "companyComputerCard", maxCount: 1 },
     { name: "taxCard", maxCount: 1 },
-    { name: "crExtract", maxCount: 2 },
+    { name: "crExtract", maxCount: 50 },
     { name: "scopeOfLicense", maxCount: 1 },
     { name: "articleOfAssociate", maxCount: 1 },
     { name: "certificateOfIncorporate", maxCount: 1 },
@@ -262,6 +265,30 @@ router.post(
   uploadEngagementLetter
 );
 
+// Delete company document
+router.delete(
+  "/jobs/:jobId/company-document",
+  protect,
+  checkPermission("operationManagement"),
+  deleteCompanyDocument
+);
+
+// Delete person document
+router.delete(
+  "/jobs/:jobId/person-document/:personType/:personId",
+  protect,
+  checkPermission("operationManagement"),
+  deletePersonDocument
+);
+
+// Delete KYC signed document
+router.delete(
+  "/jobs/:jobId/kyc-document",
+  protect,
+  checkPermission("operationManagement"),
+  deleteKycSignedDocument
+);
+
 router.put(
   "/jobs/:jobId/complete",
   protect,
@@ -288,7 +315,7 @@ router.post(
       { name: "engagementLetters", maxCount: 1 },
       { name: "companyComputerCard", maxCount: 1 },
       { name: "taxCard", maxCount: 1 },
-      { name: "crExtract", maxCount: 2 },
+      { name: "crExtract", maxCount: 50 },
       { name: "scopeOfLicense", maxCount: 1 },
       { name: "articleOfAssociate", maxCount: 1 },
       { name: "certificateOfIncorporate", maxCount: 1 },

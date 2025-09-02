@@ -175,9 +175,8 @@ const CreatePreApprovedJob = () => {
   // Add CR Extract helper functions
   const handleCrExtractFileChange = (files) => {
     const fileArray = Array.from(files);
-    // Limit to 2 files maximum
-    const limitedFiles = fileArray.slice(0, 2);
-    setCrExtractFiles(limitedFiles);
+    // No limit on number of files
+    setCrExtractFiles(fileArray);
   };
 
   const removeCrExtractFile = (index) => {
@@ -2264,7 +2263,7 @@ const CreatePreApprovedJob = () => {
               <div className="grid grid-cols-5 items-center bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700">
-                    CR Extract (Max 2 files)
+                    CR Extract
                   </label>
                   <div
                     className={`mt-1 border-2 border-dashed rounded-lg p-2 transition-colors ${
@@ -2315,37 +2314,25 @@ const CreatePreApprovedJob = () => {
                           </div>
                         ))}
 
-                        {/* Add more files button if less than 2 files */}
-                        {crExtractFiles.length < 2 && (
-                          <div className="text-center pt-2">
-                            <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                              + Add{" "}
-                              {crExtractFiles.length === 1
-                                ? "1 more"
-                                : "another"}{" "}
-                              document
-                              <input
-                                type="file"
-                                className="sr-only"
-                                multiple
-                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                                onChange={(e) => {
-                                  const newFiles = Array.from(e.target.files);
-                                  const remainingSlots =
-                                    2 - crExtractFiles.length;
-                                  const filesToAdd = newFiles.slice(
-                                    0,
-                                    remainingSlots
-                                  );
-                                  setCrExtractFiles((prev) => [
-                                    ...prev,
-                                    ...filesToAdd,
-                                  ]);
-                                }}
-                              />
-                            </label>
-                          </div>
-                        )}
+                        {/* Add more files button */}
+                        <div className="text-center pt-2">
+                          <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                            + Add another document
+                            <input
+                              type="file"
+                              className="sr-only"
+                              multiple
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              onChange={(e) => {
+                                const newFiles = Array.from(e.target.files);
+                                setCrExtractFiles((prev) => [
+                                  ...prev,
+                                  ...newFiles,
+                                ]);
+                              }}
+                            />
+                          </label>
+                        </div>
                       </div>
                     ) : formData.crExtractUrls && formData.crExtractUrls.length > 0 ? (
                       <div className="space-y-2">
@@ -2387,7 +2374,7 @@ const CreatePreApprovedJob = () => {
                         <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
                         <div>
                           <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
-                            Upload CR Extract Documents (1-2 files)
+                            Upload CR Extract Documents
                             <input
                               type="file"
                               className="sr-only"

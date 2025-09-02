@@ -16,7 +16,12 @@ const ensureTempDir = () => {
 // Configure multer disk storage for temporary files
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
+    console.log('\n📁 === FILE UPLOAD STARTED ===');
+    console.log('Original filename:', file.originalname);
+    console.log('Field name:', file.fieldname);
+    console.log('Mimetype:', file.mimetype);
     const tempDir = ensureTempDir();
+    console.log('Temp directory:', tempDir);
     cb(null, tempDir);
   },
   filename: function (req, file, cb) {
@@ -26,7 +31,9 @@ const storage = multer.diskStorage({
       .toString("utf8")
       .replace(/[^a-zA-Z0-9-_.]/g, "_");
 
-    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(safeFilename)}`);
+    const finalFilename = `${file.fieldname}-${uniqueSuffix}${path.extname(safeFilename)}`;
+    console.log('Generated filename:', finalFilename);
+    cb(null, finalFilename);
   },
 });
 
@@ -43,9 +50,12 @@ const fileFilter = (req, file, cb) => {
     "image/png",
   ];
 
+  console.log('\n🔍 Validating file type:', file.mimetype);
   if (allowedMimeTypes.includes(file.mimetype)) {
+    console.log('✅ File type accepted:', file.mimetype);
     cb(null, true);
   } else {
+    console.error('❌ File type rejected:', file.mimetype);
     cb(
       new Error(
         "Invalid file type. Only PDF, Word, Excel, and image files are allowed."
@@ -58,12 +68,18 @@ const fileFilter = (req, file, cb) => {
 // Enhanced Cloudinary upload function with better error handling
 const uploadToCloudinary = async (filePath, options = {}) => {
   try {
-    console.log(`Uploading file to Cloudinary: ${filePath}`);
+    console.log('\n☁️ === CLOUDINARY UPLOAD ===');
+    console.log(`📤 Uploading file: ${filePath}`);
+    console.log(`📂 Upload folder: ${options.folder || "uploads"}`);
 
     // Check if file exists before uploading
     if (!fs.existsSync(filePath)) {
+      console.error(`❌ File not found: ${filePath}`);
       throw new Error(`File not found: ${filePath}`);
     }
+    
+    const fileSize = fs.statSync(filePath).size;
+    console.log(`📊 File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
 
     // Set default folder if not provided
     const uploadOptions = {
@@ -73,9 +89,13 @@ const uploadToCloudinary = async (filePath, options = {}) => {
       ...options,
     };
 
+    console.log('🚀 Starting upload to Cloudinary...');
     // Upload to Cloudinary
     const result = await cloudinary.uploader.upload(filePath, uploadOptions);
-    console.log(`Upload successful: ${result.secure_url}`);
+    console.log(`✅ Upload successful!`);
+    console.log(`🌐 URL: ${result.secure_url}`);
+    console.log(`🆔 Public ID: ${result.public_id}`);
+    console.log('==========================\n');
 
     return {
       success: true,
@@ -85,11 +105,14 @@ const uploadToCloudinary = async (filePath, options = {}) => {
       resourceType: result.resource_type,
     };
   } catch (error) {
-    console.error(`Cloudinary upload error for ${filePath}:`, error);
+    console.error(`❌ Cloudinary upload error:`, error.message);
+    console.error(`Error details:`, error);
 
     // Generate a fallback URL to serve the file locally
     const filename = path.basename(filePath);
     const fallbackUrl = `/files/${filename}`;
+    console.log(`🔄 Using fallback URL: ${fallbackUrl}`);
+    console.log('==========================\n');
 
     return {
       success: false,

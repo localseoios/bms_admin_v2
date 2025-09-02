@@ -12,8 +12,18 @@
       "Bash(grep:*)",
       "Bash(cat:*)",
       "Bash(ls:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(rs)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(mongosh:*)",
+      "Bash(mongo:*)",
+      "Bash(ss:*)",
+      "Bash(npm start)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   }
 }

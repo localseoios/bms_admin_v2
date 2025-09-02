@@ -3,7 +3,18 @@ import Notifications from "./pages/Notifications/Notifications";
 import Layout from "./components/Layout";
 import UserManagement from "./pages/UserManagement/UserManagement";
 import Login from "./pages/Auth/Login";
+import ComplianceSelection from "./pages/ComplianceSelection";
+import ModeSelection from "./pages/ModeSelection";
 import ComplianceManagement from "./pages/Job/ComplianceManagement/ComplianceManagement";
+import ComplianceCulture from "./pages/Compliance/ComplianceCulture";
+import ComplianceResource from "./pages/Compliance/ComplianceResource";
+import ComplianceResourceCenter from "./pages/Compliance/ComplianceResourceCenter";
+import ComplianceStaff from "./pages/Compliance/ComplianceStaff";
+import ComplianceNotifications from "./pages/Compliance/ComplianceNotifications";
+import ComplianceStaffManagement from "./pages/ComplianceStaff/ComplianceStaffManagement";
+import ComplianceClients from "./pages/Compliance/ComplianceClients";
+import TestComplianceClients from "./pages/Compliance/TestComplianceClients";
+import ComplianceClientDetails from "./pages/Compliance/ComplianceClientDetails";
 import CreateJob from "./pages/Job/Admin/CreateJob";
 import AdminJobs from "./pages/Job/Admin/AdminJobs";
 import OperationManagement from "./pages/Job/OperationManagement/OperationManagement";
@@ -30,13 +41,27 @@ function App() {
           {/* Public Route */}
           <Route path="/login" element={<Login />} />
 
-          {/* Protected Routes Wrapped in Layout */}
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+          {/* Mode Selection Route (after login) */}
+          <Route path="/mode-selection" element={<ModeSelection />} />
+          
+          {/* New Compliance System - Outside Layout (No Sidebar) */}
+          <Route path="/compliance-selection" element={<ComplianceSelection />} />
+          <Route path="/compliance-culture" element={<ComplianceCulture />} />
+          <Route path="/compliance-staff" element={<ComplianceStaff />} />
+          <Route path="/compliance-resources" element={<ComplianceResource />} />
+          <Route path="/compliance/clients-test" element={<div style={{padding: '50px', backgroundColor: '#4ade80', color: 'white', fontSize: '30px', textAlign: 'center'}}><h1>✅ SUCCESS! NO SIDEBAR/HEADER!</h1><p>URL: /compliance/clients-test</p><p>Full screen without sidebar!</p></div>} />
+          <Route path="/compliance/clients" element={<ComplianceClients />} />
+          <Route path="/compliance/client/:id" element={<ComplianceClientDetails />} />
+          <Route path="/compliance-notifications" element={<ComplianceNotifications />} />
+
+          {/* Protected Routes Wrapped in Layout - SPECIFIC PATHS ONLY */}
+          <Route path="/*" element={<Layout />}>
+            <Route index element={<Navigate to="/mode-selection" replace />} />
             <Route path="user-management" element={<UserManagement />} />
             <Route path="create-job" element={<CreateJob />} />
             <Route path="admin/jobs" element={<AdminJobs />} />
-            <Route path="compliance" element={<ComplianceManagement />} />
+            {/* Original Compliance Management - Keep as is */}
+            <Route path="compliance-management" element={<ComplianceManagement />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="reports" element={<Reports />} />
@@ -50,7 +75,7 @@ function App() {
             />
 
             {/* Client Profiles */}
-            <Route path="/clients/:gmail" element={<ClientProfile />} />
+            <Route path="clients/:gmail" element={<ClientProfile />} />
 
             {/* Operation Management */}
             <Route
@@ -83,6 +108,12 @@ function App() {
             <Route path="admin/services" element={<AllServices />} />
             <Route path="admin/services/add" element={<AddService />} />
             <Route path="admin/services/edit/:id" element={<AddService />} />
+            
+            {/* Compliance Resource Center - Protected Route */}
+            <Route path="compliance-resource-center" element={<ComplianceResourceCenter />} />
+            
+            {/* Compliance Staff Management - Protected Route */}
+            <Route path="compliance-staff-management" element={<ComplianceStaffManagement />} />
           </Route>
         </Routes>
       </Router>

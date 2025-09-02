@@ -145,3 +145,94 @@ RESTful endpoints organized by domain:
 - `src/context/` - React Context providers
 - `src/utils/` - API services and utilities
 - `src/components/Layout.jsx` - Main layout wrapper
+
+## Coding Preferences
+
+### Code Style
+- **No Comments**: Do not add comments unless explicitly requested
+- **Concise Code**: Write clean, self-documenting code
+- **Existing Patterns**: Always follow existing codebase patterns and conventions
+- **Library Usage**: Check if libraries are already in use before importing new ones
+- **Error Handling**: Use try-catch blocks and proper error logging
+- **Async/Await**: Prefer async/await over promises for better readability
+
+### React Preferences
+- **Functional Components**: Use functional components with hooks
+- **State Management**: Use Context API for global state, useState for local state
+- **Custom Hooks**: Create custom hooks for reusable logic
+- **Prop Validation**: Use PropTypes or TypeScript for prop validation
+- **Component Organization**: Keep components focused and single-purpose
+
+### Backend Preferences
+- **Express Middleware**: Use middleware for common operations
+- **Controller Pattern**: Keep controllers thin, business logic in services
+- **Database Operations**: Use Mongoose methods, avoid raw MongoDB queries
+- **Response Format**: Consistent JSON response structure
+- **Status Codes**: Use appropriate HTTP status codes
+
+## Testing and Validation Tools
+
+### Backend Testing
+```bash
+cd backend
+npm run test                # Run test suite (if configured)
+npm run lint                 # Run ESLint for code quality
+```
+
+### Frontend Testing
+```bash
+cd frontend
+npm run lint                 # Run ESLint
+npm run test                 # Run test suite (if configured)
+npm run build                # Build to catch compilation errors
+```
+
+### Code Quality Tools
+- **ESLint**: Configured for both frontend and backend
+- **Prettier**: Code formatting (if configured)
+- **Pre-commit Hooks**: Validate code before commits
+
+### Validation Checklist
+Before completing any task:
+1. Run lint commands for affected code
+2. Test all modified functionality manually
+3. Check for console errors in browser
+4. Verify API responses are correct
+5. Ensure no sensitive data in logs or commits
+
+## Important Instructions
+
+### Do's
+- ✅ Follow existing code patterns and conventions
+- ✅ Test changes thoroughly before marking complete
+- ✅ Use existing utilities and helpers
+- ✅ Handle errors gracefully with proper messages
+- ✅ Keep security best practices in mind
+- ✅ Maintain consistent naming conventions
+- ✅ Update related files when making changes
+
+### Don'ts
+- ❌ Never add comments unless requested
+- ❌ Never commit secrets or API keys
+- ❌ Never create new files unless absolutely necessary
+- ❌ Never assume libraries are available without checking
+- ❌ Never skip error handling
+- ❌ Never expose sensitive data in responses
+- ❌ Never modify core authentication logic without careful review
+
+### Performance Guidelines
+- Optimize database queries with proper indexing
+- Use pagination for large data sets
+- Implement caching where appropriate
+- Minimize API calls with batch operations
+- Use lean() for read-only Mongoose queries
+- Avoid N+1 query problems with populate()
+
+### Security Guidelines
+- Always validate and sanitize user input
+- Use parameterized queries to prevent injection
+- Implement rate limiting on sensitive endpoints
+- Keep dependencies updated for security patches
+- Use HTTPS in production
+- Implement proper CORS configuration
+- Never log sensitive information

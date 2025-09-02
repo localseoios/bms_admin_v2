@@ -9,16 +9,25 @@ const path = require("path");
 // Helper function to safely upload to Cloudinary with fallback
 const safeCloudinaryUpload = async (filePath, options = {}) => {
   try {
+    console.log('\n💰 === FINANCIAL DOCUMENT UPLOAD ===');
+    console.log('📄 File:', path.basename(filePath));
+    console.log('📂 Folder:', options.folder || 'default');
+    
     const result = await cloudinary.uploader.upload(filePath, {
       timeout: 60000,
       ...options,
     });
+    
+    console.log('✅ Upload successful!');
+    console.log('🌐 URL:', result.secure_url);
+    
     return { success: true, url: result.secure_url, publicId: result.public_id };
   } catch (error) {
-    console.error(`Cloudinary upload error for ${filePath}:`, error.message);
+    console.error(`❌ Cloudinary upload error:`, error.message);
     const placeholder = `${
       process.env.VITE_BACKEND_URL
     }/temp-uploads/${path.basename(filePath)}`;
+    console.log(`🔄 Using fallback URL: ${placeholder}`);
     return { success: false, url: placeholder, error: error.message };
   }
 };

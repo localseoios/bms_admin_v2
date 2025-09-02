@@ -19,6 +19,7 @@ import {
   CurrencyDollarIcon,
   UsersIcon,
   BuildingStorefrontIcon,
+  BookOpenIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -62,8 +63,8 @@ const navigation = [
     name: "Compliance Management",
     items: [
       {
-        name: "Compliance",
-        href: "/compliance",
+        name: "Compliance Management",
+        href: "/compliance-management",
         icon: ShieldCheckIcon,
       },
       {
@@ -75,6 +76,16 @@ const navigation = [
         name: "KYC Management",
         href: "/kyc-management",
         icon: IdentificationIcon,
+      },
+      {
+        name: "Resource Center",
+        href: "/compliance-resource-center",
+        icon: BookOpenIcon,
+      },
+      {
+        name: "Staff Management",
+        href: "/compliance-staff-management",
+        icon: UsersIcon,
       },
     ],
   },
@@ -161,15 +172,18 @@ function Sidebar() {
 
   // Check if user has permission to see a navigation item
   const hasAccessToItem = (item) => {
+    const { user } = useAuth();
     switch(item.href) {
       case "/reports":
         // Check for Audited Financial permission ONLY (viewer or editor)
         // Explicitly prevent admin bypass for Financial Reports to enforce strict access control
-        const { user } = useAuth();
         return user && user.role && user.role.permissions && (
           user.role.permissions.clientManagement?.auditedFinancial?.viewer === true ||
           user.role.permissions.clientManagement?.auditedFinancial?.editor === true
         );
+      case "/compliance-resource-center":
+        // Check for Compliance Management permission
+        return checkPermission('complianceManagement');
       default:
         return true; // For now, show all other items
     }
