@@ -321,9 +321,9 @@ const renderExpiringJobsSection = () => {
 const fetchExpiringJobs = async () => {
   try {
     setExpiringJobsError(null);
-    console.log("🔍 Fetching ALL expiring jobs from dashboard...");
+    console.log("🔍 Fetching future expiring documents from dashboard (2 months, excluding expired)...");
 
-    const response = await axiosInstance.get("/operations/expiring-jobs");
+    const response = await axiosInstance.get("/operations/dashboard/expiring-jobs");
     console.log("📋 Dashboard API response:", response.data);
 
     let jobsData = [];
@@ -331,7 +331,7 @@ const fetchExpiringJobs = async () => {
     if (response.data) {
       if (response.data.success && Array.isArray(response.data.data)) {
         jobsData = response.data.data;
-        console.log(`✅ Successfully received ${jobsData.length} expiring jobs`);
+        console.log(`✅ Successfully received ${jobsData.length} expiring documents`);
         
         if (response.data.summary) {
           console.log("📊 Backend summary:", response.data.summary);
@@ -378,11 +378,10 @@ const fetchExpiringJobs = async () => {
     // Previously was creating "balanced" display that limited expired docs
     // Now we show ALL expired documents
 
-    console.log(`📋 Dashboard showing ${processedJobs.length} total expired/expiring documents`);
+    console.log(`📋 Dashboard showing ${processedJobs.length} future expiring documents`);
     
-    // Group by urgency for logging
+    // Group by urgency for logging (excluding expired since we no longer show them)
     const urgencyBreakdown = {
-      expired: processedJobs.filter(job => job.urgencyLevel === 'expired').length,
       critical: processedJobs.filter(job => job.urgencyLevel === 'critical').length,
       warning: processedJobs.filter(job => job.urgencyLevel === 'warning').length,
       normal: processedJobs.filter(job => job.urgencyLevel === 'normal').length,
@@ -1324,7 +1323,7 @@ const fetchExpiringJobs = async () => {
           <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100/50 hover:shadow-xl transition-all duration-300 lg:col-span-1">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                Expiring Jobs
+                Future Expiring Documents
               </h2>
               <div className="flex items-center space-x-2">
                 <ExclamationTriangleIcon className="h-5 w-5 text-orange-500" />
@@ -1365,12 +1364,12 @@ const fetchExpiringJobs = async () => {
               </div>
             ) : expiringJobs && expiringJobs.length > 0 ? (
               <div className="space-y-4">
-                {expiringJobs.slice(0, 5).map((job) => {
+                {expiringJobs.slice(0, 5).map((job, index) => {
                   const UrgencyIcon = job.urgencyIcon;
 
                   return (
                     <div
-                      key={job.jobId}
+                      key={`${job.jobId}-${job.expiryType}-${index}`}
                       className={`p-4 rounded-lg border-2 hover:shadow-md transition-all duration-200 ${
                         job.urgencyLevel === "expired"
                           ? "bg-gradient-to-r from-red-50 to-red-100 border-red-200"

@@ -6841,6 +6841,10 @@ companyDetails.engagementLetters.length > 0 ? (
 
     {companyDetails.engagementLetters.map((letter, index) => {
       console.log('Engagement Letter Data:', letter);
+      console.log('Available fields:', Object.keys(letter));
+      console.log('fileName:', letter.fileName);
+      console.log('filename:', letter.filename);  
+      console.log('fileUrl:', letter.fileUrl);
       return (
       <div
         key={letter._id || index}
@@ -6849,13 +6853,14 @@ companyDetails.engagementLetters.length > 0 ? (
         <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
           <DocumentTextIcon className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600 flex-shrink-0" />
           <div className="min-w-0 flex-1">
-            <span className="text-sm font-bold text-gray-900 block truncate bg-yellow-100 px-1" style={{minHeight: '20px'}}>
-              {letter.fileName ||
-                `Engagement Letter ${index + 1}`}
+            <span className="text-sm font-bold text-gray-900 block truncate">
+              {letter.fileName || 
+               letter.filename || 
+               letter.originalname ||
+               letter.name ||
+               (letter.fileUrl && letter.fileUrl.split('/').pop()) ||
+               `Engagement Letter ${index + 1}`}
             </span>
-            <div className="text-xs text-blue-600 bg-blue-50 p-1 mt-1 rounded">
-              DEBUG: fileName="{letter.fileName || 'undefined'}"
-            </div>
             {letter.description && (
               <p className="text-xs text-gray-500 truncate">
                 {letter.description}

@@ -3163,25 +3163,25 @@ const calculateUrgencyLevel = (actualExpiryDate, currentDate = new Date()) => {
 
 const getExpiringJobs = async (req, res) => {
   try {
-    console.log("📋 Fetching ALL expiring jobs with COMPLETE document breakdown...");
+    console.log("📋 Fetching ALL expiring documents within 2 months (excluding already expired)...");
 
     const now = new Date();
     const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const twoMonthsFromNow = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000); // Changed to 60 days
 
     console.log("📅 Date calculations:");
     console.log("Now:", now.toISOString());
     console.log("One week from now:", oneWeekFromNow.toISOString());
-    console.log("One month from now:", oneMonthFromNow.toISOString());
+    console.log("Two months from now:", twoMonthsFromNow.toISOString());
 
-    // STEP 1: Get CompanyDetails with expiring documents
+    // STEP 1: Get CompanyDetails with documents expiring within 2 months (exclude already expired)
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
-        { expiryDate: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { companyComputerCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { taxCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { crExtractExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { expiryDate: { $exists: true, $ne: null, $gte: now, $lte: twoMonthsFromNow } },
+        { companyComputerCardExpiry: { $exists: true, $ne: null, $gte: now, $lte: twoMonthsFromNow } },
+        { taxCardExpiry: { $exists: true, $ne: null, $gte: now, $lte: twoMonthsFromNow } },
+        { crExtractExpiry: { $exists: true, $ne: null, $gte: now, $lte: twoMonthsFromNow } },
+        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gte: now, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
@@ -3235,8 +3235,8 @@ const getExpiringJobs = async (req, res) => {
         ];
 
         documentTypes.forEach(docType => {
-          // Only include if expiry date exists and is within our timeframe
-          if (docType.date && docType.date <= oneMonthFromNow) {
+          // Only include if expiry date exists, is not already expired, and is within 2 months
+          if (docType.date && docType.date >= now && docType.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(docType.date, now);
             
             companyDetailJobs.push({
@@ -3380,19 +3380,19 @@ const getExpiringJobs = async (req, res) => {
 // 2. FIXED: getExpiringJobsForDashboard function
 const getExpiringJobsForDashboard = async (req, res) => {
   try {
-    console.log("📊 Fetching ALL expiring documents for dashboard (no limits per job)");
+    console.log("📊 Fetching future expiring documents for dashboard (2 months, excluding expired)");
 
     const now = new Date();
-    const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const twoMonthsFromNow = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-    // Get CompanyDetails with expiring documents
+    // Get CompanyDetails with expiring documents (exclude already expired)
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
-        { expiryDate: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { companyComputerCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { taxCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { crExtractExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { expiryDate: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { companyComputerCardExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { taxCardExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { crExtractExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
@@ -3408,12 +3408,12 @@ const getExpiringJobsForDashboard = async (req, res) => {
     })
     .lean();
 
-    // Get PersonDetails with expiring documents
+    // Get PersonDetails with expiring documents (exclude already expired)
     const expiringPersonDetails = await PersonDetails.find({
       $or: [
-        { qidExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { nationalAddressExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { passportExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { qidExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { passportExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
@@ -3445,8 +3445,8 @@ const getExpiringJobsForDashboard = async (req, res) => {
 
         // Check each document type separately
         expiryChecks.forEach(check => {
-          // Only include if the document has an expiry date and it's within our range
-          if (check.date && check.date <= oneMonthFromNow) {
+          // Only include if the document has an expiry date, is within our range, and NOT already expired
+          if (check.date && check.date > now && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, now);
             
             allJobs.push({
@@ -3484,7 +3484,7 @@ const getExpiringJobsForDashboard = async (req, res) => {
 
         // Check each document type separately
         expiryChecks.forEach(check => {
-          if (check.date && check.date <= oneMonthFromNow) {
+          if (check.date && check.date > now && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, now);
             
             allJobs.push({
@@ -3536,19 +3536,19 @@ const getExpiringJobsForDashboard = async (req, res) => {
 
     const summary = {
       total: finalJobs.length,
-      expired: finalJobs.filter(j => j.urgencyLevel === 'expired').length,
       critical: finalJobs.filter(j => j.urgencyLevel === 'critical').length,
       warning: finalJobs.filter(j => j.urgencyLevel === 'warning').length,
+      normal: finalJobs.filter(j => j.urgencyLevel === 'normal').length,
       fromCompletedServices: finalJobs.filter(j => j.isServiceCompleted).length,
-      // ADDED: Count of unique jobs (to show how many jobs have expired docs)
+      // Count of unique jobs (to show how many jobs have expiring docs)
       uniqueJobs: [...new Set(finalJobs.map(j => j.jobId.toString()))].length,
     };
 
-    console.log(`✅ Dashboard result - Showing ${finalJobs.length} expired documents from ${summary.uniqueJobs} jobs`);
+    console.log(`✅ Dashboard result - Showing ${finalJobs.length} future expiring documents from ${summary.uniqueJobs} jobs`);
     console.log("📊 Breakdown by urgency:", {
-      expired: summary.expired,
       critical: summary.critical, 
       warning: summary.warning,
+      normal: summary.normal,
       fromCompleted: summary.fromCompletedServices
     });
 
@@ -3556,7 +3556,7 @@ const getExpiringJobsForDashboard = async (req, res) => {
       success: true,
       data: finalJobs,
       summary,
-      message: `Found ${finalJobs.length} expiring documents from ${summary.uniqueJobs} unique jobs`,
+      message: `Found ${finalJobs.length} future expiring documents from ${summary.uniqueJobs} unique jobs`,
       timestamp: new Date().toISOString()
     });
 
@@ -4024,19 +4024,19 @@ const updateJobExpiryDate = async (req, res) => {
 
 const exportExpiringJobs = asyncHandler(async (req, res) => {
   try {
-    console.log("📊 Exporting ALL expiring documents to Excel (no limits per job)");
+    console.log("📊 Exporting future expiring documents to Excel (2 months, excluding expired)");
 
     const currentDate = new Date();
-    const oneMonthFromNow = new Date(currentDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const twoMonthsFromNow = new Date(currentDate.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-    // Get CompanyDetails with expiring documents
+    // Get CompanyDetails with expiring documents (excluding expired)
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
-        { expiryDate: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { companyComputerCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { taxCardExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { crExtractExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { expiryDate: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { companyComputerCardExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { taxCardExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { crExtractExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
@@ -4049,12 +4049,12 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
     })
     .lean();
 
-    // Get PersonDetails with expiring documents
+    // Get PersonDetails with expiring documents (excluding expired)
     const expiringPersonDetails = await PersonDetails.find({
       $or: [
-        { qidExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { nationalAddressExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
-        { passportExpiry: { $exists: true, $ne: null, $lte: oneMonthFromNow } },
+        { qidExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { passportExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
@@ -4108,8 +4108,8 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
 
         // Process each document type individually
         documentChecks.forEach(check => {
-          // Include if expiry date exists and is within range
-          if (check.date && check.date <= oneMonthFromNow) {
+          // Include if expiry date exists, is within range, and NOT already expired
+          if (check.date && check.date > currentDate && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, currentDate);
 
             allExpiringJobs.push({
@@ -4158,7 +4158,7 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
 
         // Process each document type individually
         documentChecks.forEach(check => {
-          if (check.date && check.date <= oneMonthFromNow) {
+          if (check.date && check.date > currentDate && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, currentDate);
 
             allExpiringJobs.push({

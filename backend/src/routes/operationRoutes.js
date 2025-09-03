@@ -124,6 +124,22 @@ router.get(
   getExpiringJobsForDashboard
 );
 
+// Dashboard export route (excludes expired documents)
+router.get(
+  "/dashboard/expiring-jobs/export",
+  protect,
+  checkPermission("operationManagement"),
+  exportExpiringJobs  // Note: This will use filtered data since it's the same function
+);
+
+// Dashboard notification route (excludes expired documents)  
+router.post(
+  "/dashboard/expiring-jobs/notify",
+  protect,
+  checkPermission("operationManagement"),
+  sendExpiryNotifications  // Note: This will use filtered data since it's the same function
+);
+
 // FIXED: Expiring jobs stats route - corrected middleware
 router.get(
   "/expiring-jobs/stats",

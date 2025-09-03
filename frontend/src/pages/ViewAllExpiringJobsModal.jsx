@@ -60,9 +60,9 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
     try {
       setIsLoading(true);
       setExpiringJobsError(null);
-      console.log("🔍 Fetching ALL expiring jobs from modal...");
+      console.log("🔍 Fetching future expiring jobs from modal (2 months, excluding expired)...");
 
-      const response = await axiosInstance.get("/operations/expiring-jobs");
+      const response = await axiosInstance.get("/operations/dashboard/expiring-jobs");
       console.log("📋 Modal API response:", response.data);
 
       // Handle the corrected backend response structure
@@ -125,9 +125,8 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
         };
       });
 
-      // Log urgency breakdown for debugging
+      // Log urgency breakdown for debugging (excluding expired since we no longer show them)
       const urgencyBreakdown = {
-        expired: processedJobs.filter(job => job.urgencyLevel === 'expired').length,
         critical: processedJobs.filter(job => job.urgencyLevel === 'critical').length,
         warning: processedJobs.filter(job => job.urgencyLevel === 'warning').length,
         normal: processedJobs.filter(job => job.urgencyLevel === 'normal').length,
@@ -145,7 +144,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
       console.log("📋 Modal document type breakdown:", documentBreakdown);
       
       console.log("📋 Sample jobs by urgency:");
-      ['expired', 'critical', 'warning', 'normal'].forEach(level => {
+      ['critical', 'warning', 'normal'].forEach(level => {
         const levelJobs = processedJobs.filter(job => job.urgencyLevel === level);
         if (levelJobs.length > 0) {
           console.log(`  ${level.toUpperCase()}: ${levelJobs.length} documents`);
@@ -323,7 +322,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
   const exportToExcel = async () => {
     try {
       const response = await axiosInstance.get(
-        "/operations/expiring-jobs/export",
+        "/operations/dashboard/expiring-jobs/export",
         {
           responseType: "blob",
         }
@@ -349,7 +348,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
   const sendNotifications = async () => {
     try {
       const response = await axiosInstance.post(
-        "/operations/expiring-jobs/notify"
+        "/operations/dashboard/expiring-jobs/notify"
       );
       alert(
         `Notifications sent successfully! ${response.data.notificationsSent} notifications were sent.`
