@@ -4685,6 +4685,7 @@ const deleteKycSignedDocument = asyncHandler(async (req, res) => {
   const { documentIndex } = req.body;
 
   try {
+    console.log(`🗑️ Request body:`, req.body);
     console.log(`🗑️ Deleting KYC signed document at index ${documentIndex} for job ${jobId}`);
 
     const kycDocument = await KycDocument.findOne({ jobId });
@@ -4694,6 +4695,7 @@ const deleteKycSignedDocument = asyncHandler(async (req, res) => {
 
     if (documentIndex === undefined || documentIndex === null || 
         documentIndex >= kycDocument.documents.length) {
+      console.log(`❌ Invalid index: ${documentIndex}, array length: ${kycDocument.documents.length}`);
       return res.status(400).json({ message: "Invalid document index" });
     }
 

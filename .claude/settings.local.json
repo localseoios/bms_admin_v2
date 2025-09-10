@@ -21,7 +21,8 @@
       "Bash(mongosh:*)",
       "Bash(mongo:*)",
       "Bash(ss:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Read(//mnt/c/Users/DELL/Pictures/Screenshots/**)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

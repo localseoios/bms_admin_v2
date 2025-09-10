@@ -89,6 +89,9 @@ function ClientProfile() {
   const [kycDocumentModals, setKycDocumentModals] = useState({});
   const [kycDocumentUploading, setKycDocumentUploading] = useState({});
   const [deleteConfirmModals, setDeleteConfirmModals] = useState({});
+  const [kycUploadModal, setKycUploadModal] = useState({});
+  const [kycReplaceModal, setKycReplaceModal] = useState({});
+  const [generalKycDocuments, setGeneralKycDocuments] = useState({});
 
   const [braDocumentModals, setBraDocumentModals] = useState({});
   const [braDocumentUploading, setBraDocumentUploading] = useState({});
@@ -156,6 +159,8 @@ function ClientProfile() {
       // Also fetch the KYC status when a job is expanded
       fetchKycStatus(expandedService);
       fetchBraStatus(expandedService);
+      // Fetch general KYC documents
+      fetchGeneralKycDocuments(expandedService);
     }
   }, [expandedService]);
 
@@ -358,6 +363,12 @@ function ClientProfile() {
 
   // Helper function to handle KYC document update
   const handleUpdateKycDocument = async (jobId, stage, file, notes = "") => {
+    // Skip general documents - they don't use KYC workflow endpoints
+    if (stage === 'general') {
+      toast.error('General documents cannot be updated through this method. Please use the upload feature instead.');
+      return;
+    }
+    
     try {
       setKycDocumentUploading((prev) => ({
         ...prev,
@@ -435,6 +446,584 @@ function ClientProfile() {
         error.response?.data?.message ||
           `Failed to delete ${getStageDisplayName(stage)} document`
       );
+    }
+  };
+
+  // New handlers for KYC documents in Person Details tab
+  const handleEditKycDocument = (jobId, doc, idx) => {
+    const documentKey = `${jobId}-kyc-${idx}`;
+    setKycDocumentModals(prev => ({
+      ...prev,
+      [documentKey]: true
+    }));
+  };
+
+  const handleReplaceKycPersonDocument = (jobId, doc, idx) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        await updateKycPersonDocument(jobId, doc, idx, file);
+      }
+    };
+    input.click();
+  };
+
+  const updateKycPersonDocument = async (jobId, doc, idx, file) => {
+    try {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-kyc-${idx}`]: true
+      }));
+
+      const formData = new FormData();
+      formData.append('document', file);
+      formData.append('documentName', doc.name);
+      formData.append('documentType', doc.docType || '');
+
+      const response = await axiosInstance.put(
+        `/jobs/${jobId}/kyc-documents/${idx}`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (response.status === 200) {
+        toast.success('KYC document updated successfully!');
+        await fetchKycDetails(jobId);
+      }
+    } catch (error) {
+      console.error('Error updating KYC document:', error);
+      toast.error(
+        error.response?.data?.message || 'Failed to update KYC document'
+      );
+    } finally {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-kyc-${idx}`]: false
+      }));
+    }
+  };
+
+  const handleDeleteKycPersonDocument = async (jobId, doc, idx) => {
+    if (window.confirm('Are you sure you want to delete this document?')) {
+      try {
+        const response = await axiosInstance.delete(
+          `/jobs/${jobId}/kyc-documents/${idx}`
+        );
+
+        if (response.status === 200) {
+          toast.success('KYC document deleted successfully!');
+          await fetchKycDetails(jobId);
+        }
+      } catch (error) {
+        console.error('Error deleting KYC document:', error);
+        toast.error(
+          error.response?.data?.message || 'Failed to delete KYC document'
+        );
+      }
+    }
+  };
+
+  const updateKycDocumentInfo = async (jobId, docIdx, newName, newType) => {
+    try {
+      const response = await axiosInstance.patch(
+        `/jobs/${jobId}/kyc-documents/${docIdx}/info`,
+        {
+          name: newName,
+          docType: newType
+        }
+      );
+
+      if (response.status === 200) {
+        toast.success('KYC document information updated successfully!');
+        await fetchKycDetails(jobId);
+        
+        // Close modal
+        setKycDocumentModals(prev => ({
+          ...prev,
+          [`${jobId}-kyc-${docIdx}`]: false
+        }));
+      }
+    } catch (error) {
+      console.error('Error updating KYC document info:', error);
+      toast.error(
+        error.response?.data?.message || 'Failed to update KYC document information'
+      );
+    }
+  };
+
+  // Function to render all KYC documents (Management + General) in Person Details KYC tab
+  const renderKycManagementDocuments = (jobId) => {
+    const kycData = kycStatuses[jobId];
+    const generalDocs = generalKycDocuments[jobId] || [];
+    
+    // Extract documents from KYC Management data
+    const managementDocuments = [];
+    
+    if (kycData?.lmroApproval?.document?.fileUrl) {
+      managementDocuments.push({
+        id: `lmro-${jobId}`,
+        type: 'management',
+        stage: 'lmro',
+        stageLabel: 'LMRO',
+        document: kycData.lmroApproval.document,
+        approval: kycData.lmroApproval,
+        name: kycData.lmroApproval.document.fileName || 'LMRO Document',
+        url: kycData.lmroApproval.document.fileUrl,
+        uploadDate: kycData.lmroApproval.document.uploadedAt || kycData.lmroApproval.approvedAt,
+        docType: 'LMRO Approval'
+      });
+    }
+
+    if (kycData?.dlmroApproval?.document?.fileUrl) {
+      managementDocuments.push({
+        id: `dlmro-${jobId}`,
+        type: 'management',
+        stage: 'dlmro',
+        stageLabel: 'DLMRO',
+        document: kycData.dlmroApproval.document,
+        approval: kycData.dlmroApproval,
+        name: kycData.dlmroApproval.document.fileName || 'DLMRO Document',
+        url: kycData.dlmroApproval.document.fileUrl,
+        uploadDate: kycData.dlmroApproval.document.uploadedAt || kycData.dlmroApproval.approvedAt,
+        docType: 'DLMRO Approval'
+      });
+    }
+
+    if (kycData?.ceoApproval?.document?.fileUrl) {
+      managementDocuments.push({
+        id: `ceo-${jobId}`,
+        type: 'management',
+        stage: 'ceo',
+        stageLabel: 'CEO',
+        document: kycData.ceoApproval.document,
+        approval: kycData.ceoApproval,
+        name: kycData.ceoApproval.document.fileName || 'CEO Document',
+        url: kycData.ceoApproval.document.fileUrl,
+        uploadDate: kycData.ceoApproval.document.uploadedAt || kycData.ceoApproval.approvedAt,
+        docType: 'CEO Approval'
+      });
+    }
+
+    // Convert general documents to consistent format
+    const generalDocuments = generalDocs.map((doc, idx) => ({
+      id: doc._id || `general-${idx}`,
+      type: 'general',
+      name: doc.description || doc.name || `Document ${idx + 1}`,
+      url: doc.file || doc.fileUrl || doc.url,
+      uploadDate: doc.date || doc.uploadedAt || doc.createdAt,
+      docType: doc.documentType || doc.docType || 'KYC Document',
+      originalIndex: idx // Store the original index for deletion
+    }));
+
+    // Combine all documents
+    const allDocuments = [...managementDocuments, ...generalDocuments];
+
+    if (allDocuments.length === 0) {
+      return (
+        <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
+          <div className="bg-gray-100 rounded-full h-12 w-12 flex items-center justify-center mx-auto mb-3 shadow-sm">
+            <DocumentDuplicateIcon className="h-6 w-6 text-gray-400" />
+          </div>
+          <h5 className="text-sm font-medium text-gray-700 mb-2">
+            No KYC Documents
+          </h5>
+          <p className="text-xs text-gray-500 mb-4">
+            No KYC documents have been uploaded yet for this job.
+          </p>
+          <button
+            onClick={() => handleUploadKycDocument(jobId)}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors shadow-sm"
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Upload KYC Document
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {allDocuments.map((doc, idx) => (
+          <div
+            key={doc.id}
+            className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
+          >
+            <div className={`absolute top-0 left-0 right-0 h-1.5 ${
+              doc.type === 'management' 
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600' 
+                : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+            }`}></div>
+            <div className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start">
+                  <div className={`rounded-lg p-2.5 flex-shrink-0 ${
+                    doc.type === 'management' ? 'bg-green-100' : 'bg-blue-100'
+                  }`}>
+                    <DocumentTextIcon className={`h-5 w-5 ${
+                      doc.type === 'management' ? 'text-green-600' : 'text-blue-600'
+                    }`} />
+                  </div>
+                  <div className="ml-3 flex-grow">
+                    <h5 className="font-medium text-gray-900 text-sm">
+                      {doc.name}
+                    </h5>
+                    {doc.uploadDate && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Uploaded: {new Date(doc.uploadDate).toLocaleDateString()}
+                      </p>
+                    )}
+                    <span className={`mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                      doc.type === 'management' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {doc.docType}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Document Actions */}
+                <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(doc.url, '_blank');
+                    }}
+                    className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="View Document"
+                  >
+                    <EyeIcon className="h-4 w-4" />
+                  </button>
+                  {doc.type === 'general' && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplaceKycDocument(jobId, doc, doc.originalIndex);
+                        }}
+                        className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                        title="Replace Document"
+                      >
+                        <ArrowPathIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteGeneralKycDocument(jobId, doc, doc.originalIndex);
+                        }}
+                        className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Document"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                  {doc.type === 'management' && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditKycManagementDocument(jobId, doc);
+                        }}
+                        className="p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                        title="Edit Document"
+                      >
+                        <PencilIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplaceKycManagementDocument(jobId, doc);
+                        }}
+                        disabled={kycDocumentUploading[`${jobId}-${doc.stage}`]}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          kycDocumentUploading[`${jobId}-${doc.stage}`]
+                            ? 'text-gray-400 cursor-not-allowed'
+                            : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'
+                        }`}
+                        title="Replace Document"
+                      >
+                        {kycDocumentUploading[`${jobId}-${doc.stage}`] ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                        ) : (
+                          <ArrowPathIcon className="h-4 w-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteKycManagementDocument(jobId, doc);
+                        }}
+                        className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Document"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // New handlers for KYC Management documents
+  const handleEditKycManagementDocument = (jobId, doc) => {
+    // For KYC Management documents, we use the existing modal structure
+    // but point to the specific stage document
+    const modalKey = `${jobId}-${doc.stage}`;
+    setKycDocumentModals(prev => ({
+      ...prev,
+      [modalKey]: true
+    }));
+  };
+
+  const handleReplaceKycManagementDocument = (jobId, doc) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        await handleUpdateKycDocument(jobId, doc.stage, file);
+      }
+    };
+    input.click();
+  };
+
+  const handleDeleteKycManagementDocument = async (jobId, doc) => {
+    if (window.confirm(`Are you sure you want to delete the ${doc.stageLabel} document?`)) {
+      await handleDeleteKycDocument(jobId, doc.stage);
+    }
+  };
+
+  // Handlers for general KYC documents
+
+  const handleDeleteGeneralKycDocument = async (jobId, doc, docIndex) => {
+    if (window.confirm('Are you sure you want to delete this document?')) {
+      try {
+        console.log('Delete payload:', { documentIndex: docIndex, docIndex, doc });
+        
+        // Get current documents
+        const currentDocsResponse = await axiosInstance.get(`/operations/jobs/${jobId}/kyc-documents`);
+        const currentDocs = currentDocsResponse.data.documents || [];
+        
+        // Filter out the document to delete
+        const updatedDocs = currentDocs.filter((_, index) => index !== docIndex);
+        
+        // Update with filtered documents array
+        const response = await axiosInstance.put(
+          `/operations/jobs/${jobId}/kyc-documents`,
+          { documents: updatedDocs }
+        );
+
+        if (response.status === 200) {
+          toast.success('KYC document deleted successfully!');
+          await fetchGeneralKycDocuments(jobId);
+        }
+      } catch (error) {
+        console.error('Error deleting general KYC document:', error);
+        toast.error(
+          error.response?.data?.message || 'Failed to delete KYC document'
+        );
+      }
+    }
+  };
+
+  // Handler to open upload modal
+  const handleUploadKycDocument = (jobId) => {
+    setKycUploadModal(prev => ({
+      ...prev,
+      [jobId]: true
+    }));
+  };
+
+  // Handler to open replace modal
+  const handleReplaceKycDocument = (jobId, doc, docIndex) => {
+    setKycReplaceModal(prev => ({
+      ...prev,
+      [`${jobId}-${docIndex}`]: { 
+        open: true, 
+        doc, 
+        docIndex,
+        originalName: doc.name
+      }
+    }));
+  };
+
+  // Handler to replace KYC document
+  const replaceKycDocument = async (jobId, docIndex, docName, newFile, notes = '') => {
+    try {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-replace-${docIndex}`]: true
+      }));
+
+      console.log('🔄 Starting replace document:', { jobId, docIndex, docName, fileName: newFile.name });
+
+      // Get current documents
+      const currentDocsResponse = await axiosInstance.get(`/operations/jobs/${jobId}/kyc-documents`);
+      const currentDocs = currentDocsResponse.data.documents || [];
+      
+      console.log('📄 Current docs count before replace:', currentDocs.length);
+
+      if (docIndex >= currentDocs.length || docIndex < 0) {
+        throw new Error('Invalid document index');
+      }
+
+      // Step 1: Delete the document at the specified index
+      console.log('🗑️ Deleting old document at index:', docIndex);
+      
+      await axiosInstance.delete(`/operations/jobs/${jobId}/kyc-document`, {
+        data: { documentIndex: docIndex }
+      });
+
+      console.log('✅ Old document deleted');
+
+      // Step 2: Upload the new document
+      const formData = new FormData();
+      formData.append('kycDocuments', newFile);
+      formData.append('description_0', docName);
+
+      console.log('⬆️ Uploading new file...');
+
+      const uploadResponse = await axiosInstance.put(
+        `/operations/jobs/${jobId}/kyc-documents`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (uploadResponse.status === 200) {
+        console.log('✅ Upload successful, updating document display...');
+        
+        // Refresh the documents list to get the updated data
+        await fetchGeneralKycDocuments(jobId);
+        
+        toast.success('KYC document replaced successfully!');
+        
+        // Close modal
+        setKycReplaceModal(prev => ({
+          ...prev,
+          [`${jobId}-${docIndex}`]: { ...prev[`${jobId}-${docIndex}`], open: false }
+        }));
+
+        console.log('🎉 Replace completed successfully');
+      }
+    } catch (error) {
+      console.error('❌ Error replacing KYC document:', error);
+      toast.error(
+        error.response?.data?.message || 'Failed to replace KYC document'
+      );
+    } finally {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-replace-${docIndex}`]: false
+      }));
+    }
+  };
+
+  // Handler to upload KYC document to specific stage
+  const uploadKycDocumentToStage = async (jobId, stage, file, notes = '') => {
+    try {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-${stage}-upload`]: true
+      }));
+
+      await handleUpdateKycDocument(jobId, stage, file, notes);
+      
+      // Close upload modal
+      setKycUploadModal(prev => ({
+        ...prev,
+        [jobId]: false
+      }));
+
+      toast.success(`KYC document uploaded to ${getStageDisplayName(stage)} successfully!`);
+    } catch (error) {
+      console.error('Error uploading KYC document:', error);
+      toast.error('Failed to upload KYC document');
+    } finally {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-${stage}-upload`]: false
+      }));
+    }
+  };
+
+  // Handler to upload general KYC document
+  const uploadGeneralKycDocument = async (jobId, docName, docType, file, notes = '') => {
+    try {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-general-upload`]: true
+      }));
+
+      const formData = new FormData();
+      formData.append('kycDocuments', file);
+
+      const response = await axiosInstance.put(
+        `/operations/jobs/${jobId}/kyc-documents`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (response.status === 200) {
+        toast.success('KYC document uploaded successfully!');
+        
+        // Refresh general KYC documents
+        await fetchGeneralKycDocuments(jobId);
+        
+        // Close upload modal
+        setKycUploadModal(prev => ({
+          ...prev,
+          [jobId]: false
+        }));
+      }
+    } catch (error) {
+      console.error('Error uploading general KYC document:', error);
+      toast.error(
+        error.response?.data?.message || 'Failed to upload KYC document'
+      );
+    } finally {
+      setKycDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-general-upload`]: false
+      }));
+    }
+  };
+
+  // Fetch general KYC documents
+  const fetchGeneralKycDocuments = async (jobId) => {
+    try {
+      const response = await axiosInstance.get(`/operations/jobs/${jobId}/kyc-documents`);
+      setGeneralKycDocuments(prev => ({
+        ...prev,
+        [jobId]: response.data.documents || []
+      }));
+    } catch (error) {
+      console.error('Error fetching general KYC documents:', error);
+      setGeneralKycDocuments(prev => ({
+        ...prev,
+        [jobId]: []
+      }));
     }
   };
 
@@ -1634,6 +2223,9 @@ function ClientProfile() {
         ...prev,
         [jobId]: response.data,
       }));
+      
+      // Also fetch general KYC documents for display
+      await fetchGeneralKycDocuments(jobId);
     } catch (err) {
       console.error(`Error fetching KYC details for job ${jobId}:`, err);
     } finally {
@@ -3121,320 +3713,32 @@ function ClientProfile() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/60 overflow-hidden hover:shadow-xl transition-all duration-300"
+        className="bg-gradient-to-br from-blue-50/70 to-indigo-50/70 rounded-xl p-5 border border-blue-100/40 shadow-sm hover:shadow-md transition-all duration-300"
       >
-        {/* KYC Header with Gradient */}
-        <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-6 py-5">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center">
-              <div className="bg-white rounded-xl p-2.5 mr-4 shadow-md">
-                <ShieldCheckIcon className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">
-                  KYC Verification
-                </h3>
-                <p className="text-sm text-green-100 mt-0.5">
-                  Know Your Customer Documentation
-                </p>
-              </div>
-            </div>
-            <div
-              className={`${
-                kyc.activeStatus === "yes" ? "bg-green-500" : "bg-red-500"
-              } px-4 py-2 rounded-full text-white shadow-sm`}
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-blue-100">
+          <h4 className="text-sm font-semibold text-blue-900 flex items-center">
+            <DocumentTextIcon className="h-4 w-4 mr-2 text-blue-600" />
+            KYC Documents
+          </h4>
+          {(
+            (kycStatuses[jobId] && (
+              kycStatuses[jobId].lmroApproval?.document?.fileUrl || 
+              kycStatuses[jobId].dlmroApproval?.document?.fileUrl || 
+              kycStatuses[jobId].ceoApproval?.document?.fileUrl
+            )) || 
+            (generalKycDocuments[jobId] && generalKycDocuments[jobId].length > 0)
+          ) && (
+            <button
+              onClick={() => handleUploadKycDocument(jobId)}
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
             >
-              <span className="font-medium">
-                {kyc.activeStatus === "yes" ? "Active" : "Inactive"}
-              </span>
-            </div>
-          </div>
+              <PlusIcon className="h-3 w-3 mr-1" />
+              Add Document
+            </button>
+          )}
         </div>
 
-        <div className="p-6">
-          {/* KYC Status Card */}
-          <div className="bg-gradient-to-br from-green-50/70 to-emerald-50/70 rounded-xl p-5 border border-green-100/40 shadow-sm hover:shadow-md transition-all duration-300 mb-6">
-            <h4 className="text-sm font-semibold text-green-900 mb-4 pb-2 border-b border-green-100 flex items-center">
-              <ShieldCheckIcon className="h-4 w-4 mr-2 text-green-600" />
-              KYC Status Information
-            </h4>
-
-            <div className="flex items-center p-3 bg-white rounded-lg shadow-sm">
-              <div
-                className={`flex h-10 w-10 rounded-full ${
-                  kyc.activeStatus === "yes" ? "bg-green-100" : "bg-red-100"
-                } items-center justify-center mr-4`}
-              >
-                {kyc.activeStatus === "yes" ? (
-                  <CheckCircleIcon className="h-6 w-6 text-green-600" />
-                ) : (
-                  <XCircleIcon className="h-6 w-6 text-red-600" />
-                )}
-              </div>
-              <div>
-                <h5 className="text-sm font-medium text-gray-900">
-                  KYC Verification Status
-                </h5>
-                <p
-                  className={`text-sm ${
-                    kyc.activeStatus === "yes"
-                      ? "text-green-600"
-                      : "text-red-600"
-                  } font-medium`}
-                >
-                  {kyc.activeStatus === "yes"
-                    ? "Verified and Active"
-                    : "Not Verified"}
-                </p>
-              </div>
-            </div>
-
-            {/* Last Verification Date */}
-            {kyc.lastVerificationDate && (
-              <div className="flex items-center p-3 bg-white rounded-lg shadow-sm mt-3">
-                <div className="flex h-10 w-10 rounded-full bg-blue-100 items-center justify-center mr-4">
-                  <CalendarIcon className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <h5 className="text-sm font-medium text-gray-900">
-                    Last Verification Date
-                  </h5>
-                  <p className="text-sm text-gray-700">
-                    {new Date(kyc.lastVerificationDate).toLocaleDateString(
-                      "en-US",
-                      {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      }
-                    )}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Verification Officer */}
-            {kyc.verificationOfficer && (
-              <div className="flex items-center p-3 bg-white rounded-lg shadow-sm mt-3">
-                <div className="flex h-10 w-10 rounded-full bg-indigo-100 items-center justify-center mr-4">
-                  <UserCircleIcon className="h-6 w-6 text-indigo-600" />
-                </div>
-                <div>
-                  <h5 className="text-sm font-medium text-gray-900">
-                    Verification Officer
-                  </h5>
-                  <p className="text-sm text-gray-700">
-                    {kyc.verificationOfficer}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* KYC Documents Section */}
-          {kyc.documents && kyc.documents.length > 0 ? (
-            <div>
-              {/* <h4 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center">
-                <DocumentTextIcon className="h-5 w-5 mr-2 text-green-600" />
-                KYC Documents
-              </h4> */}
-
-              {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {kyc.documents.map((doc, idx) => (
-                  <a
-                    key={idx}
-                    href={doc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
-                  >
-                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-green-600"></div>
-                    <div className="p-5">
-                      <div className="flex items-start">
-                        <div className="bg-green-100 rounded-lg p-3 flex-shrink-0">
-                          <DocumentTextIcon className="h-6 w-6 text-green-600 group-hover:text-green-700 transition-colors" />
-                        </div>
-                        <div className="ml-4">
-                          <h5 className="font-medium text-gray-900 group-hover:text-green-700 transition-colors">
-                            {doc.name || `KYC Document ${idx + 1}`}
-                          </h5>
-                          <p className="text-xs text-gray-500 mt-1 flex items-center">
-                            <EyeIcon className="h-3.5 w-3.5 mr-1" />
-                            View document
-                          </p>
-                          {doc.uploadDate && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              Uploaded:{" "}
-                              {new Date(doc.uploadDate).toLocaleDateString()}
-                            </p>
-                          )}
-                          {doc.docType && (
-                            <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              {doc.docType}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </a>
-                ))}
-              </div> */}
-            </div>
-          ) : (
-            <div className="bg-gray-50 rounded-lg border border-gray-100 p-6 text-center">
-              {/* <div className="bg-white rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4 shadow-sm">
-                <DocumentDuplicateIcon className="h-8 w-8 text-gray-400" />
-              </div>
-              <h5 className="text-base font-medium text-gray-700 mb-2">
-                No KYC Documents
-              </h5>
-              <p className="text-sm text-gray-500">
-                No KYC documents have been uploaded yet for this client.
-              </p> */}
-            </div>
-          )}
-
-          {/* KYC Approval Process Tracker */}
-          {kyc.approvalProcess && (
-            <div className="mt-6">
-              <h4 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center">
-                <ClipboardDocumentCheckIcon className="h-5 w-5 mr-2 text-green-600" />
-                Approval Process
-              </h4>
-
-              <div className="relative">
-                {/* Process Timeline */}
-                <div className="h-2 bg-gray-200 rounded-full w-full mb-8">
-                  <div
-                    className="h-2 bg-green-500 rounded-full"
-                    style={{
-                      width: `${kyc.approvalProcess.progressPercentage || 0}%`,
-                    }}
-                  ></div>
-                </div>
-
-                {/* Process Steps */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* LMRO Step */}
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="flex items-center mb-2">
-                      <div
-                        className={`flex h-8 w-8 rounded-full ${
-                          kyc.approvalProcess.lmroApproved
-                            ? "bg-green-100"
-                            : "bg-gray-100"
-                        } items-center justify-center mr-2`}
-                      >
-                        <UserGroupIcon
-                          className={`h-5 w-5 ${
-                            kyc.approvalProcess.lmroApproved
-                              ? "text-green-600"
-                              : "text-gray-400"
-                          }`}
-                        />
-                      </div>
-                      <h5 className="text-sm font-medium text-gray-900">
-                        LMRO Approval
-                      </h5>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {kyc.approvalProcess.lmroApproved
-                        ? `Approved on ${new Date(
-                            kyc.approvalProcess.lmroApprovalDate
-                          ).toLocaleDateString()}`
-                        : "Pending approval"}
-                    </p>
-                  </div>
-
-                  {/* DLMRO Step */}
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="flex items-center mb-2">
-                      <div
-                        className={`flex h-8 w-8 rounded-full ${
-                          kyc.approvalProcess.dlmroApproved
-                            ? "bg-green-100"
-                            : "bg-gray-100"
-                        } items-center justify-center mr-2`}
-                      >
-                        <ClipboardDocumentCheckIcon
-                          className={`h-5 w-5 ${
-                            kyc.approvalProcess.dlmroApproved
-                              ? "text-green-600"
-                              : "text-gray-400"
-                          }`}
-                        />
-                      </div>
-                      <h5 className="text-sm font-medium text-gray-900">
-                        DLMRO Approval
-                      </h5>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {kyc.approvalProcess.dlmroApproved
-                        ? `Approved on ${new Date(
-                            kyc.approvalProcess.dlmroApprovalDate
-                          ).toLocaleDateString()}`
-                        : kyc.approvalProcess.lmroApproved
-                        ? "In progress"
-                        : "Awaiting LMRO approval"}
-                    </p>
-                  </div>
-
-                  {/* CEO Step */}
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="flex items-center mb-2">
-                      <div
-                        className={`flex h-8 w-8 rounded-full ${
-                          kyc.approvalProcess.ceoApproved
-                            ? "bg-green-100"
-                            : "bg-gray-100"
-                        } items-center justify-center mr-2`}
-                      >
-                        <LockClosedIcon
-                          className={`h-5 w-5 ${
-                            kyc.approvalProcess.ceoApproved
-                              ? "text-green-600"
-                              : "text-gray-400"
-                          }`}
-                        />
-                      </div>
-                      <h5 className="text-sm font-medium text-gray-900">
-                        CEO Approval
-                      </h5>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {kyc.approvalProcess.ceoApproved
-                        ? `Approved on ${new Date(
-                            kyc.approvalProcess.ceoApprovalDate
-                          ).toLocaleDateString()}`
-                        : kyc.approvalProcess.dlmroApproved
-                        ? "In progress"
-                        : "Awaiting previous approvals"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Verification Box */}
-          <div className="mt-6 bg-blue-50 rounded-lg border border-blue-100 p-4">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                <InformationCircleIcon className="h-5 w-5 text-blue-600" />
-              </div>
-              <div className="ml-3">
-                <h5 className="text-sm font-medium text-blue-800">
-                  KYC Verification
-                </h5>
-                <p className="mt-1 text-sm text-blue-700">
-                  KYC (Know Your Customer) verification is a mandatory process
-                  to verify the identity of clients and assess potential risks
-                  of illegal intentions for business relationships.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+        {renderKycManagementDocuments(jobId)}
       </motion.div>
     );
   };
@@ -4837,6 +5141,394 @@ function ClientProfile() {
           </div>
         </motion.div>
       </div>
+
+      {/* KYC Document Edit Modal */}
+      {Object.keys(kycDocumentModals).map((modalKey) => {
+        if (!kycDocumentModals[modalKey]) return null;
+        
+        const parts = modalKey.split('-');
+        const jobId = parts[0];
+        
+        // Skip general documents (format: jobId-general-docId)
+        if (parts.length >= 3 && parts[1] === 'general') {
+          return null;
+        }
+        
+        let doc = null;
+        let isKycManagement = false;
+        
+        // Check if it's a KYC Management document (format: jobId-stage)
+        if (parts.length === 2) {
+          const stage = parts[1];
+          const kycData = kycStatuses[jobId];
+          
+          if (kycData && kycData[`${stage}Approval`]?.document?.fileUrl) {
+            isKycManagement = true;
+            doc = {
+              name: kycData[`${stage}Approval`].document.fileName || `${stage.toUpperCase()} Document`,
+              docType: `${stage.toUpperCase()} Approval`,
+              stage: stage
+            };
+          }
+        } else {
+          // Legacy format: jobId-kyc-docIdx
+          const docIdx = parts[2];
+          const kyc = kycDetails[jobId];
+          doc = kyc?.documents?.[docIdx];
+        }
+        
+        if (!doc) return null;
+
+        return (
+          <div
+            key={modalKey}
+            className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          >
+            <div className="relative p-5 border w-96 shadow-lg rounded-md bg-white">
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                    <PencilIcon className="h-5 w-5 mr-2 text-blue-600" />
+                    Edit KYC Document
+                  </h3>
+                  <button
+                    onClick={() =>
+                      setKycDocumentModals(prev => ({
+                        ...prev,
+                        [modalKey]: false
+                      }))
+                    }
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Document Name
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={doc.name}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter document name"
+                      id={`doc-name-${modalKey}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Document Type
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={doc.docType || ''}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter document type"
+                      id={`doc-type-${modalKey}`}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() =>
+                        setKycDocumentModals(prev => ({
+                          ...prev,
+                          [modalKey]: false
+                        }))
+                      }
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newName = document.getElementById(`doc-name-${modalKey}`).value;
+                        const newType = document.getElementById(`doc-type-${modalKey}`).value;
+                        
+                        if (isKycManagement) {
+                          // For KYC Management documents, we'll show a message
+                          toast.info('Document information updates for KYC Management documents are handled through the KYC Management section.');
+                          setKycDocumentModals(prev => ({
+                            ...prev,
+                            [modalKey]: false
+                          }));
+                        } else {
+                          // For legacy documents
+                          const docIdx = parts[2];
+                          updateKycDocumentInfo(jobId, docIdx, newName, newType);
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* KYC Document Upload Modal */}
+      {Object.keys(kycUploadModal).map((jobId) => {
+        if (!kycUploadModal[jobId]) return null;
+
+        return (
+          <div
+            key={`upload-${jobId}`}
+            className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          >
+            <div className="relative p-6 border w-full max-w-md mx-4 shadow-lg rounded-xl bg-white">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                    <DocumentTextIcon className="h-5 w-5 mr-2 text-green-600" />
+                    Upload KYC Document
+                  </h3>
+                  <button
+                    onClick={() =>
+                      setKycUploadModal(prev => ({
+                        ...prev,
+                        [jobId]: false
+                      }))
+                    }
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Document Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id={`doc-name-${jobId}`}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      placeholder="Enter document name (e.g., Passport Copy, NIC Copy, etc.)"
+                    />
+                  </div>
+
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Document
+                    </label>
+                    <input
+                      type="file"
+                      id={`file-${jobId}`}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG (Max 50MB)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notes (Optional)
+                    </label>
+                    <textarea
+                      id={`notes-${jobId}`}
+                      rows="3"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      placeholder="Add any notes about this document..."
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() =>
+                        setKycUploadModal(prev => ({
+                          ...prev,
+                          [jobId]: false
+                        }))
+                      }
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const docName = document.getElementById(`doc-name-${jobId}`).value.trim();
+                        const file = document.getElementById(`file-${jobId}`).files[0];
+                        const notes = document.getElementById(`notes-${jobId}`).value;
+                        
+                        if (!docName) {
+                          toast.error('Please enter a document name');
+                          return;
+                        }
+                        
+                        if (!file) {
+                          toast.error('Please select a document to upload');
+                          return;
+                        }
+
+                        uploadGeneralKycDocument(jobId, docName, '', file, notes);
+                      }}
+                      disabled={kycDocumentUploading[`${jobId}-general-upload`]}
+                      className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                        kycDocumentUploading[`${jobId}-general-upload`]
+                          ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                          : 'text-white bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                      }`}
+                    >
+                      {kycDocumentUploading[`${jobId}-general-upload`] ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                          Upload Document
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* KYC Document Replace Modal */}
+      {Object.entries(kycReplaceModal).map(([key, replaceData]) => {
+        if (!replaceData?.open) return null;
+
+        const [jobId, docIndex] = key.split('-');
+        const { doc, originalName } = replaceData;
+
+        return (
+          <div
+            key={`replace-${key}`}
+            className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          >
+            <div className="relative p-6 border w-full max-w-md mx-4 shadow-lg rounded-xl bg-white">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                    <ArrowPathIcon className="h-5 w-5 mr-2 text-green-600" />
+                    Replace Document
+                  </h3>
+                  <button
+                    onClick={() =>
+                      setKycReplaceModal(prev => ({
+                        ...prev,
+                        [key]: { ...prev[key], open: false }
+                      }))
+                    }
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Document Name
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={originalName}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      placeholder="Enter document name"
+                      id={`replace-doc-name-${key}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select New Document
+                    </label>
+                    <input
+                      type="file"
+                      id={`replace-file-${key}`}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG (Max 50MB)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notes (Optional)
+                    </label>
+                    <textarea
+                      id={`replace-notes-${key}`}
+                      rows="3"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      placeholder="Add any notes about this replacement..."
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() =>
+                        setKycReplaceModal(prev => ({
+                          ...prev,
+                          [key]: { ...prev[key], open: false }
+                        }))
+                      }
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const docName = document.getElementById(`replace-doc-name-${key}`).value.trim();
+                        const file = document.getElementById(`replace-file-${key}`).files[0];
+                        const notes = document.getElementById(`replace-notes-${key}`).value;
+                        
+                        if (!docName) {
+                          toast.error('Please enter a document name');
+                          return;
+                        }
+                        
+                        if (!file) {
+                          toast.error('Please select a new document');
+                          return;
+                        }
+
+                        replaceKycDocument(jobId, parseInt(docIndex), docName, file, notes);
+                      }}
+                      disabled={kycDocumentUploading[`${jobId}-replace-${docIndex}`]}
+                      className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                        kycDocumentUploading[`${jobId}-replace-${docIndex}`]
+                          ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                          : 'text-white bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                      }`}
+                    >
+                      {kycDocumentUploading[`${jobId}-replace-${docIndex}`] ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                          Replacing...
+                        </>
+                      ) : (
+                        <>
+                          <ArrowPathIcon className="h-4 w-4 mr-2" />
+                          Replace Document
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </motion.div>
   );
 }

@@ -302,6 +302,10 @@ router.delete(
   "/jobs/:jobId/kyc-document",
   protect,
   checkPermission("operationManagement"),
+  (req, res, next) => {
+    console.log("🗑️ Delete KYC Document Route Hit - Request body:", req.body);
+    next();
+  },
   deleteKycSignedDocument
 );
 
