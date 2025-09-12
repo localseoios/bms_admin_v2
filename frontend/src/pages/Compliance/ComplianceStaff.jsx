@@ -465,6 +465,48 @@ const ComplianceStaff = () => {
     }
   };
 
+  const handleDeleteSection = async (section, staff) => {
+    if (!section.isCustom) {
+      toast.error('Cannot delete default sections');
+      return;
+    }
+
+    if (section.documents && section.documents.length > 0) {
+      toast.error('Cannot delete section with documents. Please remove all documents first.');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete the "${section.title}" section? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete('/compliance-staff/delete-section', {
+        data: {
+          staffId: staff.id,
+          sectionId: section.id
+        }
+      });
+
+      if (response.data.success) {
+        // Update local state by removing the section
+        setStaffMembers(staffMembers.map(s => 
+          s.id === staff.id
+            ? {
+                ...s,
+                sections: s.sections.filter(sec => sec.id !== section.id)
+              }
+            : s
+        ));
+
+        toast.success(`${section.title} section deleted successfully`);
+      }
+    } catch (error) {
+      console.error('Error deleting section:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete section');
+    }
+  };
+
   const handleAddSection = async () => {
     if (!newSection.title || !selectedStaff) return;
 
@@ -1091,6 +1133,17 @@ const ComplianceStaff = () => {
                                           <CloudArrowUpIcon className="w-4 h-4 text-gray-600" />
                                           <span className="text-xs font-medium text-gray-700">Upload</span>
                                         </motion.button>
+                                        {section.isCustom && (
+                                          <motion.button
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={() => handleDeleteSection(section, staff)}
+                                            className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all text-red-600 hover:bg-red-50"
+                                            title="Delete Section"
+                                          >
+                                            <TrashIcon className="w-4 h-4" />
+                                          </motion.button>
+                                        )}
                                         <motion.button
                                           whileHover={{ scale: 1.05 }}
                                           whileTap={{ scale: 0.95 }}

@@ -14,6 +14,14 @@ const getAllSections = asyncHandler(async (req, res) => {
     if (sections.length === 0) {
       const defaultSections = [
         {
+          sectionId: 'authority-notification',
+          title: 'Authority Notification Checking',
+          description: 'Official notifications and compliance alerts from regulatory authorities',
+          maxDocuments: 10,
+          color: 'red',
+          isCustom: false
+        },
+        {
           sectionId: 'policy-procedure',
           title: 'Policy & Procedure Manual',
           description: 'Company policies and standard operating procedures',
@@ -152,7 +160,7 @@ const createSection = asyncHandler(async (req, res) => {
     // Generate unique section ID
     const sectionId = `custom-${Date.now()}`;
     
-    const colors = ['pink', 'cyan'];
+    const colors = ['pink', 'cyan', 'purple', 'orange'];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     
     const newSection = await SectionSettings.create({
@@ -191,13 +199,8 @@ const deleteSection = asyncHandler(async (req, res) => {
   try {
     const { sectionId } = req.params;
     
-    // Don't allow deletion of default sections
-    if (['policy-procedure', 'training-materials', 'review-reports', 'meeting-minutes'].includes(sectionId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete default sections'
-      });
-    }
+    // Allow deletion of all sections including default ones
+    // Users can delete any section they want
     
     const section = await SectionSettings.findOneAndUpdate(
       { sectionId },

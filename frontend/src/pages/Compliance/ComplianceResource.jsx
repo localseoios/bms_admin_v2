@@ -292,7 +292,7 @@ const ComplianceResource = () => {
             title: setting.title,
             description: setting.description,
             icon: BookOpenIcon,
-            color: colors[customSections.length % colors.length],
+            color: setting.color || colors[customSections.length % colors.length],
             documents: [],
             expanded: true,
             isCustom: true,
@@ -692,7 +692,6 @@ const ComplianceResource = () => {
     try {
       const colors = ["blue", "green", "purple", "orange", "red", "pink", "cyan", "yellow"];
       const randomColor = colors[sections.length % colors.length];
-      const sectionId = `custom-${Date.now()}`;
 
       // Save to backend first
       const sectionData = {
@@ -702,19 +701,20 @@ const ComplianceResource = () => {
       };
 
       console.log('Creating custom section in backend...');
-      await axios.put(`/section-settings/${sectionId}`, sectionData);
+      const response = await axios.post(`/section-settings`, sectionData);
+      const createdSection = response.data.data;
 
-      // Add to local state
+      // Add to local state using the section ID from backend
       const newSectionObj = {
-        id: sectionId,
-        title: newSection.title,
-        description: newSection.description || "Custom resource section",
+        id: createdSection.sectionId,
+        title: createdSection.title,
+        description: createdSection.description,
         icon: BookOpenIcon,
-        color: randomColor,
+        color: createdSection.color || randomColor,
         documents: [],
         expanded: true,
         isCustom: true,
-        maxDocuments: newSection.maxDocuments || 10,
+        maxDocuments: createdSection.maxDocuments,
       };
 
       setSections([...sections, newSectionObj]);
@@ -741,19 +741,30 @@ const ComplianceResource = () => {
       return;
     }
     
-    if (!window.confirm(`Are you sure you want to delete the "${section.title}" section? This action cannot be undone.`)) {
+    setSelectedSection(section);
+    setShowDeleteModal(true);
+    setDeleteConfirmText("");
+  };
+
+  const confirmDeleteSection = async () => {
+    if (deleteConfirmText !== selectedSection.title) {
+      toast.error('Please type the section name correctly to confirm deletion');
       return;
     }
     
     setLoading(true);
     try {
-      console.log('Deleting custom section:', section.id);
-      await axios.delete(`/section-settings/${section.id}`);
+      console.log('Deleting custom section:', selectedSection.id);
+      await axios.delete(`/section-settings/${selectedSection.id}`);
       
       // Remove from local state
-      setSections(sections.filter(s => s.id !== section.id));
+      setSections(sections.filter(s => s.id !== selectedSection.id));
       
-      toast.success(`${section.title} section deleted successfully`);
+      setShowDeleteModal(false);
+      setSelectedSection(null);
+      setDeleteConfirmText("");
+      
+      toast.success(`${selectedSection.title} section deleted successfully`);
     } catch (error) {
       console.error('Error deleting section:', error);
       toast.error('Failed to delete section: ' + (error.response?.data?.message || error.message));
@@ -1592,6 +1603,92 @@ const ComplianceResource = () => {
                   className="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Creating...' : 'Add Section'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Section Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteModal && selectedSection && !selectedDocument && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              setShowDeleteModal(false);
+              setDeleteConfirmText("");
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <ExclamationTriangleIcon className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-800">Delete Custom Section</h3>
+                    <p className="text-sm text-gray-500">This action cannot be undone</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setDeleteConfirmText("");
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                  <p className="text-sm text-red-800">
+                    You are about to delete the <span className="font-semibold">"{selectedSection.title}"</span> section.
+                    This will permanently remove this custom section from your compliance resources.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Type <span className="font-semibold text-red-600">"{selectedSection.title}"</span> to confirm deletion
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    placeholder="Enter section name to confirm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setDeleteConfirmText("");
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteSection}
+                  disabled={deleteConfirmText !== selectedSection.title || loading}
+                  className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Deleting...' : 'Delete Section'}
                 </button>
               </div>
             </motion.div>

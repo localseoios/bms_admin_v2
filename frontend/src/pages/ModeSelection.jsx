@@ -52,9 +52,7 @@ const ModeSelection = () => {
       bgGradient: "from-purple-50 via-indigo-50 to-purple-50",
       shadowColor: "shadow-purple-500/20",
       hoverShadow: "hover:shadow-purple-500/30",
-//      route: "/compliance-selection",
-      route: "/dashboard",
-
+      route: "/compliance-selection",
       features: [
         { icon: AcademicCapIcon, text: "Compliance Culture" },
         { icon: UsersIcon, text: "Staff Management" },

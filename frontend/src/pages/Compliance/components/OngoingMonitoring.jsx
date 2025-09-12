@@ -1,347 +1,455 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ChartBarIcon,
-  BellIcon,
-  CalendarIcon,
-  ExclamationCircleIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon,
-  CurrencyDollarIcon,
-  DocumentCheckIcon,
-  EyeIcon
+  CloudArrowUpIcon,
+  EyeIcon,
+  ArrowDownTrayIcon,
+  PencilIcon,
+  TrashIcon,
+  XMarkIcon,
+  DocumentIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
-import { Line, Bar } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+import axios from '../../../utils/axios';
+import { toast } from 'react-hot-toast';
 
 const OngoingMonitoring = ({ client }) => {
-  const [selectedPeriod, setSelectedPeriod] = useState('6months');
-  const [activeAlert, setActiveAlert] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [uploadData, setUploadData] = useState({
+    description: '',
+    file: null
+  });
+  const [uploading, setUploading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const alerts = [
-    {
-      id: 1,
-      type: 'transaction',
-      severity: 'high',
-      title: 'Unusual Transaction Pattern',
-      description: 'Multiple high-value transactions detected',
-      date: '2024-01-22',
-      status: 'open'
-    },
-    {
-      id: 2,
-      type: 'media',
-      severity: 'medium',
-      title: 'New Media Mention',
-      description: 'Client mentioned in financial news article',
-      date: '2024-01-21',
-      status: 'reviewing'
-    },
-    {
-      id: 3,
-      type: 'compliance',
-      severity: 'low',
-      title: 'Document Expiry',
-      description: 'ID document expires in 30 days',
-      date: '2024-01-20',
-      status: 'resolved'
-    }
-  ];
-
-  const activities = [
-    { date: '2024-01-22', type: 'Transaction', amount: '$15,000', status: 'flagged' },
-    { date: '2024-01-21', type: 'Transaction', amount: '$3,500', status: 'normal' },
-    { date: '2024-01-20', type: 'Document Update', amount: '-', status: 'completed' },
-    { date: '2024-01-19', type: 'Transaction', amount: '$8,200', status: 'normal' },
-    { date: '2024-01-18', type: 'Review', amount: '-', status: 'completed' }
-  ];
-
-  const riskScoreData = {
-    labels: ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'],
-    datasets: [
-      {
-        label: 'Risk Score',
-        data: [25, 28, 24, 30, 35, 32, 38],
-        borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        tension: 0.4,
-        fill: true
-      }
-    ]
-  };
-
-  const transactionData = {
-    labels: ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'],
-    datasets: [
-      {
-        label: 'Transaction Volume',
-        data: [45000, 52000, 48000, 61000, 58000, 72000, 85000],
-        backgroundColor: 'rgba(34, 197, 94, 0.8)',
-        borderRadius: 8
-      }
-    ]
-  };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false
-      },
-      tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        padding: 12,
-        borderRadius: 8
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          display: false
-        }
-      },
-      x: {
-        grid: {
-          display: false
+  // Fetch documents from backend
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      if (client?.email) {
+        setLoading(true);
+        try {
+          const response = await axios.get(`/monitoring/compliance/client/${encodeURIComponent(client.email)}`);
+          
+          if (response.data && response.data.success && response.data.documents) {
+            setDocuments(response.data.documents);
+          } else {
+            setDocuments([]);
+          }
+        } catch (error) {
+          console.error('Error fetching documents:', error);
+          setDocuments([]);
+        } finally {
+          setLoading(false);
         }
       }
+    };
+
+    fetchDocuments();
+  }, [client]);
+
+  // Handle document upload
+  const handleUpload = async () => {
+    if (!uploadData.file || !uploadData.description) {
+      alert('Please provide both file and description');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadData.file);
+      formData.append('description', uploadData.description);
+      formData.append('clientGmail', client.email);
+
+      const response = await axios.post('/monitoring/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (response.data && response.data.success) {
+        // Add new document to the list
+        setDocuments([response.data.document, ...documents]);
+        setShowUploadModal(false);
+        setUploadData({ description: '', file: null });
+        toast.success('Document uploaded successfully');
+      } else {
+        toast.error('Failed to upload document');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error(error.response?.data?.message || 'Failed to upload document');
+    } finally {
+      setUploading(false);
     }
   };
 
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'high':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'low':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+  // Handle document edit
+  const handleEdit = (document) => {
+    setSelectedDocument(document);
+    setUploadData({
+      description: document.description,
+      file: null
+    });
+    setShowEditModal(true);
+  };
+
+  // Handle edit save
+  const handleEditSave = async () => {
+    if (!uploadData.description) {
+      alert('Please provide a description');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('description', uploadData.description);
+      if (uploadData.file) {
+        formData.append('file', uploadData.file);
+      }
+
+      const response = await axios.put(`/monitoring/${selectedDocument.id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (response.data && response.data.success) {
+        // Update document in the list
+        setDocuments(documents.map(doc => 
+          doc.id === selectedDocument.id 
+            ? response.data.document
+            : doc
+        ));
+        
+        setShowEditModal(false);
+        setSelectedDocument(null);
+        setUploadData({ description: '', file: null });
+        toast.success('Document updated successfully');
+      } else {
+        toast.error('Failed to update document');
+      }
+    } catch (error) {
+      console.error('Edit error:', error);
+      toast.error(error.response?.data?.message || 'Failed to update document');
+    } finally {
+      setUploading(false);
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'open':
-        return <ExclamationCircleIcon className="h-5 w-5 text-red-500" />;
-      case 'reviewing':
-        return <ClockIcon className="h-5 w-5 text-yellow-500" />;
-      case 'resolved':
-        return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
-      default:
-        return null;
+  // Handle document delete
+  const handleDelete = async (document) => {
+    if (!confirm('Are you sure you want to delete this document?')) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete(`/monitoring/${document.id}`);
+
+      if (response.data && response.data.success) {
+        setDocuments(documents.filter(doc => doc.id !== document.id));
+        toast.success('Document deleted successfully');
+      } else {
+        toast.error('Failed to delete document');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete document');
     }
   };
+
+  // Handle document view
+  const handleView = (document) => {
+    if (document.fileUrl && document.fileUrl !== '#') {
+      window.open(document.fileUrl, '_blank');
+    } else {
+      toast.info('Document preview not available');
+    }
+  };
+
+  // Handle document download
+  const handleDownload = async (document) => {
+    if (document.fileUrl && document.fileUrl !== '#') {
+      try {
+        const link = window.document.createElement('a');
+        link.href = document.fileUrl;
+        link.download = document.name;
+        link.target = '_blank';
+        window.document.body.appendChild(link);
+        link.click();
+        window.document.body.removeChild(link);
+      } catch (error) {
+        console.error('Download error:', error);
+        toast.error('Failed to download document');
+      }
+    } else {
+      toast.info('Document download not available');
+    }
+  };
+
+  // Filter documents based on search
+  const filteredDocuments = documents.filter(doc =>
+    doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    doc.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="grid grid-cols-1 md:grid-cols-4 gap-4"
+        className="bg-white rounded-2xl shadow-xl p-6"
       >
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex justify-between items-start mb-2">
-            <ChartBarIcon className="h-8 w-8 text-blue-200" />
-            <ArrowTrendingUpIcon className="h-5 w-5 text-blue-200" />
-          </div>
-          <p className="text-3xl font-bold">38</p>
-          <p className="text-blue-100 text-sm">Current Risk Score</p>
-          <p className="text-xs text-blue-200 mt-2">↑ 6 from last month</p>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Ongoing Monitoring Documents</h2>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-lg transition-all"
+          >
+            <CloudArrowUpIcon className="w-5 h-5" />
+            <span>Upload Document</span>
+          </motion.button>
         </div>
 
-        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex justify-between items-start mb-2">
-            <CurrencyDollarIcon className="h-8 w-8 text-green-200" />
-            <ArrowTrendingUpIcon className="h-5 w-5 text-green-200" />
+        <div className="mb-6">
+          <div className="relative">
+            <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search documents..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
           </div>
-          <p className="text-3xl font-bold">$85K</p>
-          <p className="text-green-100 text-sm">Monthly Volume</p>
-          <p className="text-xs text-green-200 mt-2">↑ 18% increase</p>
         </div>
 
-        <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex justify-between items-start mb-2">
-            <BellIcon className="h-8 w-8 text-amber-200" />
-            <span className="px-2 py-1 bg-amber-700 rounded-full text-xs">Active</span>
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading documents...</p>
           </div>
-          <p className="text-3xl font-bold">3</p>
-          <p className="text-amber-100 text-sm">Active Alerts</p>
-          <p className="text-xs text-amber-200 mt-2">2 require action</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex justify-between items-start mb-2">
-            <DocumentCheckIcon className="h-8 w-8 text-purple-200" />
-            <CheckCircleIcon className="h-5 w-5 text-purple-200" />
+        ) : filteredDocuments.length === 0 ? (
+          <div className="text-center py-12">
+            <DocumentIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500">No documents found</p>
+            <p className="text-sm text-gray-400 mt-2">Upload your first monitoring document to get started</p>
           </div>
-          <p className="text-3xl font-bold">98%</p>
-          <p className="text-purple-100 text-sm">Compliance Rate</p>
-          <p className="text-xs text-purple-200 mt-2">Excellent standing</p>
-        </div>
-      </motion.div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-white rounded-2xl shadow-xl p-6"
-        >
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-gray-800">Risk Score Trend</h3>
-            <select 
-              className="px-3 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-            >
-              <option value="3months">3 Months</option>
-              <option value="6months">6 Months</option>
-              <option value="1year">1 Year</option>
-            </select>
-          </div>
-          <div className="h-64">
-            <Line data={riskScoreData} options={chartOptions} />
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-2xl shadow-xl p-6"
-        >
-          <h3 className="text-lg font-bold text-gray-800 mb-6">Transaction Volume</h3>
-          <div className="h-64">
-            <Bar data={transactionData} options={chartOptions} />
-          </div>
-        </motion.div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-2xl shadow-xl p-6"
-        >
-          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-            <BellIcon className="h-6 w-6 mr-2 text-amber-600" />
-            Recent Alerts
-          </h3>
-          <div className="space-y-3">
-            {alerts.map((alert) => (
-              <div
-                key={alert.id}
-                onClick={() => setActiveAlert(alert)}
-                className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${getSeverityColor(alert.severity)}`}
+        ) : (
+          <div className="space-y-4">
+            {filteredDocuments.map((document) => (
+              <motion.div
+                key={document.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
               >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      {getStatusIcon(alert.status)}
-                      <h4 className="font-semibold">{alert.title}</h4>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <DocumentIcon className="h-10 w-10 text-blue-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-800">{document.name}</h3>
+                      <p className="text-sm text-gray-600">{document.description}</p>
+                      <div className="flex items-center space-x-4 mt-1 text-xs text-gray-500">
+                        <span>Uploaded: {document.uploadDate}</span>
+                        <span>By: {document.uploadedBy}</span>
+                        <span>Size: {document.size}</span>
+                      </div>
                     </div>
-                    <p className="text-sm opacity-75">{alert.description}</p>
-                    <p className="text-xs mt-2 opacity-50">{alert.date}</p>
                   </div>
-                  <button className="p-1 hover:bg-white hover:bg-opacity-50 rounded transition-colors">
-                    <EyeIcon className="h-5 w-5" />
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleView(document)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="View"
+                    >
+                      <EyeIcon className="w-5 h-5" />
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleDownload(document)}
+                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      title="Download"
+                    >
+                      <ArrowDownTrayIcon className="w-5 h-5" />
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleEdit(document)}
+                      className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <PencilIcon className="w-5 h-5" />
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleDelete(document)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <TrashIcon className="w-5 h-5" />
+                    </motion.button>
+                  </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-white rounded-2xl shadow-xl p-6"
-        >
-          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-            <CalendarIcon className="h-6 w-6 mr-2 text-blue-600" />
-            Recent Activities
-          </h3>
-          <div className="space-y-3">
-            {activities.map((activity, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    activity.status === 'flagged' ? 'bg-red-500' : 
-                    activity.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                  }`}></div>
-                  <div>
-                    <p className="font-medium text-sm">{activity.type}</p>
-                    <p className="text-xs text-gray-500">{activity.date}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-sm">{activity.amount}</p>
-                  {activity.status === 'flagged' && (
-                    <span className="text-xs text-red-600">Flagged</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      </div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-200"
-      >
-        <h3 className="text-lg font-bold text-gray-800 mb-4">Monitoring Configuration</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg p-4">
-            <p className="text-sm text-gray-600 mb-2">Screening Frequency</p>
-            <p className="font-semibold">Daily</p>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <p className="text-sm text-gray-600 mb-2">Risk Threshold</p>
-            <p className="font-semibold">Medium (50)</p>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <p className="text-sm text-gray-600 mb-2">Next Review</p>
-            <p className="font-semibold">Feb 15, 2024</p>
-          </div>
-        </div>
-        <button className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-          Configure Settings
-        </button>
+        )}
       </motion.div>
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800">Upload Monitoring Document</h3>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <XMarkIcon className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description *
+                </label>
+                <textarea
+                  value={uploadData.description}
+                  onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  rows="3"
+                  placeholder="Enter document description..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Document File *
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Supported: PDF, DOC, DOCX, XLS, XLSX, JPEG, PNG (Max 50MB)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                disabled={uploading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpload}
+                disabled={uploading || !uploadData.file || !uploadData.description}
+                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? 'Uploading...' : 'Upload Document'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && selectedDocument && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800">Edit Document</h3>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setSelectedDocument(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <XMarkIcon className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description *
+                </label>
+                <textarea
+                  value={uploadData.description}
+                  onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  rows="3"
+                  placeholder="Enter document description..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Replace Document (Optional)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty to keep current file. Supported: PDF, DOC, DOCX, XLS, XLSX, JPEG, PNG (Max 50MB)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setSelectedDocument(null);
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                disabled={uploading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={uploading || !uploadData.description}
+                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

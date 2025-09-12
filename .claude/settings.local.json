@@ -22,7 +22,10 @@
       "Bash(mongo:*)",
       "Bash(ss:*)",
       "Bash(npm start)",
-      "Read(//mnt/c/Users/DELL/Pictures/Screenshots/**)"
+      "Read(//mnt/c/Users/DELL/Pictures/Screenshots/**)",
+      "Bash(nc localhost 5000)",
+      "Bash(/bashes)",
+      "Bash(nc:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

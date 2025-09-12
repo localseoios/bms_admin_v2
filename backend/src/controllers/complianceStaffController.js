@@ -524,6 +524,75 @@ const addStaffSection = async (req, res) => {
   }
 };
 
+// Delete custom section from staff
+const deleteStaffSection = async (req, res) => {
+  try {
+    const { staffId, sectionId } = req.body;
+    
+    if (!staffId || !sectionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Staff ID and section ID are required"
+      });
+    }
+
+    // Find the staff member
+    const staffMember = await ComplianceStaff.findById(staffId);
+    if (!staffMember) {
+      return res.status(404).json({
+        success: false,
+        message: "Staff member not found"
+      });
+    }
+
+    // Find the section index
+    const sectionIndex = staffMember.sections.findIndex(
+      section => section.id === sectionId
+    );
+
+    if (sectionIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Section not found"
+      });
+    }
+
+    // Check if it's a custom section
+    const section = staffMember.sections[sectionIndex];
+    if (!section.isCustom) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete default sections"
+      });
+    }
+
+    // Check if section has documents
+    if (section.documents && section.documents.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete section with documents. Please remove all documents first."
+      });
+    }
+
+    // Remove the section
+    staffMember.sections.splice(sectionIndex, 1);
+    await staffMember.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Section deleted successfully",
+      data: staffMember
+    });
+  } catch (error) {
+    console.error("Error deleting staff section:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting staff section",
+      error: error.message,
+    });
+  }
+};
+
 // Upload document to staff section
 const uploadStaffDocument = async (req, res) => {
   try {
@@ -1049,6 +1118,7 @@ module.exports = {
   getStaffStatistics,
   getRoleStatistics,
   addStaffSection,
+  deleteStaffSection,
   uploadStaffDocument,
   deleteStaffDocument,
   updateStaffDocument,

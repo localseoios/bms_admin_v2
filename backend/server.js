@@ -234,8 +234,10 @@ app.use("/api/services", serviceRoutes);
 // Add this line with your other route definitions
 app.use("/api/financial-documents", require("./src/routes/financialDocumentRoutes"));
 app.use("/api/screening", require("./src/routes/screeningRoutes"));
+app.use("/api/monitoring", require("./src/routes/monitoringRoutes"));
 app.use("/api/compliance-resources", require("./src/routes/complianceResourceRoutes"));
 app.use("/api/section-settings", require("./src/routes/sectionSettingsRoutes"));
+app.use("/api/section-documents", require("./src/routes/sectionDocumentRoutes"));
 app.use("/api/compliance-culture", require("./src/routes/complianceCultureRoutes"));
 app.use("/api/compliance-staff", require("./src/routes/complianceStaffRoutes"));
 app.use("/api/compliance-notifications", require("./src/routes/complianceNotificationRoutes"));

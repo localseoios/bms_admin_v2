@@ -70,6 +70,41 @@ const screeningSchema = new mongoose.Schema(
       resolvedAt: Date,
       notes: String,
     }],
+    documents: [{
+      id: {
+        type: String,
+        required: true
+      },
+      name: {
+        type: String,
+        required: true
+      },
+      description: {
+        type: String,
+        required: true
+      },
+      uploadDate: {
+        type: Date,
+        default: Date.now
+      },
+      size: {
+        type: String,
+        required: true
+      },
+      uploadedBy: {
+        type: String,
+        required: true
+      },
+      fileUrl: {
+        type: String
+      },
+      expireDate: {
+        type: Date
+      },
+      cloudinaryId: {
+        type: String
+      }
+    }],
     reviewNotes: String,
     reviewedBy: {
       type: mongoose.Schema.Types.ObjectId,
