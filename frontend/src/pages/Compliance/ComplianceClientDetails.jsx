@@ -6,17 +6,18 @@ import KYCSheet from './components/KYCSheet';
 import ScreeningRecords from './components/ScreeningRecords';
 import OngoingMonitoring from './components/OngoingMonitoring';
 import MoreSections from './components/MoreSections';
-import { 
-  ArrowLeftIcon, 
-  DocumentTextIcon, 
-  ShieldCheckIcon, 
+import {
+  ArrowLeftIcon,
+  DocumentTextIcon,
+  ShieldCheckIcon,
   ChartBarIcon,
   EllipsisHorizontalIcon,
   UserCircleIcon,
   BuildingOfficeIcon,
   EnvelopeIcon,
   PhoneIcon,
-  MapPinIcon
+  MapPinIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 
@@ -26,6 +27,8 @@ const ComplianceClientDetails = () => {
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState(0);
+  const [riskLevel, setRiskLevel] = useState('Medium');
+  const [updatingRiskLevel, setUpdatingRiskLevel] = useState(false);
 
   useEffect(() => {
     fetchClientDetails();
@@ -57,6 +60,7 @@ const ComplianceClientDetails = () => {
           name: response.data.client.name,
           email: response.data.client.gmail,
           company: response.data.client.startingPoint || 'No Company',
+          riskLevel: response.data.client.riskLevel || 'Medium',
           phone: 'N/A',
           address: 'N/A',
           jobCount: response.data.jobs ? response.data.jobs.length : 0,
@@ -67,6 +71,7 @@ const ComplianceClientDetails = () => {
           documents: response.data.mostRecentDocuments || {}
         };
         setClient(transformedClient);
+        setRiskLevel(transformedClient.riskLevel || 'Medium');
       } else {
         throw new Error('Client data not available');
       }
@@ -78,6 +83,7 @@ const ComplianceClientDetails = () => {
         name: 'Demo Client',
         email: 'demo@example.com',
         company: 'Demo Company',
+        riskLevel: 'Medium',
         phone: 'N/A',
         address: 'N/A',
         jobCount: 0,
@@ -88,6 +94,33 @@ const ComplianceClientDetails = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateRiskLevel = async (newRiskLevel) => {
+    if (!client) return;
+
+    try {
+      setUpdatingRiskLevel(true);
+
+      let clientEmail = client.email;
+      if (!clientEmail && id.includes('@')) {
+        clientEmail = id;
+      }
+
+      const response = await axios.put(`/clients/${encodeURIComponent(clientEmail)}/risk-level`, {
+        riskLevel: newRiskLevel
+      });
+
+      if (response.data.success !== false) {
+        setRiskLevel(newRiskLevel);
+        setClient(prev => ({ ...prev, riskLevel: newRiskLevel }));
+        console.log('Risk level updated successfully');
+      }
+    } catch (error) {
+      console.error('Error updating risk level:', error);
+    } finally {
+      setUpdatingRiskLevel(false);
     }
   };
 
@@ -148,6 +181,37 @@ const ComplianceClientDetails = () => {
                   <div className="flex items-center text-blue-100">
                     <MapPinIcon className="h-5 w-5 mr-2" />
                     <span>{client?.address || 'No Address'}</span>
+                  </div>
+                  <div className="flex items-center text-blue-100 mt-2">
+                    <div className="flex items-center mr-2">
+                      <div className={`h-5 w-5 rounded-full mr-2 ${
+                        riskLevel === 'High' ? 'bg-red-400' :
+                        riskLevel === 'Medium' ? 'bg-yellow-400' :
+                        'bg-green-400'
+                      }`}></div>
+                    </div>
+                    <div className="flex-1 flex items-center">
+                      <span className="mr-3">Risk Level:</span>
+                      <div className="relative">
+                        <select
+                          value={riskLevel}
+                          onChange={(e) => updateRiskLevel(e.target.value)}
+                          disabled={updatingRiskLevel}
+                          className={`bg-transparent border-none text-blue-100 font-medium focus:outline-none cursor-pointer pr-6 ${
+                            updatingRiskLevel ? 'opacity-50' : 'hover:text-white'
+                          }`}
+                          style={{ appearance: 'none' }}
+                        >
+                          <option value="Low" className="text-gray-900 bg-white">Low Risk</option>
+                          <option value="Medium" className="text-gray-900 bg-white">Medium Risk</option>
+                          <option value="High" className="text-gray-900 bg-white">High Risk</option>
+                        </select>
+                        <ChevronDownIcon className="h-4 w-4 absolute right-0 top-1/2 transform -translate-y-1/2 text-blue-100 pointer-events-none" />
+                      </div>
+                      {updatingRiskLevel && (
+                        <span className="ml-2 text-sm">Updating...</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

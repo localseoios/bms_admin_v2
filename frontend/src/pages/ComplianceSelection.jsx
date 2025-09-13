@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -10,10 +10,48 @@ import {
   ArrowLeftIcon,
   HomeIcon,
   Squares2X2Icon,
+  ArrowRightOnRectangleIcon,
+  UserCircleIcon,
 } from "@heroicons/react/24/outline";
+import { useAuth } from "../context/AuthContext";
+import axiosInstance from "../utils/axios";
 
 const ComplianceSelection = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [localUser, setLocalUser] = useState(null);
+
+  useEffect(() => {
+    // Get user from localStorage as fallback
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      setLocalUser(JSON.parse(storedUser));
+    }
+  }, []);
+
+  const currentUser = user || localUser;
+
+  const handleLogout = async () => {
+    try {
+      if (currentUser && currentUser._id) {
+        await axiosInstance.post("/auth/logout", { userId: currentUser._id });
+      } else {
+        await axiosInstance.get("/auth/logout");
+      }
+      localStorage.removeItem("user");
+      setLocalUser(null);
+      navigate("/login");
+    } catch (error) {
+      console.error("Error logging out:", error);
+      localStorage.removeItem("user");
+      setLocalUser(null);
+      navigate("/login");
+    }
+  };
+
+  const handleLogin = () => {
+    navigate("/login");
+  };
 
   const complianceCards = [
     {
@@ -128,6 +166,37 @@ const ComplianceSelection = () => {
                 <HomeIcon className="w-5 h-5 text-gray-600" />
                 <span className="text-sm font-medium text-gray-700">Dashboard</span>
               </motion.button>
+
+              {/* Login/Logout Button */}
+              {currentUser ? (
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2">
+                    <UserCircleIcon className="w-6 h-6 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-700">
+                      {currentUser.name || currentUser.username || 'User'}
+                    </span>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleLogout}
+                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 transition-colors duration-200 border border-red-200"
+                  >
+                    <ArrowRightOnRectangleIcon className="w-4 h-4" />
+                    <span className="text-sm font-medium">Logout</span>
+                  </motion.button>
+                </div>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleLogin}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-700 transition-colors duration-200 border border-blue-200"
+                >
+                  <UserCircleIcon className="w-4 h-4" />
+                  <span className="text-sm font-medium">Login</span>
+                </motion.button>
+              )}
             </div>
           </div>
         </div>

@@ -304,7 +304,7 @@ const getAssignedClients = asyncHandler(async (req, res) => {
 
     const assignedJobs = await Job.find({ assignedPerson: req.user._id })
       .select("clientId serviceType status createdAt")
-      .populate("clientId", "name gmail startingPoint");
+      .populate("clientId", "name gmail startingPoint riskLevel");
 
     console.log(
       `Found ${assignedJobs ? assignedJobs.length : 0} assigned jobs`
@@ -339,6 +339,7 @@ const getAssignedClients = asyncHandler(async (req, res) => {
           name: job.clientId.name,
           gmail: job.clientId.gmail,
           startingPoint: job.clientId.startingPoint,
+          riskLevel: job.clientId.riskLevel,
           jobs: [],
           jobCount: 0,
           activeJobCount: 0,
@@ -522,6 +523,7 @@ const getAllClients = asyncHandler(async (req, res) => {
           name: client.name,
           gmail: client.gmail,
           startingPoint: client.startingPoint,
+          riskLevel: client.riskLevel,
           jobCount,
           activeJobCount,
           latestJobDate,
@@ -549,6 +551,39 @@ const getAllClients = asyncHandler(async (req, res) => {
   }
 });
 
+const updateClientRiskLevel = asyncHandler(async (req, res) => {
+  try {
+    const { gmail } = req.params;
+    const { riskLevel } = req.body;
+
+    if (!['Low', 'Medium', 'High'].includes(riskLevel)) {
+      return res.status(400).json({ message: 'Invalid risk level. Must be Low, Medium, or High' });
+    }
+
+    const client = await Client.findOneAndUpdate(
+      { gmail },
+      { riskLevel },
+      { new: true }
+    );
+
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    res.status(200).json({
+      message: 'Risk level updated successfully',
+      client: {
+        _id: client._id,
+        name: client.name,
+        gmail: client.gmail,
+        riskLevel: client.riskLevel
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = {
   getClientByGmail,
   getEngagementLetterByGmail,
@@ -558,4 +593,5 @@ module.exports = {
   checkCompanyDetailsStatus,
   getAssignedClients,
   getAllClients,
+  updateClientRiskLevel,
 };

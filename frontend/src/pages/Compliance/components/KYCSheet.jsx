@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  DocumentTextIcon, 
-  CheckCircleIcon, 
+import {
+  DocumentTextIcon,
+  CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
   PaperClipIcon,
@@ -11,7 +11,13 @@ import {
   BanknotesIcon,
   BuildingLibraryIcon,
   EyeIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  ChevronDownIcon,
+  UserGroupIcon,
+  ClipboardDocumentCheckIcon,
+  LockClosedIcon,
+  CheckIcon,
+  PencilIcon
 } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 import axios from '../../../utils/axios';
@@ -20,7 +26,38 @@ const KYCSheet = ({ client }) => {
   const [activeSection, setActiveSection] = useState('personal');
   const [kycApprovals, setKycApprovals] = useState([]);
   const [loadingKyc, setLoadingKyc] = useState(false);
-  
+  const [riskLevel, setRiskLevel] = useState(client?.riskLevel || 'Medium');
+  const [updatingRiskLevel, setUpdatingRiskLevel] = useState(false);
+
+  // Update risk level when client changes
+  useEffect(() => {
+    if (client?.riskLevel) {
+      setRiskLevel(client.riskLevel);
+    }
+  }, [client?.riskLevel]);
+
+  const updateRiskLevel = async (newRiskLevel) => {
+    if (!client) return;
+
+    try {
+      setUpdatingRiskLevel(true);
+      const clientEmail = client.email;
+
+      const response = await axios.put(`/clients/${encodeURIComponent(clientEmail)}/risk-level`, {
+        riskLevel: newRiskLevel
+      });
+
+      if (response.data.success !== false) {
+        setRiskLevel(newRiskLevel);
+        console.log('Risk level updated successfully');
+      }
+    } catch (error) {
+      console.error('Error updating risk level:', error);
+    } finally {
+      setUpdatingRiskLevel(false);
+    }
+  };
+
   // Fetch KYC approval documents for all jobs
   useEffect(() => {
     const fetchKycDocuments = async () => {
@@ -188,6 +225,171 @@ const KYCSheet = ({ client }) => {
     }
   };
 
+  const getStageDisplayName = (stage) => {
+    const stageNames = {
+      lmro: "LMRO",
+      dlmro: "DLMRO",
+      ceo: "CEO",
+    };
+    return stageNames[stage] || stage.toUpperCase();
+  };
+
+  const renderKycDocumentSection = (kycData, jobId) => {
+    if (!kycData) return null;
+
+    const documents = [];
+
+    const createDocumentInfo = (stage, approval) => {
+      if (!approval?.document?.fileUrl) return null;
+
+      return {
+        stage,
+        stageLabel: getStageDisplayName(stage),
+        document: approval.document,
+        approval: approval,
+      };
+    };
+
+    if (kycData.lmroApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("lmro", kycData.lmroApproval));
+    }
+
+    if (kycData.dlmroApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("dlmro", kycData.dlmroApproval));
+    }
+
+    if (kycData.ceoApproval?.document?.fileUrl) {
+      documents.push(createDocumentInfo("ceo", kycData.ceoApproval));
+    }
+
+    if (documents.length === 0) {
+      return (
+        <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
+          <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">
+            No KYC documents have been uploaded yet.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {documents.map((doc) => {
+          const stageColors = {
+            lmro: {
+              bg: "bg-blue-50",
+              border: "border-blue-200",
+              text: "text-blue-800",
+              icon: "text-blue-600",
+            },
+            dlmro: {
+              bg: "bg-purple-50",
+              border: "border-purple-200",
+              text: "text-purple-800",
+              icon: "text-purple-600",
+            },
+            ceo: {
+              bg: "bg-indigo-50",
+              border: "border-indigo-200",
+              text: "text-indigo-800",
+              icon: "text-indigo-600",
+            },
+          };
+          const colors = stageColors[doc.stage];
+
+          return (
+            <div
+              key={doc.stage}
+              className={`group relative ${colors.bg} rounded-lg p-4 transition-all duration-200 hover:shadow-md ${colors.border}`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-start flex-1">
+                  <div className="flex-shrink-0">
+                    <span
+                      className={`flex h-10 w-10 items-center justify-center rounded-md bg-white ${colors.icon} shadow-sm`}
+                    >
+                      {doc.stage === "lmro" && (
+                        <UserGroupIcon className="h-5 w-5" />
+                      )}
+                      {doc.stage === "dlmro" && (
+                        <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                      )}
+                      {doc.stage === "ceo" && (
+                        <LockClosedIcon className="h-5 w-5" />
+                      )}
+                    </span>
+                  </div>
+                  <div className="ml-4 flex-1">
+                    <h6 className={`text-sm font-medium ${colors.text}`}>
+                      {doc.stageLabel} Document
+                    </h6>
+                    <p className={`mt-1 text-xs flex items-center flex-wrap gap-2`}>
+                      <span className="flex items-center">
+                        <DocumentTextIcon className="h-3 w-3 mr-1" />
+                        {doc.document.fileName || "Document"}
+                      </span>
+                      <span className="mx-1">•</span>
+                      {doc.approval.approved ? (
+                        <span className="inline-flex items-center text-green-700">
+                          <CheckIcon className="h-3 w-3 mr-0.5" /> Approved
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-yellow-700">
+                          <ClockIcon className="h-3 w-3 mr-0.5" /> Pending
+                        </span>
+                      )}
+                    </p>
+
+                    <div className="mt-2 space-y-1">
+                      {doc.document.uploadedBy && (
+                        <p className="text-xs text-gray-600">
+                          <UserIcon className="h-3 w-3 inline mr-1" />
+                          Uploaded by:{" "}
+                          <span className="font-medium">
+                            {doc.document.uploadedBy.name || "Unknown User"}
+                          </span>
+                        </p>
+                      )}
+                      {doc.document.uploadedAt && (
+                        <p className="text-xs text-gray-600">
+                          <CalendarIcon className="h-3 w-3 inline mr-1" />
+                          Uploaded:{" "}
+                          {new Date(doc.document.uploadedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <a
+                        href={doc.document.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
+                      >
+                        <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" />
+                        Download
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <motion.div
@@ -200,40 +402,6 @@ const KYCSheet = ({ client }) => {
           KYC Verification Sheet
         </h2>
 
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          {kycSections.map((section, index) => (
-            <motion.div
-              key={section.id}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: index * 0.1 }}
-              onClick={() => setActiveSection(section.id)}
-              className={`cursor-pointer rounded-xl p-4 transition-all ${
-                activeSection === section.id
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg transform scale-105'
-                  : 'bg-gray-50 hover:bg-gray-100'
-              }`}
-            >
-              <section.icon className={`h-8 w-8 mb-2 ${activeSection === section.id ? 'text-white' : 'text-gray-600'}`} />
-              <h3 className={`font-semibold text-sm ${activeSection === section.id ? 'text-white' : 'text-gray-800'}`}>
-                {section.name}
-              </h3>
-              <div className="mt-2">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full transition-all ${
-                      activeSection === section.id ? 'bg-white' : 'bg-blue-600'
-                    }`}
-                    style={{ width: `${section.progress}%` }}
-                  ></div>
-                </div>
-                <p className={`text-xs mt-1 ${activeSection === section.id ? 'text-blue-100' : 'text-gray-600'}`}>
-                  {section.progress}% Complete
-                </p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-4">
@@ -256,9 +424,26 @@ const KYCSheet = ({ client }) => {
                 <span className="text-gray-600">ID Number:</span>
                 <span className="font-medium">AB123456789</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-gray-600">Risk Level:</span>
-                <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">Low Risk</span>
+                <div className="relative">
+                  <select
+                    value={riskLevel}
+                    onChange={(e) => updateRiskLevel(e.target.value)}
+                    disabled={updatingRiskLevel}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border-none outline-none cursor-pointer pr-6 ${
+                      riskLevel === 'High' ? 'bg-red-100 text-red-800' :
+                      riskLevel === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-green-100 text-green-800'
+                    } ${updatingRiskLevel ? 'opacity-50' : ''}`}
+                    style={{ appearance: 'none' }}
+                  >
+                    <option value="Low" className="bg-white text-gray-900">Low Risk</option>
+                    <option value="Medium" className="bg-white text-gray-900">Medium Risk</option>
+                    <option value="High" className="bg-white text-gray-900">High Risk</option>
+                  </select>
+                  <ChevronDownIcon className="h-3 w-3 absolute right-1 top-1/2 transform -translate-y-1/2 text-gray-600 pointer-events-none" />
+                </div>
               </div>
             </div>
 
@@ -283,75 +468,30 @@ const KYCSheet = ({ client }) => {
 
           <div className="space-y-4">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">KYC Documents</h3>
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                <DocumentTextIcon className="h-5 w-5 mr-2 text-blue-600" />
+                KYC Documents
+              </h3>
             </div>
 
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {documents.map((doc, index) => (
-                <motion.div
-                  key={doc.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      <PaperClipIcon className="h-5 w-5 text-gray-400 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-gray-800">{doc.name}</p>
-                        <div className="flex items-center space-x-4 mt-1">
-                          <span className="text-xs text-gray-500 flex items-center">
-                            <CalendarIcon className="h-3 w-3 mr-1" />
-                            {doc.uploadDate}
-                          </span>
-                          {doc.verifiedBy && (
-                            <span className="text-xs text-gray-500 flex items-center">
-                              <UserIcon className="h-3 w-3 mr-1" />
-                              {doc.verifiedBy}
-                            </span>
-                          )}
-                          {doc.jobNumber && (
-                            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                              Job: {doc.jobNumber}
-                            </span>
-                          )}
-                          {doc.stage && (
-                            <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
-                              {doc.stage}
-                            </span>
-                          )}
-                        </div>
-                        {doc.rejectionReason && (
-                          <p className="text-xs text-red-600 mt-1">Reason: {doc.rejectionReason}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex space-x-1">
-                        <button
-                          onClick={() => handleViewDocument(doc)}
-                          className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                          title="View Document"
-                        >
-                          <EyeIcon className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDownloadDocument(doc)}
-                          className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
-                          title="Download Document"
-                        >
-                          <ArrowDownTrayIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadge(doc.status)}`}>
-                        {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
-                      </span>
-                      {getStatusIcon(doc.status)}
-                    </div>
+            <div className="space-y-4">
+              {kycApprovals.length > 0 ? (
+                kycApprovals.map((approval) => (
+                  <div key={approval.jobId} className="border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">
+                      Job: {approval.jobNumber || approval.jobId}
+                    </h4>
+                    {renderKycDocumentSection(approval.kycApproval, approval.jobId)}
                   </div>
-                </motion.div>
-              ))}
+                ))
+              ) : (
+                <div className="text-center py-6 bg-gray-50/80 rounded-lg border border-gray-200">
+                  <DocumentTextIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">
+                    {loadingKyc ? 'Loading KYC documents...' : 'No KYC documents found for this client.'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

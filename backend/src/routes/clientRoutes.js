@@ -10,6 +10,7 @@ const {
   checkCompanyDetailsStatus,
   getAssignedClients,
   getAllClients,
+  updateClientRiskLevel,
 } = require("../controllers/clientController");
 const { protect, checkPermission } = require("../middleware/authMiddleware");
 
@@ -70,6 +71,14 @@ router.get(
   protect,
   checkPermission("operationManagement"),
   checkCompanyDetailsStatus
+);
+
+// Route to update client risk level
+router.put(
+  "/:gmail/risk-level",
+  protect,
+  checkPermission("complianceManagement"),
+  updateClientRiskLevel
 );
 
 module.exports = router;
