@@ -420,7 +420,7 @@ const ComplianceClients = () => {
         </motion.div>
       </div>
     </div>
-  );
+  ); 
 };
 
 export default ComplianceClients;

@@ -252,7 +252,7 @@ function KYCManagement() {
     // If no KYC approval but already in KYC status, it's pending LMRO review
     if (!job.kycApproval && job.status === "kyc_pending") {
       return {
-        label: "LMRO Review Pending",
+        label: "MLRO Review Pending",
         color: "bg-yellow-50 text-yellow-700 ring-yellow-600/20",
         icon: <UserGroupIcon className="h-5 w-5 text-yellow-500" />,
       };
@@ -282,13 +282,13 @@ function KYCManagement() {
       };
     } else if (stage === "lmro") {
       return {
-        label: "LMRO Review",
+        label: "MLRO Review",
         color: "bg-blue-50 text-blue-700 ring-blue-600/20",
         icon: <UserGroupIcon className="h-5 w-5 text-blue-500" />,
       };
     } else if (stage === "dlmro") {
       return {
-        label: "DLMRO Review",
+        label: "DMLRO Review",
         color: "bg-purple-50 text-purple-700 ring-purple-600/20",
         icon: (
           <ClipboardDocumentCheckIcon className="h-5 w-5 text-purple-500" />
@@ -723,7 +723,7 @@ function KYCManagement() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      LMRO Review
+                    MLRO Review
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {
@@ -750,7 +750,7 @@ function KYCManagement() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      DLMRO Review
+                    DMLRO Review
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {
@@ -820,8 +820,8 @@ function KYCManagement() {
                   className="block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 >
                   <option value="all">All Status</option>
-                  <option value="pending">Pending / LMRO Review</option>
-                  <option value="lmro_approved">DLMRO Review</option>
+                  <option value="pending">Pending / MLRO Review</option>
+                  <option value="lmro_approved">DMLRO Review</option>
                   <option value="dlmro_approved">CEO Review</option>
                 </select>
               </div>

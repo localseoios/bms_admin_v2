@@ -4,7 +4,8 @@ const {
   getAllSections,
   updateSection,
   createSection,
-  deleteSection
+  deleteSection,
+  runCleanup
 } = require('../controllers/sectionSettingsController');
 const { protect, checkPermission } = require('../middleware/authMiddleware');
 
@@ -20,5 +21,8 @@ router.route('/')
 router.route('/:sectionId')
   .put(updateSection)
   .delete(deleteSection);
+
+// Temporary cleanup route
+router.get('/cleanup/orphaned-documents', runCleanup);
 
 module.exports = router;

@@ -101,7 +101,12 @@ const complianceCultureSchema = new mongoose.Schema({
   relatedDocuments: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ComplianceCulture'
-  }]
+  }],
+  sectionId: {
+    type: String,
+    default: null,
+    trim: true
+  }
 }, {
   timestamps: true
 });

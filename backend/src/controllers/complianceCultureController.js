@@ -96,6 +96,8 @@ exports.createDocument = asyncHandler(async (req, res) => {
   console.log('=== CREATE COMPLIANCE CULTURE DOCUMENT ===');
   console.log('Request body:', req.body);
   console.log('Request file:', req.file);
+  console.log('DEBUG: sectionId in req.body:', req.body.sectionId);
+  console.log('DEBUG: All req.body keys:', Object.keys(req.body));
 
   const {
     title,
@@ -108,8 +110,12 @@ exports.createDocument = asyncHandler(async (req, res) => {
     effectiveDate,
     reviewDate,
     isImportant,
-    version
+    version,
+    sectionId
   } = req.body;
+
+  console.log('DEBUG: Extracted sectionId from req.body:', sectionId);
+  console.log('DEBUG: typeof sectionId:', typeof sectionId);
 
   const documentData = {
     title,
@@ -119,8 +125,11 @@ exports.createDocument = asyncHandler(async (req, res) => {
     uploadedBy: req.user._id,
     lastUpdatedBy: req.user._id,
     isImportant: isImportant === 'true' || isImportant === true,
-    version: version || '1.0'
+    version: version || '1.0',
+    sectionId: sectionId || null
   };
+
+  console.log('DEBUG: Final documentData before save:', { sectionId: documentData.sectionId, title: documentData.title });
 
   // Handle target audience
   if (targetAudience) {
@@ -146,25 +155,41 @@ exports.createDocument = asyncHandler(async (req, res) => {
     documentData.externalLink = externalLink;
   } else if (req.file) {
     console.log('Uploading file to Cloudinary...');
-    
+
     try {
-      // Upload to Cloudinary
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'compliance-culture',
-        resource_type: 'auto',
-        allowed_formats: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png'],
-        max_bytes: 50 * 1024 * 1024 // 50MB limit
-      });
+      // Check file size before upload
+      const fileSizeMB = req.file.size / (1024 * 1024);
+      console.log(`File size: ${fileSizeMB.toFixed(2)}MB`);
 
-      documentData.fileUrl = result.secure_url;
-      documentData.cloudinaryId = result.public_id;
-      documentData.fileName = req.file.originalname;
-      documentData.fileSize = `${(req.file.size / (1024 * 1024)).toFixed(2)} MB`;
-      documentData.fileType = 'file';
+      if (fileSizeMB > 10) {
+        // For large files, save metadata only without uploading to Cloudinary
+        console.log('File too large for Cloudinary, saving metadata only...');
+        documentData.fileUrl = `local://temp/${req.file.filename}`;
+        documentData.fileName = req.file.originalname;
+        documentData.fileSize = `${fileSizeMB.toFixed(2)} MB`;
+        documentData.fileType = 'file';
 
-      // Delete temp file
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+        // Keep temp file for now
+        console.log('Large file saved as temp file for testing');
+      } else {
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(req.file.path, {
+          folder: 'compliance-culture',
+          resource_type: 'auto',
+          allowed_formats: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png'],
+          max_bytes: 50 * 1024 * 1024 // 50MB limit
+        });
+
+        documentData.fileUrl = result.secure_url;
+        documentData.cloudinaryId = result.public_id;
+        documentData.fileName = req.file.originalname;
+        documentData.fileSize = `${fileSizeMB.toFixed(2)} MB`;
+        documentData.fileType = 'file';
+
+        // Delete temp file
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
       }
     } catch (uploadError) {
       console.error('Cloudinary upload error:', uploadError);
@@ -177,9 +202,12 @@ exports.createDocument = asyncHandler(async (req, res) => {
     }
   }
 
+  console.log('DEBUG: About to create document with data:', JSON.stringify(documentData, null, 2));
+
   const document = await ComplianceCulture.create(documentData);
-  
+
   console.log('Document created successfully:', document._id);
+  console.log('DEBUG: Created document sectionId:', document.sectionId);
 
   res.status(201).json({
     success: true,

@@ -28,48 +28,7 @@ import toast from 'react-hot-toast';
 
 const ComplianceCulture = () => {
   const navigate = useNavigate();
-  const [sections, setSections] = useState([
-    {
-      id: "policy-procedure",
-      title: "Policy & Procedure Manual",
-      description: "Company policies and standard operating procedures",
-      icon: DocumentTextIcon,
-      color: "blue",
-      documents: [],
-      expanded: true,
-      maxDocuments: 10,
-    },
-    {
-      id: "training-materials",
-      title: "Training Materials",
-      description: "Employee training documents and resources",
-      icon: DocumentTextIcon,
-      color: "green",
-      documents: [],
-      expanded: true,
-      maxDocuments: 10,
-    },
-    {
-      id: "review-reports",
-      title: "Review Reports",
-      description: "Compliance review and audit reports",
-      icon: DocumentTextIcon,
-      color: "purple",
-      documents: [],
-      expanded: true,
-      maxDocuments: 10,
-    },
-    {
-      id: "meeting-minutes",
-      title: "Meeting Minutes",
-      description: "Records of compliance meetings and decisions",
-      icon: DocumentTextIcon,
-      color: "orange",
-      documents: [],
-      expanded: true,
-      maxDocuments: 10,
-    },
-  ]);
+  const [sections, setSections] = useState([]);
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -77,12 +36,15 @@ const ComplianceCulture = () => {
   const [showAddSectionModal, setShowAddSectionModal] = useState(false);
   const [showSectionSettingsModal, setShowSectionSettingsModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteSectionModal, setShowDeleteSectionModal] = useState(false);
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteSectionConfirmText, setDeleteSectionConfirmText] = useState("");
   const [replaceFile, setReplaceFile] = useState(null);
   const [selectedSection, setSelectedSection] = useState(null);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [uploadData, setUploadData] = useState({
     description: "",
     file: null,
@@ -100,6 +62,7 @@ const ComplianceCulture = () => {
     orange: "from-orange-500 to-red-600",
     pink: "from-pink-500 to-rose-600",
     cyan: "from-cyan-500 to-blue-600",
+    red: "from-red-500 to-pink-600",
   };
 
   const bgColorMap = {
@@ -109,6 +72,7 @@ const ComplianceCulture = () => {
     orange: "bg-orange-50",
     pink: "bg-pink-50",
     cyan: "bg-cyan-50",
+    red: "bg-red-50",
   };
 
   const handleUploadClick = (section) => {
@@ -123,8 +87,8 @@ const ComplianceCulture = () => {
     }
 
     // Check if adding documents would exceed the limit
-    const currentSection = sections.find(s => s.id === selectedSection.id);
-    
+    const currentSection = sections.find(s => (s.id === selectedSection.id || s.sectionId === selectedSection.sectionId));
+
     if (currentSection.documents.length >= currentSection.maxDocuments) {
       toast.error(`Cannot upload. Maximum limit of ${currentSection.maxDocuments} documents has been reached.`);
       return;
@@ -132,13 +96,19 @@ const ComplianceCulture = () => {
 
     try {
       setLoading(true);
+      const sectionId = selectedSection.sectionId || selectedSection.id;
+      console.log('DEBUG: Upload to section:', sectionId, 'Selected section:', selectedSection);
+
       const formData = new FormData();
       formData.append('title', uploadData.file.name);
       formData.append('description', uploadData.description);
-      formData.append('documentType', getDocumentType(selectedSection.id));
-      formData.append('category', getCategoryFromSection(selectedSection.id));
+      formData.append('documentType', getDocumentType(sectionId));
+      formData.append('category', getCategoryFromSection(sectionId));
       formData.append('targetAudience', 'All Staff');
+      formData.append('sectionId', sectionId);
       formData.append('file', uploadData.file);
+
+      console.log('DEBUG: FormData sectionId:', formData.get('sectionId'));
 
       const response = await axios.post('/compliance-culture', formData, {
         headers: {
@@ -162,8 +132,8 @@ const ComplianceCulture = () => {
           externalLink: response.data.data.externalLink
         };
 
-        setSections(sections.map(section => 
-          section.id === selectedSection.id
+        setSections(sections.map(section =>
+          (section.id === selectedSection.id || section.sectionId === selectedSection.sectionId)
             ? { ...section, documents: [...section.documents, newDocument] }
             : section
         ));
@@ -207,8 +177,8 @@ const ComplianceCulture = () => {
       const response = await axios.delete(`/compliance-culture/${selectedDocument._id || selectedDocument.id}`);
       
       if (response.data.success) {
-        setSections(sections.map(section => 
-          section.id === selectedSection.id
+        setSections(sections.map(section =>
+          (section.id === selectedSection.id || section.sectionId === selectedSection.sectionId)
             ? { ...section, documents: section.documents.filter(doc => doc.id !== selectedDocument.id && doc._id !== selectedDocument._id) }
             : section
         ));
@@ -267,11 +237,11 @@ const ComplianceCulture = () => {
         
         console.log('Using document name:', newDocumentName);
         
-        setSections(sections.map(section => 
-          section.id === selectedSection.id
+        setSections(sections.map(section =>
+          (section.id === selectedSection.id || section.sectionId === selectedSection.sectionId)
             ? {
                 ...section,
-                documents: section.documents.map(doc => 
+                documents: section.documents.map(doc =>
                   doc.id === selectedDocument.id || doc._id === selectedDocument._id
                     ? {
                         ...doc,
@@ -280,8 +250,8 @@ const ComplianceCulture = () => {
                         fileName: newDocumentName,
                         size: updatedDoc.fileSize || `${(replaceFile.size / (1024 * 1024)).toFixed(2)} MB`,
                         uploadDate: updatedDoc.updatedAt || new Date().toISOString(),
-                        uploadedBy: updatedDoc.lastUpdatedBy?.firstName ? 
-                          `${updatedDoc.lastUpdatedBy.firstName} ${updatedDoc.lastUpdatedBy.lastName || ''}`.trim() : 
+                        uploadedBy: updatedDoc.lastUpdatedBy?.firstName ?
+                          `${updatedDoc.lastUpdatedBy.firstName} ${updatedDoc.lastUpdatedBy.lastName || ''}`.trim() :
                           "Current User",
                         fileUrl: updatedDoc.fileUrl,
                         lastUpdated: new Date().toISOString()
@@ -314,11 +284,11 @@ const ComplianceCulture = () => {
       });
       
       if (response.data.success) {
-        setSections(sections.map(section => 
-          section.id === selectedSection.id
+        setSections(sections.map(section =>
+          (section.id === selectedSection.id || section.sectionId === selectedSection.sectionId)
             ? {
                 ...section,
-                documents: section.documents.map(doc => 
+                documents: section.documents.map(doc =>
                   doc.id === selectedDocument.id || doc._id === selectedDocument._id
                     ? { ...doc, description: updatedDescription }
                     : doc
@@ -336,36 +306,31 @@ const ComplianceCulture = () => {
     setShowEditModal(false);
   };
 
-  const handleAddSection = () => {
+  const handleAddSection = async () => {
     if (!newSection.title) return;
 
-    const colors = ["blue", "green", "purple", "orange", "pink", "cyan"];
-    const randomColor = colors[sections.length % colors.length];
+    try {
+      setLoading(true);
+      const response = await axios.post('/section-settings', {
+        title: newSection.title,
+        description: newSection.description || "Custom section for compliance documents",
+        maxDocuments: newSection.maxDocuments || 10
+      });
 
-    const newSectionData = {
-      id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique ID
-      title: newSection.title,
-      description: newSection.description || "Custom section for compliance documents",
-      icon: DocumentTextIcon,
-      color: randomColor,
-      documents: [],
-      expanded: true,
-      isCustom: true,
-      maxDocuments: newSection.maxDocuments || 10,
-    };
+      if (response.data.success) {
+        // Reload all sections from backend instead of manually adding
+        await loadAllSections();
+        setShowAddSectionModal(false);
+        setNewSection({ title: "", description: "", maxDocuments: 10 });
 
-    // Update sections state
-    const updatedSections = [...sections, newSectionData];
-    setSections(updatedSections);
-
-    // Save only custom sections to localStorage
-    const customSections = updatedSections.filter(section => section.isCustom);
-    saveCustomSections(customSections);
-
-    setShowAddSectionModal(false);
-    setNewSection({ title: "", description: "", maxDocuments: 10 });
-    
-    toast.success(`New section "${newSection.title}" added successfully!`);
+        toast.success(`New section "${newSection.title}" added successfully!`);
+      }
+    } catch (error) {
+      console.error('Error creating section:', error);
+      toast.error('Failed to create section: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSectionSettings = (section) => {
@@ -373,49 +338,70 @@ const ComplianceCulture = () => {
     setShowSectionSettingsModal(true);
   };
 
-  const handleDeleteSection = (section) => {
+  const handleDeleteSectionClick = (section) => {
     if (!section.isCustom) {
       toast.error('Cannot delete default sections');
       return;
     }
 
-    if (section.documents.length > 0) {
-      toast.error(`Cannot delete section "${section.title}" - it contains ${section.documents.length} document(s). Please remove all documents first.`);
-      return;
-    }
-
-    if (confirm(`Are you sure you want to delete the section "${section.title}"? This action cannot be undone.`)) {
-      // Remove from sections state
-      const updatedSections = sections.filter(s => s.id !== section.id);
-      setSections(updatedSections);
-
-      // Update localStorage with remaining custom sections
-      const customSections = updatedSections.filter(s => s.isCustom);
-      saveCustomSections(customSections);
-
-      toast.success(`Section "${section.title}" deleted successfully!`);
-    }
+    setSelectedSection(section);
+    setShowDeleteSectionModal(true);
+    setDeleteSectionConfirmText("");
   };
 
-  const handleUpdateSectionSettings = (newMaxDocuments) => {
-    // Update the sections state
-    setSections(sections.map(section =>
-      section.id === selectedSection.id
-        ? { ...section, maxDocuments: newMaxDocuments }
-        : section
-    ));
-    
-    // Save to localStorage
-    saveSectionSettings(selectedSection.id, newMaxDocuments);
-    
-    setShowSectionSettingsModal(false);
-    
-    toast.success(`Section settings updated! Maximum documents set to ${newMaxDocuments}`);
+  const handleDeleteSection = async () => {
+    if (deleteSectionConfirmText !== "DELETE") return;
+
+    try {
+      setLoading(true);
+      const sectionId = selectedSection.sectionId || selectedSection.id;
+      const response = await axios.delete(`/section-settings/${sectionId}`);
+
+      if (response.data.success) {
+        await loadAllSections();
+        toast.success(`Section "${selectedSection.title}" deleted successfully!`);
+      }
+    } catch (error) {
+      console.error('Error deleting section:', error);
+      toast.error('Failed to delete section: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
+    }
+
+    setShowDeleteSectionModal(false);
+    setDeleteSectionConfirmText("");
+    setSelectedSection(null);
+  };
+
+  const handleUpdateSectionSettings = async (newMaxDocuments) => {
+    try {
+      setLoading(true);
+      const sectionId = selectedSection.sectionId || selectedSection.id;
+      const response = await axios.put(`/section-settings/${sectionId}`, {
+        maxDocuments: newMaxDocuments
+      });
+
+      if (response.data.success) {
+        setSections(sections.map(section =>
+          (section.sectionId || section.id) === sectionId
+            ? { ...section, maxDocuments: newMaxDocuments }
+            : section
+        ));
+
+        setShowSectionSettingsModal(false);
+        toast.success(`Section settings updated! Maximum documents set to ${newMaxDocuments}`);
+      }
+    } catch (error) {
+      console.error('Error updating section settings:', error);
+      toast.error('Failed to update section settings: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleSectionExpand = (sectionId) => {
     setSections(sections.map(section =>
-      section.id === sectionId
+      (section.id === sectionId || section.sectionId === sectionId)
         ? { ...section, expanded: !section.expanded }
         : section
     ));
@@ -428,13 +414,14 @@ const ComplianceCulture = () => {
       case 'training-materials': return 'training';
       case 'review-reports': return 'handbook';
       case 'meeting-minutes': return 'procedure';
+      case 'authority-notification': return 'awareness';
       default: return 'other'; // Use 'other' for custom sections
     }
   };
 
   const getCategoryFromSection = (sectionId) => {
     // Check if it's a custom section
-    const section = sections.find(s => s.id === sectionId);
+    const section = sections.find(s => (s.id === sectionId || s.sectionId === sectionId));
     if (section && section.isCustom) {
       return 'Other'; // Use 'Other' category for custom sections
     }
@@ -444,124 +431,79 @@ const ComplianceCulture = () => {
       case 'training-materials': return 'Training Materials';
       case 'review-reports': return 'Best Practices';
       case 'meeting-minutes': return 'Ethics & Conduct';
+      case 'authority-notification': return 'Ethics & Conduct';
       default: return 'Other';
     }
   };
 
-  // Load documents from backend on component mount and load saved settings
+  // Load sections and documents from backend on component mount
   useEffect(() => {
-    // Clear any existing corrupted/duplicate custom sections first
-    try {
-      const existing = localStorage.getItem('complianceCultureCustomSections');
-      if (existing) {
-        const parsed = JSON.parse(existing);
-        // Check for invalid data or duplicates
-        const seenIds = new Set();
-        const hasDuplicates = parsed.some(section => {
-          if (seenIds.has(section.id)) return true;
-          seenIds.add(section.id);
-          return false;
-        });
-        
-        if (parsed.some(section => section.icon && typeof section.icon === 'object') || hasDuplicates) {
-          console.log('Clearing invalid/duplicate custom sections from localStorage');
-          localStorage.removeItem('complianceCultureCustomSections');
-        }
-      }
-    } catch (error) {
-      console.log('Clearing corrupted localStorage data');
-      localStorage.removeItem('complianceCultureCustomSections');
+    if (!dataLoaded) {
+      const loadData = async () => {
+        await loadAllSections();
+        await loadDocuments();
+        setDataLoaded(true);
+      };
+      loadData();
     }
-    
-    loadCustomSections();
-    loadDocuments();
-    loadSectionSettings();
-  }, []);
+  }, [dataLoaded]);
 
-  const loadSectionSettings = () => {
+  const loadAllSections = async () => {
     try {
-      const savedSettings = localStorage.getItem('complianceCultureSectionSettings');
-      if (savedSettings) {
-        const settings = JSON.parse(savedSettings);
-        setSections(prevSections => 
-          prevSections.map(section => ({
-            ...section,
-            maxDocuments: settings[section.id] || section.maxDocuments
-          }))
-        );
-      }
-    } catch (error) {
-      console.error('Error loading section settings:', error);
-    }
-  };
+      const response = await axios.get('/section-settings');
 
-  const saveSectionSettings = (sectionId, maxDocuments) => {
-    try {
-      const currentSettings = JSON.parse(localStorage.getItem('complianceCultureSectionSettings') || '{}');
-      currentSettings[sectionId] = maxDocuments;
-      localStorage.setItem('complianceCultureSectionSettings', JSON.stringify(currentSettings));
-    } catch (error) {
-      console.error('Error saving section settings:', error);
-    }
-  };
-
-  const loadCustomSections = () => {
-    try {
-      const savedCustomSections = localStorage.getItem('complianceCultureCustomSections');
-      if (savedCustomSections) {
-        const customSections = JSON.parse(savedCustomSections);
-        // Fix icon references for loaded sections
-        const fixedSections = customSections.map(section => ({
-          ...section,
-          icon: DocumentTextIcon // Restore icon reference since JSON doesn't preserve function references
+      if (response.data.success) {
+        const allSectionsFromBackend = response.data.data.map(section => ({
+          id: section.sectionId,
+          sectionId: section.sectionId,
+          title: section.title,
+          description: section.description,
+          icon: DocumentTextIcon,
+          color: section.color,
+          documents: [],
+          expanded: true,
+          isCustom: section.isCustom,
+          maxDocuments: section.maxDocuments,
         }));
-        
-        setSections(prevSections => {
-          // Avoid duplicates by checking if custom section already exists
-          const existingCustomIds = prevSections.filter(s => s.isCustom).map(s => s.id);
-          const newSections = fixedSections.filter(section => !existingCustomIds.includes(section.id));
-          return [...prevSections, ...newSections];
-        });
+
+        setSections(allSectionsFromBackend);
       }
     } catch (error) {
-      console.error('Error loading custom sections:', error);
-    }
-  };
-
-  const saveCustomSections = (customSections) => {
-    try {
-      // Remove icon functions before saving to localStorage
-      const sectionsToSave = customSections.map(section => {
-        const { icon, ...sectionWithoutIcon } = section;
-        return sectionWithoutIcon;
-      });
-      localStorage.setItem('complianceCultureCustomSections', JSON.stringify(sectionsToSave));
-    } catch (error) {
-      console.error('Error saving custom sections:', error);
+      console.error('Error loading sections:', error);
+      toast.error('Failed to load sections');
     }
   };
 
   const loadDocuments = async () => {
     try {
-      setLoading(true);
       const response = await axios.get('/compliance-culture?page=1&limit=100&status=active');
-      
+
       if (response.data.success) {
         const documents = response.data.data;
-        
+
         // Distribute documents to sections based on category
-        setSections(prevSections => 
+        setSections(prevSections =>
           prevSections.map(section => {
             const sectionDocs = documents.filter(doc => {
               const docCategory = doc.category;
-              
-              // For custom sections, include documents with 'Other' category that have matching tags or are newly uploaded
-              if (section.isCustom) {
-                return docCategory === 'Other';
+              const docSectionId = doc.sectionId;
+              const sectionId = section.sectionId || section.id;
+
+              // If document has a specific sectionId, only show in that section
+              if (docSectionId) {
+                return docSectionId === sectionId;
               }
-              
-              // For default sections
-              switch(section.id) {
+
+              // For documents without sectionId (legacy documents), use category matching
+              // For custom sections, do NOT show legacy documents
+              if (section.isCustom) {
+                // Custom sections should never show legacy documents
+                // They only show documents with matching sectionId (checked above)
+                return false;
+              }
+
+              // For default sections, use category matching for legacy documents
+              switch(sectionId) {
                 case 'policy-procedure':
                   return docCategory === 'Policy Documents';
                 case 'training-materials':
@@ -569,6 +511,8 @@ const ComplianceCulture = () => {
                 case 'review-reports':
                   return docCategory === 'Best Practices' || docCategory === 'Case Studies';
                 case 'meeting-minutes':
+                  return docCategory === 'Ethics & Conduct' || docCategory === 'Awareness Programs';
+                case 'authority-notification':
                   return docCategory === 'Ethics & Conduct' || docCategory === 'Awareness Programs';
                 default:
                   return false;
@@ -587,7 +531,7 @@ const ComplianceCulture = () => {
               externalLink: doc.externalLink,
               fileType: doc.fileType
             }));
-            
+
             return { ...section, documents: sectionDocs };
           })
         );
@@ -595,8 +539,6 @@ const ComplianceCulture = () => {
     } catch (error) {
       console.error('Error loading documents:', error);
       toast.error('Failed to load documents');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -684,7 +626,7 @@ const ComplianceCulture = () => {
         <div className="space-y-6">
           {sections.map((section, index) => (
             <motion.div
-              key={section.id}
+              key={section.sectionId || section.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
@@ -726,7 +668,7 @@ const ComplianceCulture = () => {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleDeleteSection(section)}
+                      onClick={() => handleDeleteSectionClick(section)}
                       className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all hover:bg-red-50"
                       title="Delete Section"
                     >
@@ -759,7 +701,7 @@ const ComplianceCulture = () => {
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => toggleSectionExpand(section.id)}
+                    onClick={() => toggleSectionExpand(section.sectionId || section.id)}
                     className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all"
                   >
                     {section.expanded ? (
@@ -782,7 +724,7 @@ const ComplianceCulture = () => {
                   >
                     {section.documents.map((document) => (
                       <motion.div
-                        key={document.id}
+                        key={document._id || document.id}
                         whileHover={{ scale: 1.01 }}
                         onDoubleClick={() => handleOpenDocument(document)}
                         className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer"
@@ -898,6 +840,7 @@ const ComplianceCulture = () => {
             <FolderPlusIcon className="w-5 h-5" />
             <span>Add More Sections (if needed)</span>
           </motion.button>
+
         </motion.div>
       </div>
 
@@ -1484,6 +1427,100 @@ const ComplianceCulture = () => {
                   }`}
                 >
                   Delete Document
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Section Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteSectionModal && selectedSection && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowDeleteSectionModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <ExclamationTriangleIcon className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-800">Delete Section</h3>
+                    <p className="text-sm text-gray-500">This action cannot be undone</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDeleteSectionModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                  <p className="text-sm text-red-800 mb-2">
+                    <strong>Section to delete:</strong>
+                  </p>
+                  <p className="font-medium text-red-900">{selectedSection.title}</p>
+                  <p className="text-sm text-red-700 mt-1">{selectedSection.description}</p>
+                </div>
+
+                <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                  <div className="flex items-start space-x-2">
+                    <ExclamationTriangleIcon className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-800">Warning</p>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        This will permanently delete the entire section and cannot be recovered.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    To confirm deletion, type <span className="font-bold text-red-600">DELETE</span> in the box below:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteSectionConfirmText}
+                    onChange={(e) => setDeleteSectionConfirmText(e.target.value)}
+                    placeholder="Type DELETE to confirm"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => setShowDeleteSectionModal(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteSection}
+                  disabled={deleteSectionConfirmText !== "DELETE"}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                    deleteSectionConfirmText === "DELETE"
+                      ? "bg-red-600 hover:bg-red-700 text-white hover:shadow-lg"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                >
+                  Delete Section
                 </button>
               </div>
             </motion.div>

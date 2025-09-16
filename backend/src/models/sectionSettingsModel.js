@@ -24,7 +24,7 @@ const sectionSettingsSchema = new mongoose.Schema({
   },
   color: {
     type: String,
-    enum: ['blue', 'green', 'purple', 'orange', 'pink', 'cyan'],
+    enum: ['blue', 'green', 'purple', 'orange', 'pink', 'cyan', 'red'],
     default: 'blue'
   },
   isCustom: {

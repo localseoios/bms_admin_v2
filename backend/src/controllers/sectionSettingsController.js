@@ -6,21 +6,19 @@ const SectionSettings = require('../models/sectionSettingsModel');
 // @access Private
 const getAllSections = asyncHandler(async (req, res) => {
   console.log('=== GET ALL SECTION SETTINGS ===');
-  
+
   try {
     const sections = await SectionSettings.find({ isActive: true }).sort({ createdAt: 1 });
-    
+
+    // Clean up orphaned documents (documents with sectionId that points to non-existent sections)
+    if (sections.length > 0) {
+      const { cleanupOrphanedDocuments } = require('../utils/cleanupOrphanedDocuments');
+      await cleanupOrphanedDocuments();
+    }
+
     // If no sections exist, create default ones
     if (sections.length === 0) {
       const defaultSections = [
-        {
-          sectionId: 'authority-notification',
-          title: 'Authority Notification Checking',
-          description: 'Official notifications and compliance alerts from regulatory authorities',
-          maxDocuments: 10,
-          color: 'red',
-          isCustom: false
-        },
         {
           sectionId: 'policy-procedure',
           title: 'Policy & Procedure Manual',
@@ -54,21 +52,38 @@ const getAllSections = asyncHandler(async (req, res) => {
           isCustom: false
         }
       ];
-      
-      const createdSections = await SectionSettings.insertMany(defaultSections);
-      console.log(`Created ${createdSections.length} default sections`);
-      
-      res.status(200).json({
-        success: true,
-        data: createdSections,
-        pagination: {
-          total: createdSections.length,
-          pages: 1,
-          page: 1,
-          limit: createdSections.length
-        }
-      });
-      return;
+
+      try {
+        const createdSections = await SectionSettings.insertMany(defaultSections);
+        console.log(`Created ${createdSections.length} default sections`);
+
+        res.status(200).json({
+          success: true,
+          data: createdSections,
+          pagination: {
+            total: createdSections.length,
+            pages: 1,
+            page: 1,
+            limit: createdSections.length
+          }
+        });
+        return;
+      } catch (error) {
+        console.log('Error creating default sections, fetching existing ones:', error.message);
+        // If there's an error (like duplicate key), just fetch existing sections
+        const existingSections = await SectionSettings.find({ isActive: true }).sort({ createdAt: 1 });
+        res.status(200).json({
+          success: true,
+          data: existingSections,
+          pagination: {
+            total: existingSections.length,
+            pages: 1,
+            page: 1,
+            limit: existingSections.length
+          }
+        });
+        return;
+      }
     }
     
     console.log(`Found ${sections.length} sections`);
@@ -195,28 +210,37 @@ const createSection = asyncHandler(async (req, res) => {
 const deleteSection = asyncHandler(async (req, res) => {
   console.log('=== DELETE SECTION ===');
   console.log('Section ID:', req.params.sectionId);
-  
+
   try {
     const { sectionId } = req.params;
-    
+
     // Allow deletion of all sections including default ones
     // Users can delete any section they want
-    
+
     const section = await SectionSettings.findOneAndUpdate(
       { sectionId },
       { isActive: false },
       { new: true }
     );
-    
+
     if (!section) {
       return res.status(404).json({
         success: false,
         message: 'Section not found'
       });
     }
-    
+
+    // Clean up documents that belong to this section
+    // Set their sectionId to null so they become legacy documents
+    const ComplianceCulture = require('../models/complianceCultureModel');
+    const documentsResult = await ComplianceCulture.updateMany(
+      { sectionId: sectionId },
+      { $unset: { sectionId: 1 } }
+    );
+
+    console.log(`Cleaned up ${documentsResult.modifiedCount} documents for deleted section`);
     console.log('Section deleted successfully');
-    
+
     res.status(200).json({
       success: true,
       message: 'Section deleted successfully'
@@ -231,9 +255,30 @@ const deleteSection = asyncHandler(async (req, res) => {
   }
 });
 
+// Temporary cleanup endpoint
+const runCleanup = asyncHandler(async (req, res) => {
+  const { cleanupOrphanedDocuments } = require('../utils/cleanupOrphanedDocuments');
+
+  try {
+    await cleanupOrphanedDocuments();
+    res.status(200).json({
+      success: true,
+      message: 'Cleanup completed successfully'
+    });
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Cleanup failed',
+      error: error.message
+    });
+  }
+});
+
 module.exports = {
   getAllSections,
   updateSection,
   createSection,
-  deleteSection
+  deleteSection,
+  runCleanup
 };
