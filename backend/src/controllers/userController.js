@@ -3,6 +3,8 @@ const User = require("../models/userModel");
 const Role = require("../models/roleModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+const { sendPasswordResetEmail, send2FAEmail } = require("../services/emailService");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "1d" });
@@ -97,27 +99,31 @@ const loginUser = asyncHandler(async (req, res) => {
   console.log("Password verification:", passwordIsCorrect ? "Successful" : "Failed");
 
   if (passwordIsCorrect) {
-    // Update user online status and last login
-    user.isOnline = true;
-    user.lastLogin = new Date();
-    user.lastActivity = new Date();
+    // Generate 2FA code
+    const twoFACode = Math.floor(100000 + Math.random() * 900000).toString();
+    const twoFAExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Save 2FA code to user
+    user.twoFACode = twoFACode;
+    user.twoFAExpire = twoFAExpiry;
+    user.isLoginPending = true;
     await user.save();
 
-    const token = generateToken(user._id);
-    res.cookie("token", token, {
-      path: "/",
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000,
-      sameSite: "none",
-      secure: true,
-    });
+    // Send 2FA email (with fallback for development)
+    const emailResult = await send2FAEmail(user.email, twoFACode, user.name);
 
-    const { _id, name, email, role } = user;
-    const response = { _id, name, email, role };
-    if (process.env.NODE_ENV === "development") {
-      response.token = token;
+    if (emailResult.success) {
+      res.status(200).json({
+        success: true,
+        requiresTwoFA: true,
+        message: "Verification code sent to your email",
+        email: user.email,
+        userId: user._id
+      });
+    } else {
+      res.status(500);
+      throw new Error("Failed to send verification email. Please try again.");
     }
-    res.status(200).json(response);
   } else {
     res.status(400);
     throw new Error("Invalid email or password");
@@ -438,6 +444,133 @@ const getOperationManagers = asyncHandler(async (req, res) => {
   }
 });
 
+// Generate 6-digit reset code
+const generateResetCode = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// Request password reset
+const requestPasswordReset = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    res.status(400);
+    throw new Error("Please provide email address");
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    res.status(404);
+    throw new Error("No account found with this email address");
+  }
+
+  // Generate reset code and set expiry (15 minutes)
+  const resetCode = generateResetCode();
+  const resetExpiry = new Date(Date.now() + 15 * 60 * 1000);
+
+  // Save reset code to user
+  user.resetPasswordToken = resetCode;
+  user.resetPasswordExpire = resetExpiry;
+  await user.save();
+
+  // Send email
+  const emailResult = await sendPasswordResetEmail(email, resetCode);
+
+  if (!emailResult.success) {
+    res.status(500);
+    throw new Error("Failed to send reset email. Please try again later.");
+  }
+
+  res.status(200).json({
+    message: "Password reset code sent to your email",
+    success: true
+  });
+});
+
+// Verify reset code and reset password
+const resetPasswordWithCode = asyncHandler(async (req, res) => {
+  const { email, resetCode, newPassword } = req.body;
+
+  if (!email || !resetCode || !newPassword) {
+    res.status(400);
+    throw new Error("Please provide email, reset code, and new password");
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400);
+    throw new Error("Password must be at least 6 characters");
+  }
+
+  const user = await User.findOne({
+    email,
+    resetPasswordToken: resetCode,
+    resetPasswordExpire: { $gt: Date.now() }
+  });
+
+  if (!user) {
+    res.status(400);
+    throw new Error("Invalid or expired reset code");
+  }
+
+  // Set new password
+  user.password = newPassword;
+  user.resetPasswordToken = null;
+  user.resetPasswordExpire = null;
+  await user.save();
+
+  res.status(200).json({
+    message: "Password reset successful",
+    success: true
+  });
+});
+
+// Verify 2FA code and complete login
+const verify2FA = asyncHandler(async (req, res) => {
+  const { userId, code } = req.body;
+
+  if (!userId || !code) {
+    res.status(400);
+    throw new Error("Please provide user ID and verification code");
+  }
+
+  const user = await User.findOne({
+    _id: userId,
+    twoFACode: code,
+    twoFAExpire: { $gt: Date.now() },
+    isLoginPending: true
+  }).populate("role");
+
+  if (!user) {
+    res.status(400);
+    throw new Error("Invalid or expired verification code");
+  }
+
+  // Clear 2FA data and complete login
+  user.twoFACode = null;
+  user.twoFAExpire = null;
+  user.isLoginPending = false;
+  user.isOnline = true;
+  user.lastLogin = new Date();
+  user.lastActivity = new Date();
+  await user.save();
+
+  const token = generateToken(user._id);
+  res.cookie("token", token, {
+    path: "/",
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: "none",
+    secure: true,
+  });
+
+  const { _id, name, email, role } = user;
+  const response = { _id, name, email, role };
+  if (process.env.NODE_ENV === "development") {
+    response.token = token;
+  }
+  res.status(200).json(response);
+});
+
 module.exports = {
   registerUser,
   loginUser,
@@ -453,4 +586,7 @@ module.exports = {
   changePassword,
   getOnlineUsers,
   getOperationManagers,
+  requestPasswordReset,
+  resetPasswordWithCode,
+  verify2FA,
 };

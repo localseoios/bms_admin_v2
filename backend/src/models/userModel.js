@@ -39,6 +39,26 @@ const userSchema = mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpire: {
+      type: Date,
+      default: null,
+    },
+    twoFACode: {
+      type: String,
+      default: null,
+    },
+    twoFAExpire: {
+      type: Date,
+      default: null,
+    },
+    isLoginPending: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

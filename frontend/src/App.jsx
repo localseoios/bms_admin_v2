@@ -3,6 +3,8 @@ import Notifications from "./pages/Notifications/Notifications";
 import Layout from "./components/Layout";
 import UserManagement from "./pages/UserManagement/UserManagement";
 import Login from "./pages/Auth/Login";
+import ForgotPassword from "./pages/Auth/ForgotPassword";
+import ResetPassword from "./pages/Auth/ResetPassword";
 import ComplianceSelection from "./pages/ComplianceSelection";
 import ModeSelection from "./pages/ModeSelection";
 import ComplianceManagement from "./pages/Job/ComplianceManagement/ComplianceManagement";
@@ -38,8 +40,10 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public Route */}
+          {/* Public Routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Mode Selection Route (after login) */}
           <Route path="/mode-selection" element={<ModeSelection />} />

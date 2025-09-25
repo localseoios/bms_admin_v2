@@ -6,9 +6,13 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState(null); // For displaying error messages
-  const [loading, setLoading] = useState(false); // For showing loading state
-  const navigate = useNavigate(); // For redirecting after login
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [showTwoFA, setShowTwoFA] = useState(false);
+  const [twoFACode, setTwoFACode] = useState("");
+  const [userId, setUserId] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,10 +27,49 @@ function Login() {
     }
 
     try {
-      console.log("Sending login request with:", { email, password }); // Debug log
+      console.log("Sending login request with:", { email, password });
       const response = await axiosInstance.post("auth/login", {
         email,
         password,
+      });
+
+      const data = response.data;
+
+      if (data.requiresTwoFA) {
+        // Show 2FA verification step
+        setShowTwoFA(true);
+        setUserId(data.userId);
+        setUserEmail(data.email);
+        setError(null);
+      } else {
+        // Regular login (fallback)
+        if (rememberMe) {
+          localStorage.setItem("user", JSON.stringify(data));
+        }
+        navigate("/mode-selection");
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "An error occurred during login");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTwoFASubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    if (!twoFACode) {
+      setError("Please enter the verification code");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await axiosInstance.post("auth/verify-2fa", {
+        userId,
+        code: twoFACode,
       });
 
       const user = response.data;
@@ -35,7 +78,7 @@ function Login() {
       }
       navigate("/mode-selection");
     } catch (err) {
-      setError(err.response?.data?.message || "An error occurred during login");
+      setError(err.response?.data?.message || "Invalid verification code");
     } finally {
       setLoading(false);
     }
@@ -64,9 +107,14 @@ function Login() {
           </div>
 
           <div className="mb-8 text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {showTwoFA ? "Verify Your Identity" : "Welcome back"}
+            </h2>
             <p className="mt-2 text-sm text-gray-600">
-              Please sign in to your account
+              {showTwoFA
+                ? `We've sent a verification code to ${userEmail}`
+                : "Please sign in to your account"
+              }
             </p>
           </div>
 
@@ -75,78 +123,121 @@ function Login() {
             <div className="mb-4 text-center text-sm text-red-600">{error}</div>
           )}
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Email address
-              </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all duration-200"
-                  placeholder="Enter your email"
-                />
-              </div>
-            </div>
+          <form className="space-y-6" onSubmit={showTwoFA ? handleTwoFASubmit : handleSubmit}>
+            {!showTwoFA ? (
+              <>
+                {/* Regular Login Fields */}
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Email address
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all duration-200"
+                      placeholder="Enter your email"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all duration-200"
-                  placeholder="Enter your password"
-                />
-              </div>
-            </div>
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Password
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="password"
+                      name="password"
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all duration-200"
+                      placeholder="Enter your password"
+                    />
+                  </div>
+                </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded transition-colors duration-200"
-                />
-                <label
-                  htmlFor="remember-me"
-                  className="ml-2 block text-sm text-gray-700"
-                >
-                  Remember me
-                </label>
-              </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <input
+                      id="remember-me"
+                      name="remember-me"
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded transition-colors duration-200"
+                    />
+                    <label
+                      htmlFor="remember-me"
+                      className="ml-2 block text-sm text-gray-700"
+                    >
+                      Remember me
+                    </label>
+                  </div>
 
-              <div className="text-sm">
-                <Link
-                  to="/forgot-password"
-                  className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors duration-200"
-                >
-                  Forgot your password?
-                </Link>
-              </div>
-            </div>
+                  <div className="text-sm">
+                    <Link
+                      to="/forgot-password"
+                      className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors duration-200"
+                    >
+                      Forgot your password?
+                    </Link>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* 2FA Verification Field */}
+                <div>
+                  <label
+                    htmlFor="twoFACode"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Verification Code
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="twoFACode"
+                      name="twoFACode"
+                      type="text"
+                      required
+                      value={twoFACode}
+                      onChange={(e) => setTwoFACode(e.target.value)}
+                      maxLength="6"
+                      className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all duration-200 text-center text-xl font-mono tracking-widest"
+                      placeholder="000000"
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Enter the 6-digit code sent to your email
+                  </p>
+                </div>
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowTwoFA(false)}
+                    className="text-sm text-indigo-600 hover:text-indigo-500 transition-colors duration-200"
+                  >
+                    ← Back to Login
+                  </button>
+                </div>
+              </>
+            )}
 
             <div>
               <button
@@ -156,7 +247,10 @@ function Login() {
                   loading ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
-                {loading ? "Signing in..." : "Sign in"}
+                {loading
+                  ? (showTwoFA ? "Verifying..." : "Signing in...")
+                  : (showTwoFA ? "Verify Code" : "Sign in")
+                }
               </button>
             </div>
           </form>
