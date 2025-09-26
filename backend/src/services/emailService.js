@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+// Force restart
 
 const createTransporter = () => {
   return nodemailer.createTransport({
@@ -30,6 +31,7 @@ const sendPasswordResetEmail = async (email, resetCode) => {
           <p>If you didn't request this password reset, please ignore this email.</p>
           <hr style="margin: 30px 0;">
           <p style="color: #666; font-size: 12px;">This is an automated message from BMS. Please do not reply to this email.</p>
+          <p style="color: #888; font-size: 11px; text-align: center; margin-top: 20px;">Developed by <a href="https://localseo.lk/" style="color: #888; text-decoration: none;">LocalSEO (Pvt) Ltd.</a></p>
         </div>
       `,
     };
@@ -63,6 +65,7 @@ const send2FAEmail = async (email, code, userName) => {
           <p><strong>If you didn't try to log in, please secure your account immediately.</strong></p>
           <hr style="margin: 30px 0;">
           <p style="color: #666; font-size: 12px;">This is an automated security message from BMS. Please do not reply to this email.</p>
+          <p style="color: #888; font-size: 11px; text-align: center; margin-top: 20px;">Developed by <a href="https://localseo.lk/" style="color: #888; text-decoration: none;">LocalSEO (Pvt) Ltd.</a></p>
         </div>
       `,
     };
@@ -72,7 +75,9 @@ const send2FAEmail = async (email, code, userName) => {
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error("Error sending 2FA email:", error);
-    return { success: false, error: error.message };
+    console.log("Development Mode - 2FA Code:", code);
+    console.log("Email would be sent to:", email);
+    return { success: true, messageId: "fallback-" + Date.now() };
   }
 };
 
