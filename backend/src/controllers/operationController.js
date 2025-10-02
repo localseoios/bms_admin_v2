@@ -497,6 +497,18 @@ if (!Array.isArray(companyDetails.companyMemo)) {
 
   const updatedCompanyDetails = await companyDetails.save();
 
+  // Update job's clientName to match companyName if it was changed
+  if (companyName !== undefined && companyName !== job.clientName) {
+    job.clientName = companyName;
+
+    // Also update the Client model's name to keep it in sync
+    const Client = require("../models/Client");
+    await Client.findOneAndUpdate(
+      { gmail: job.gmail },
+      { name: companyName }
+    );
+  }
+
   // Add a timeline entry for the job
   job.timeline.push({
     status: job.status,

@@ -2788,6 +2788,10 @@ const handleSaveCompanyDetails = async () => {
     );
     setCompanyDetails(updatedResponse.data);
 
+    // Refresh job details to update the header with new company name
+    const jobResponse = await axiosInstance.get(`/jobs/${jobId}`);
+    setJob(jobResponse.data);
+
     setEditingCompanyDetails(false);
 
     setTimeout(() => {

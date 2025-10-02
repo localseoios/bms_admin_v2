@@ -222,20 +222,24 @@ const synchronizeCompanyDetails = async (gmail, sourceJobId) => {
         
         if (result.modifiedCount > 0) {
           updatedCount++;
-          
-          // Add timeline entry
-          await Job.updateOne(
-            { _id: job._id },
-            {
-              $push: {
-                timeline: {
-                  status: "updated",
-                  description: "Company details synchronized from another job",
-                  timestamp: new Date(),
-                }
+
+          // Update job's clientName if companyName was updated
+          const updateFields = {
+            $push: {
+              timeline: {
+                status: "updated",
+                description: "Company details synchronized from another job",
+                timestamp: new Date(),
               }
             }
-          );
+          };
+
+          if (updateData.companyName) {
+            updateFields.$set = { clientName: updateData.companyName };
+          }
+
+          // Add timeline entry and update clientName
+          await Job.updateOne({ _id: job._id }, updateFields);
         }
       } else {
         // Create new company details with synchronized data
@@ -247,21 +251,24 @@ const synchronizeCompanyDetails = async (gmail, sourceJobId) => {
         
         await newCompanyDetails.save();
         updatedCount++;
-        
-        // Add timeline entry
-        await Job.updateOne(
-          { _id: job._id },
-          {
-            $push: {
-              timeline: {
-                status: "updated",
-                description: "Company details synchronized from another job",
-                timestamp: new Date(),
-              }
+
+        // Update job's clientName if companyName was synchronized
+        const updateFields = {
+          $push: {
+            timeline: {
+              status: "updated",
+              description: "Company details synchronized from another job",
+              timestamp: new Date(),
             }
           }
-        );
-        
+        };
+
+        if (updateData.companyName) {
+          updateFields.$set = { clientName: updateData.companyName };
+        }
+
+        await Job.updateOne({ _id: job._id }, updateFields);
+
         console.log(`Created new company details for job ${job._id}`);
       }
     }
