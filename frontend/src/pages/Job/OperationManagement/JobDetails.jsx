@@ -724,8 +724,8 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
               />
             </div>
 
-            {/* Visa Copy Upload */}
-            <div className="col-span-2">
+            {/* Visa Copy Upload - HIDDEN */}
+            {/* <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                 <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 Visa Copy
@@ -840,7 +840,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                   </div>
                 )}
               </div>
-            </div>
+            </div> */}
 
             {/* QID Details Section */}
             <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
@@ -1570,6 +1570,118 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
               </div>
             </div>
 
+            {/* Other Documents Section */}
+            <div className="col-span-2">
+              <div className="border-t border-gray-200 pt-6 mt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
+                    Other Documents
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fileInput = document.createElement("input");
+                      fileInput.type = "file";
+                      fileInput.accept = ".pdf,.doc,.docx,.jpg,.jpeg,.png";
+                      fileInput.onchange = async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const newDetails = [...details];
+                          if (!newDetails[index].otherDocuments) {
+                            newDetails[index].otherDocuments = [];
+                          }
+                          newDetails[index].otherDocuments.push(file);
+                          setDetails(newDetails);
+                        }
+                      };
+                      fileInput.click();
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200 flex items-center space-x-1"
+                  >
+                    <PlusIcon className="h-3 w-3" />
+                    <span>Add Document</span>
+                  </button>
+                </div>
+
+                {entry.otherDocuments && entry.otherDocuments.length > 0 ? (
+                  <div className="space-y-2">
+                    {entry.otherDocuments.map((doc, docIndex) => (
+                      <div
+                        key={docIndex}
+                        className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-200"
+                      >
+                        <div className="flex items-center flex-1 min-w-0">
+                          <DocumentTextIcon className="h-4 w-4 text-indigo-600 mr-2 flex-shrink-0" />
+                          <span className="text-sm text-gray-900 truncate">
+                            {doc instanceof File ? doc.name : doc.fileName || `Document ${docIndex + 1}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 ml-2">
+                          {typeof doc === "object" && doc.fileUrl && (
+                            <a
+                              href={doc.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-white rounded border border-indigo-200 hover:shadow-sm transition-all"
+                            >
+                              View
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const fileInput = document.createElement("input");
+                              fileInput.type = "file";
+                              fileInput.accept = ".pdf,.doc,.docx,.jpg,.jpeg,.png";
+                              fileInput.onchange = (e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                  const newDetails = [...details];
+                                  newDetails[index] = {
+                                    ...newDetails[index],
+                                    otherDocuments: [...(newDetails[index].otherDocuments || [])]
+                                  };
+                                  newDetails[index].otherDocuments[docIndex] = file;
+                                  setDetails(newDetails);
+                                }
+                              };
+                              fileInput.click();
+                            }}
+                            className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-white rounded border border-blue-200 hover:shadow-sm transition-all"
+                          >
+                            Replace
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newDetails = [...details];
+                              newDetails[index] = {
+                                ...newDetails[index],
+                                otherDocuments: [...(newDetails[index].otherDocuments || [])]
+                              };
+                              newDetails[index].otherDocuments.splice(docIndex, 1);
+                              setDetails(newDetails);
+                            }}
+                            className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded hover:shadow-sm transition-all"
+                            title="Delete document"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                    <DocumentTextIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-500">No other documents uploaded</p>
+                    <p className="text-xs text-gray-400 mt-1">Click "Add Document" to upload files</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Clear auto-fill button for each entry */}
             {autoFilledEntries[`${section}-${index}`] && (
               <div className="col-span-2">
@@ -1664,6 +1776,10 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
     documents: [],
   });
 
+  const [otherDocuments, setOtherDocuments] = useState([]);
+  const [uploadingOtherDoc, setUploadingOtherDoc] = useState(false);
+  const otherDocFileInputRef = useRef(null);
+
   // Company details state
   const [companyDetails, setCompanyDetails] = useState({
     companyName: "",
@@ -1735,7 +1851,6 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
           "Passport Expiry": director.passportExpiry || "",
           "Mobile Number": director.mobileNo || "",
           Email: director.email || "",
-          "Has Visa Copy": director.visaCopy ? "Yes" : "No",
           "Has QID Document": director.qidDoc ? "Yes" : "No",
           "Has National Address Doc": director.nationalAddressDoc
             ? "Yes"
@@ -1762,7 +1877,6 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
             "Passport Expiry": shareholder.passportExpiry || "",
             "Mobile Number": shareholder.mobileNo || "",
             Email: shareholder.email || "",
-            "Has Visa Copy": shareholder.visaCopy ? "Yes" : "No",
             "Has QID Document": shareholder.qidDoc ? "Yes" : "No",
             "Has National Address Doc": shareholder.nationalAddressDoc
               ? "Yes"
@@ -1793,7 +1907,6 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
           "Passport Expiry": secretary.passportExpiry || "",
           "Mobile Number": secretary.mobileNo || "",
           Email: secretary.email || "",
-          "Has Visa Copy": secretary.visaCopy ? "Yes" : "No",
           "Has QID Document": secretary.qidDoc ? "Yes" : "No",
           "Has National Address Doc": secretary.nationalAddressDoc
             ? "Yes"
@@ -1819,7 +1932,6 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
           "Passport Expiry": sef.passportExpiry || "",
           "Mobile Number": sef.mobileNo || "",
           Email: sef.email || "",
-          "Has Visa Copy": sef.visaCopy ? "Yes" : "No",
           "Has QID Document": sef.qidDoc ? "Yes" : "No",
           "Has National Address Doc": sef.nationalAddressDoc ? "Yes" : "No",
           "Has Passport Document": sef.passportDoc ? "Yes" : "No",
@@ -2153,6 +2265,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       mobileNo: "",
       email: "",
       cv: null,
+      otherDocuments: [],
     },
   ]);
 
@@ -2173,6 +2286,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       mobileNo: "",
       email: "",
       cv: null,
+      otherDocuments: [],
     },
   ]);
 
@@ -2193,6 +2307,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       mobileNo: "",
       email: "",
       cv: null,
+      otherDocuments: [],
     },
   ]);
 
@@ -2213,6 +2328,18 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       mobileNo: "",
       email: "",
       cv: null,
+      otherDocuments: [],
+    },
+  ]);
+
+  const [otherDocumentsDetails, setOtherDocumentsDetails] = useState([
+    {
+      documentType: "",
+      documentNumber: "",
+      issueDate: "",
+      expiryDate: "",
+      uploadedFile: null,
+      description: "",
     },
   ]);
 
@@ -2268,6 +2395,25 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
               email: response.data.gmail || "",
             },
           ]);
+
+          setOtherDocuments(response.data.otherDocuments || []);
+        }
+
+        const otherDocsResponse = await axiosInstance.get(
+          `/operations/jobs/${jobId}/other-documents-details`
+        );
+        if (otherDocsResponse.data && otherDocsResponse.data.length > 0) {
+          setOtherDocumentsDetails(
+            otherDocsResponse.data.map((doc) => ({
+              _id: doc._id,
+              documentType: doc.documentType || "",
+              documentNumber: doc.documentNumber || "",
+              issueDate: doc.issueDate ? doc.issueDate.split("T")[0] : "",
+              expiryDate: doc.expiryDate ? doc.expiryDate.split("T")[0] : "",
+              uploadedFile: doc.uploadedFile || null,
+              description: doc.description || "",
+            }))
+          );
         }
 
         setError(null);
@@ -2837,6 +2983,189 @@ const handleSaveCompanyDetails = async () => {
     }
   };
 
+  const handleUploadOtherDocument = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingOtherDoc(true);
+      setActionMessage({
+        type: "info",
+        message: "Uploading document...",
+      });
+
+      const formData = new FormData();
+      formData.append("document", file);
+
+      const response = await axiosInstance.post(
+        `/jobs/${jobId}/other-documents`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
+
+      setOtherDocuments(response.data.otherDocuments || []);
+      setActionMessage({
+        type: "success",
+        message: "Document uploaded successfully",
+      });
+
+      if (otherDocFileInputRef.current) {
+        otherDocFileInputRef.current.value = "";
+      }
+
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } catch (err) {
+      console.error("Error uploading document:", err);
+      setActionMessage({
+        type: "error",
+        message: err.response?.data?.message || "Failed to upload document",
+      });
+    } finally {
+      setUploadingOtherDoc(false);
+    }
+  };
+
+  const handleDeleteOtherDocument = async (index) => {
+    if (!window.confirm("Are you sure you want to delete this document?")) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: "Deleting document...",
+      });
+
+      const response = await axiosInstance.delete(
+        `/jobs/${jobId}/other-documents/${index}`
+      );
+
+      setOtherDocuments(response.data.otherDocuments || []);
+      setActionMessage({
+        type: "success",
+        message: "Document deleted successfully",
+      });
+
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } catch (err) {
+      console.error("Error deleting document:", err);
+      setActionMessage({
+        type: "error",
+        message: err.response?.data?.message || "Failed to delete document",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReplaceOtherDocument = async (index, file) => {
+    if (!file) return;
+
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: "Replacing document...",
+      });
+
+      const formData = new FormData();
+      formData.append("document", file);
+
+      const response = await axiosInstance.put(
+        `/jobs/${jobId}/other-documents/${index}`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
+
+      setOtherDocuments(response.data.otherDocuments || []);
+      setActionMessage({
+        type: "success",
+        message: "Document replaced successfully",
+      });
+
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } catch (err) {
+      console.error("Error replacing document:", err);
+      setActionMessage({
+        type: "error",
+        message: err.response?.data?.message || "Failed to replace document",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveOtherDocumentsDetails = async () => {
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: "Saving other documents details...",
+      });
+
+      for (const entry of otherDocumentsDetails) {
+        const formData = new FormData();
+
+        if (entry.documentType) formData.append("documentType", entry.documentType);
+        if (entry.documentNumber) formData.append("documentNumber", entry.documentNumber);
+        if (entry.issueDate) formData.append("issueDate", entry.issueDate);
+        if (entry.expiryDate) formData.append("expiryDate", entry.expiryDate);
+        if (entry.description) formData.append("description", entry.description);
+
+        if (entry.uploadedFile && entry.uploadedFile instanceof File) {
+          formData.append("uploadedFile", entry.uploadedFile);
+        }
+
+        if (entry._id) {
+          await axiosInstance.put(
+            `/operations/jobs/${jobId}/other-documents-details/${entry._id}`,
+            formData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+            }
+          );
+        } else {
+          const response = await axiosInstance.post(
+            `/operations/jobs/${jobId}/other-documents-details`,
+            formData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+            }
+          );
+          entry._id = response.data._id;
+        }
+      }
+
+      setActionMessage({
+        type: "success",
+        message: "Other documents details saved successfully",
+      });
+
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } catch (err) {
+      console.error("Error saving other documents details:", err);
+      setActionMessage({
+        type: "error",
+        message: err.response?.data?.message || "Failed to save other documents details",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Complete operation function
   const handleCompleteOperation = async () => {
     try {
@@ -3015,6 +3344,39 @@ const handleSaveCompanyDetails = async () => {
         }
       });
 
+      // Add other documents - send with position preservation
+      if (entry.otherDocuments && Array.isArray(entry.otherDocuments)) {
+        const docsWithPositions = [];
+        const newFilesWithIndex = [];
+
+        entry.otherDocuments.forEach((doc, idx) => {
+          if (doc instanceof File) {
+            newFilesWithIndex.push({ file: doc, index: idx });
+          } else if (doc.fileUrl) {
+            docsWithPositions.push({
+              fileUrl: doc.fileUrl,
+              fileName: doc.fileName,
+              uploadedAt: doc.uploadedAt,
+              index: idx,
+            });
+          }
+        });
+
+        formData.append("otherDocumentsMetadata", JSON.stringify({
+          existingDocs: docsWithPositions,
+          totalCount: entry.otherDocuments.length,
+        }));
+
+        newFilesWithIndex.forEach(({ file, index }) => {
+          formData.append(`otherDocument_${index}`, file);
+        });
+      } else {
+        formData.append("otherDocumentsMetadata", JSON.stringify({
+          existingDocs: [],
+          totalCount: 0,
+        }));
+      }
+
       let response;
 
       // Update or create entry based on whether _id exists
@@ -3044,6 +3406,7 @@ const handleSaveCompanyDetails = async () => {
               response.data.nationalAddressDoc || entry.nationalAddressDoc,
             passportDoc: response.data.passportDoc || entry.passportDoc,
             cv: response.data.cv || entry.cv,
+            otherDocuments: response.data.otherDocuments || entry.otherDocuments || [],
           };
           return newEntries;
         });
@@ -3104,6 +3467,7 @@ const handleSaveCompanyDetails = async () => {
               response.data.nationalAddressDoc || entry.nationalAddressDoc,
             passportDoc: response.data.passportDoc || entry.passportDoc,
             cv: response.data.cv || entry.cv,
+            otherDocuments: response.data.otherDocuments || entry.otherDocuments || [],
           };
           return newEntries;
         });
@@ -3844,8 +4208,8 @@ const handleSaveCompanyDetails = async () => {
                 // REMOVED: onKeyDown handler that was preventing normal typing
               />
             </div>
-
-            <div className="col-span-2">
+            {/* Visa Copy Upload - HIDDEN */}
+            {/* <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                 <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 Visa Copy
@@ -3960,7 +4324,7 @@ const handleSaveCompanyDetails = async () => {
                   </div>
                 )}
               </div>
-            </div>
+            </div> */}
 
             <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
@@ -4672,6 +5036,118 @@ const handleSaveCompanyDetails = async () => {
                         or drag and drop your CV document here
                       </p>
                     </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Other Documents Section */}
+            <div className="col-span-2">
+              <div className="border-t border-gray-200 pt-6 mt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
+                    Other Documents
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fileInput = document.createElement("input");
+                      fileInput.type = "file";
+                      fileInput.accept = ".pdf,.doc,.docx,.jpg,.jpeg,.png";
+                      fileInput.onchange = async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const newDetails = [...details];
+                          if (!newDetails[index].otherDocuments) {
+                            newDetails[index].otherDocuments = [];
+                          }
+                          newDetails[index].otherDocuments.push(file);
+                          setDetails(newDetails);
+                        }
+                      };
+                      fileInput.click();
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200 flex items-center space-x-1"
+                  >
+                    <PlusIcon className="h-3 w-3" />
+                    <span>Add Document</span>
+                  </button>
+                </div>
+
+                {entry.otherDocuments && entry.otherDocuments.length > 0 ? (
+                  <div className="space-y-2">
+                    {entry.otherDocuments.map((doc, docIndex) => (
+                      <div
+                        key={docIndex}
+                        className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-200"
+                      >
+                        <div className="flex items-center flex-1 min-w-0">
+                          <DocumentTextIcon className="h-4 w-4 text-indigo-600 mr-2 flex-shrink-0" />
+                          <span className="text-sm text-gray-900 truncate">
+                            {doc instanceof File ? doc.name : doc.fileName || `Document ${docIndex + 1}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 ml-2">
+                          {typeof doc === "object" && doc.fileUrl && (
+                            <a
+                              href={doc.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-white rounded border border-indigo-200 hover:shadow-sm transition-all"
+                            >
+                              View
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const fileInput = document.createElement("input");
+                              fileInput.type = "file";
+                              fileInput.accept = ".pdf,.doc,.docx,.jpg,.jpeg,.png";
+                              fileInput.onchange = (e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                  const newDetails = [...details];
+                                  newDetails[index] = {
+                                    ...newDetails[index],
+                                    otherDocuments: [...(newDetails[index].otherDocuments || [])]
+                                  };
+                                  newDetails[index].otherDocuments[docIndex] = file;
+                                  setDetails(newDetails);
+                                }
+                              };
+                              fileInput.click();
+                            }}
+                            className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 bg-white rounded border border-blue-200 hover:shadow-sm transition-all"
+                          >
+                            Replace
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newDetails = [...details];
+                              newDetails[index] = {
+                                ...newDetails[index],
+                                otherDocuments: [...(newDetails[index].otherDocuments || [])]
+                              };
+                              newDetails[index].otherDocuments.splice(docIndex, 1);
+                              setDetails(newDetails);
+                            }}
+                            className="p-1 text-red-500 hover:text-white hover:bg-red-500 rounded hover:shadow-sm transition-all"
+                            title="Delete document"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                    <DocumentTextIcon className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-500">No other documents uploaded</p>
+                    <p className="text-xs text-gray-400 mt-1">Click "Add Document" to upload files</p>
                   </div>
                 )}
               </div>
@@ -6656,6 +7132,207 @@ const renderCompanyDetailsSection = () => {
                     </div>
                   )}
 
+                  {/* Other Documents Content */}
+                  {activeTab === "other" && (
+                    <div className="space-y-6">
+                      {otherDocumentsDetails.map((entry, index) => (
+                        <div
+                          key={index}
+                          className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300"
+                        >
+                          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+                            <div className="flex items-center">
+                              <div className="bg-indigo-100 rounded-lg p-2 mr-3">
+                                <DocumentTextIcon className="h-5 w-5 text-indigo-600" />
+                              </div>
+                              <h3 className="text-lg font-bold text-gray-800">
+                                Document {index + 1}
+                              </h3>
+                            </div>
+                            {otherDocumentsDetails.length > 1 && (
+                              <button
+                                onClick={() => {
+                                  const newDetails = otherDocumentsDetails.filter((_, i) => i !== index);
+                                  setOtherDocumentsDetails(newDetails);
+                                }}
+                                className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors"
+                                title="Remove entry"
+                              >
+                                <XMarkIcon className="h-5 w-5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                            <div className="space-y-1">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Document Type
+                              </label>
+                              <input
+                                type="text"
+                                value={entry.documentType}
+                                onChange={(e) => {
+                                  const newDetails = [...otherDocumentsDetails];
+                                  newDetails[index].documentType = e.target.value;
+                                  setOtherDocumentsDetails(newDetails);
+                                }}
+                                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                                placeholder="e.g., Passport, License, Certificate"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Document Number
+                              </label>
+                              <input
+                                type="text"
+                                value={entry.documentNumber}
+                                onChange={(e) => {
+                                  const newDetails = [...otherDocumentsDetails];
+                                  newDetails[index].documentNumber = e.target.value;
+                                  setOtherDocumentsDetails(newDetails);
+                                }}
+                                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                                placeholder="Enter document number"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Issue Date
+                              </label>
+                              <input
+                                type="date"
+                                value={entry.issueDate}
+                                onChange={(e) => {
+                                  const newDetails = [...otherDocumentsDetails];
+                                  newDetails[index].issueDate = e.target.value;
+                                  setOtherDocumentsDetails(newDetails);
+                                }}
+                                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Expiry Date
+                              </label>
+                              <input
+                                type="date"
+                                value={entry.expiryDate}
+                                onChange={(e) => {
+                                  const newDetails = [...otherDocumentsDetails];
+                                  newDetails[index].expiryDate = e.target.value;
+                                  setOtherDocumentsDetails(newDetails);
+                                }}
+                                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                              />
+                            </div>
+
+                            <div className="col-span-2 space-y-1">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Description (Optional)
+                              </label>
+                              <textarea
+                                value={entry.description}
+                                onChange={(e) => {
+                                  const newDetails = [...otherDocumentsDetails];
+                                  newDetails[index].description = e.target.value;
+                                  setOtherDocumentsDetails(newDetails);
+                                }}
+                                rows={2}
+                                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                                placeholder="Add any additional details about this document"
+                              />
+                            </div>
+
+                            <div className="col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                                <DocumentTextIcon className="h-4 w-4 mr-1 text-indigo-500" />
+                                Upload Document
+                              </label>
+                              <div className="border-2 border-dashed rounded-lg p-4 text-center hover:border-indigo-500 transition-colors">
+                                {entry.uploadedFile ? (
+                                  <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
+                                    <div className="flex items-center">
+                                      <CheckCircleIcon className="h-5 w-5 text-green-600 mr-2" />
+                                      <span className="text-sm font-medium text-green-900">
+                                        {entry.uploadedFile instanceof File
+                                          ? entry.uploadedFile.name
+                                          : "Document Uploaded"}
+                                      </span>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        const newDetails = [...otherDocumentsDetails];
+                                        newDetails[index].uploadedFile = null;
+                                        setOtherDocumentsDetails(newDetails);
+                                      }}
+                                      className="text-red-500 hover:text-red-700"
+                                    >
+                                      <XMarkIcon className="h-5 w-5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className="cursor-pointer">
+                                    <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
+                                    <p className="mt-2 text-sm text-gray-600">
+                                      Click to upload or drag and drop
+                                    </p>
+                                    <input
+                                      type="file"
+                                      onChange={(e) => {
+                                        const newDetails = [...otherDocumentsDetails];
+                                        newDetails[index].uploadedFile = e.target.files[0];
+                                        setOtherDocumentsDetails(newDetails);
+                                      }}
+                                      className="hidden"
+                                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        onClick={() => {
+                          setOtherDocumentsDetails([
+                            ...otherDocumentsDetails,
+                            {
+                              documentType: "",
+                              documentNumber: "",
+                              issueDate: "",
+                              expiryDate: "",
+                              uploadedFile: null,
+                              description: "",
+                            },
+                          ]);
+                        }}
+                        className="w-full py-3 px-4 border-2 border-dashed border-indigo-300 rounded-lg text-indigo-600 hover:border-indigo-500 hover:bg-indigo-50 transition-all duration-200 flex items-center justify-center space-x-2 font-medium"
+                      >
+                        <PlusIcon className="h-5 w-5" />
+                        <span>Add Another Document</span>
+                      </button>
+
+                      <div className="mt-6 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSaveOtherDocumentsDetails}
+                          disabled={submitting}
+                          className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md transition-all duration-200 transform hover:scale-105 font-medium ${
+                            submitting ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
+                        >
+                          {submitting ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Person Details Content */}
                   {activeTab === "director" &&
                     renderPersonDetailsWithAutoSuggest(
@@ -6744,6 +7421,7 @@ const renderCompanyDetailsSection = () => {
 
           <div className="space-y-8">
             <motion.div
+              key={job.clientName}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5 }}

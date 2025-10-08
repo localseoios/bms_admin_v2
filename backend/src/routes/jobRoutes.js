@@ -17,10 +17,13 @@ const {
   cancelJob,
   getAssignedJobs,
   getJobDetails,
-  updateJob, // ← FIXED: Import from the same controller
+  updateJob,
   checkJobNumber,
-  searchJobsWithPersonDetails, // ← FIXED: Import from the same controller
-} = require("../controllers/jobController"); // ← All functions from the same file
+  searchJobsWithPersonDetails,
+  addOtherDocument,
+  deleteOtherDocument,
+  replaceOtherDocument,
+} = require("../controllers/jobController");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -198,6 +201,30 @@ router.put("/:id/cancel", protect, adminOnly, cancelJob);
 
 // Job timeline route
 router.get("/:id/timeline", protect, getJobTimeline);
+
+// Other documents management routes
+router.post(
+  "/:id/other-documents",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  addOtherDocument
+);
+
+router.delete(
+  "/:id/other-documents/:index",
+  protect,
+  checkPermission("operationManagement"),
+  deleteOtherDocument
+);
+
+router.put(
+  "/:id/other-documents/:index",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  replaceOtherDocument
+);
 
 // ===== GENERAL PARAMETERIZED ROUTES (LAST) =====
 

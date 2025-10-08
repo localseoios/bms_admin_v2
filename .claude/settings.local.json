@@ -25,7 +25,10 @@
       "Read(//mnt/c/Users/DELL/Pictures/Screenshots/**)",
       "Bash(nc localhost 5000)",
       "Bash(/bashes)",
-      "Bash(nc:*)"
+      "Bash(nc:*)",
+      "Bash(timeout:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

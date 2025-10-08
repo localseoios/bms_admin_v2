@@ -1197,7 +1197,155 @@ const updateJob = asyncHandler(async (req, res) => {
   }
 });
 
+const addOtherDocument = asyncHandler(async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
 
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const uploadResult = await safeCloudinaryUpload(req.file.path);
+
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+
+    if (!uploadResult.success) {
+      return res.status(500).json({
+        message: "Failed to upload document",
+        error: uploadResult.error
+      });
+    }
+
+    job.otherDocuments = job.otherDocuments || [];
+    job.otherDocuments.push(uploadResult.url);
+
+    job.timeline.push({
+      status: "updated",
+      description: `Document added to Other Documents by ${req.user.name}`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+
+    await job.save();
+
+    res.status(200).json({
+      message: "Document added successfully",
+      otherDocuments: job.otherDocuments,
+    });
+  } catch (error) {
+    console.error("Error adding document:", error);
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+});
+
+const deleteOtherDocument = asyncHandler(async (req, res) => {
+  try {
+    const { id, index } = req.params;
+    const job = await Job.findById(id);
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    if (!job.otherDocuments || job.otherDocuments.length === 0) {
+      return res.status(404).json({ message: "No documents found" });
+    }
+
+    const docIndex = parseInt(index);
+    if (docIndex < 0 || docIndex >= job.otherDocuments.length) {
+      return res.status(400).json({ message: "Invalid document index" });
+    }
+
+    job.otherDocuments.splice(docIndex, 1);
+
+    job.timeline.push({
+      status: "updated",
+      description: `Document removed from Other Documents by ${req.user.name}`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+
+    await job.save();
+
+    res.status(200).json({
+      message: "Document deleted successfully",
+      otherDocuments: job.otherDocuments,
+    });
+  } catch (error) {
+    console.error("Error deleting document:", error);
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+});
+
+const replaceOtherDocument = asyncHandler(async (req, res) => {
+  try {
+    const { id, index } = req.params;
+    const job = await Job.findById(id);
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    if (!job.otherDocuments || job.otherDocuments.length === 0) {
+      return res.status(404).json({ message: "No documents found" });
+    }
+
+    const docIndex = parseInt(index);
+    if (docIndex < 0 || docIndex >= job.otherDocuments.length) {
+      return res.status(400).json({ message: "Invalid document index" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const uploadResult = await safeCloudinaryUpload(req.file.path);
+
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+
+    if (!uploadResult.success) {
+      return res.status(500).json({
+        message: "Failed to upload document",
+        error: uploadResult.error
+      });
+    }
+
+    job.otherDocuments[docIndex] = uploadResult.url;
+
+    job.timeline.push({
+      status: "updated",
+      description: `Document replaced in Other Documents by ${req.user.name}`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+
+    await job.save();
+
+    res.status(200).json({
+      message: "Document replaced successfully",
+      otherDocuments: job.otherDocuments,
+    });
+  } catch (error) {
+    console.error("Error replacing document:", error);
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+});
 
 module.exports = {
   createJob,
@@ -1213,4 +1361,7 @@ module.exports = {
   getJobDetails,
   updateJob,
   searchJobsWithPersonDetails,
+  addOtherDocument,
+  deleteOtherDocument,
+  replaceOtherDocument,
 };

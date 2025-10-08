@@ -669,7 +669,7 @@ function KYCManagement() {
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                   KYC Management
                 </h1>
-                <p className="mt-2 text-sm text-gray-600">
+                {/* <p className="mt-2 text-sm text-gray-600">
                   {isLMRO
                     ? "LMRO"
                     : isDLMRO
@@ -678,7 +678,7 @@ function KYCManagement() {
                     ? "CEO"
                     : "Admin"}{" "}
                   Dashboard - Review and approve KYC submissions
-                </p>
+                </p> */}
               </div>
             </div>
           </div>

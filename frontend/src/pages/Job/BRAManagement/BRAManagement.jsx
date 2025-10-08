@@ -665,7 +665,7 @@ function BRAManagement() {
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
                   BRA Management
                 </h1>
-                <p className="mt-2 text-sm text-gray-600">
+                {/* <p className="mt-2 text-sm text-gray-600">
                   {isLMRO
                     ? "LMRO"
                     : isDLMRO
@@ -674,7 +674,7 @@ function BRAManagement() {
                     ? "CEO"
                     : "Admin"}{" "}
                   Dashboard - Review and approve BRA submissions
-                </p>
+                </p> */}
               </div>
             </div>
           </div>
@@ -719,7 +719,7 @@ function BRAManagement() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      LMRO Review
+                    MLRO Review
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {
@@ -746,7 +746,7 @@ function BRAManagement() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      DLMRO Review
+                    DMLRO Review
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {

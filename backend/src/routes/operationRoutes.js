@@ -29,6 +29,11 @@ const {
   deleteCompanyDocument,
   deletePersonDocument,
   deleteKycSignedDocument,
+  fixCorruptedCrExtract,
+  getOtherDocumentsDetails,
+  addOtherDocumentsDetails,
+  updateOtherDocumentsDetails,
+  deleteOtherDocumentsDetails,
 } = require("../controllers/operationController");
 
 
@@ -217,13 +222,7 @@ router.post(
   "/jobs/:jobId/person-details/:personType",
   protect,
   checkPermission("operationManagement"),
-  upload.fields([
-    { name: "visaCopy", maxCount: 1 },
-    { name: "qidDoc", maxCount: 1 },
-    { name: "nationalAddressDoc", maxCount: 1 },
-    { name: "passportDoc", maxCount: 1 },
-    { name: "cv", maxCount: 1 },
-  ]),
+  upload.any(),
   addPersonDetails
 );
 
@@ -231,13 +230,7 @@ router.put(
   "/jobs/:jobId/person-details/:personType/:personId",
   protect,
   checkPermission("operationManagement"),
-  upload.fields([
-    { name: "visaCopy", maxCount: 1 },
-    { name: "qidDoc", maxCount: 1 },
-    { name: "nationalAddressDoc", maxCount: 1 },
-    { name: "passportDoc", maxCount: 1 },
-    { name: "cv", maxCount: 1 },
-  ]),
+  upload.any(),
   updatePersonDetails
 );
 
@@ -436,6 +429,44 @@ router.delete(
   protect,
   checkPermission("operationManagement"),
   deleteEngagementLetter
+);
+
+router.post(
+  "/jobs/:jobId/fix-crextract",
+  protect,
+  checkPermission("operationManagement"),
+  fixCorruptedCrExtract
+);
+
+// Other Documents Details Routes
+router.get(
+  "/jobs/:jobId/other-documents-details",
+  protect,
+  checkPermission("operationManagement"),
+  getOtherDocumentsDetails
+);
+
+router.post(
+  "/jobs/:jobId/other-documents-details",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("uploadedFile"),
+  addOtherDocumentsDetails
+);
+
+router.put(
+  "/jobs/:jobId/other-documents-details/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("uploadedFile"),
+  updateOtherDocumentsDetails
+);
+
+router.delete(
+  "/jobs/:jobId/other-documents-details/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  deleteOtherDocumentsDetails
 );
 
 console.log("✅ operationRoutes.js loaded, routes registered");

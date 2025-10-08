@@ -85,12 +85,18 @@ Files are temporarily stored locally, then uploaded to Cloudinary. Supported typ
 - **Client**: Basic client information
 - **Job**: Central entity with status workflows, timeline tracking, document attachments
 - **Notifications**: Real-time system updates
+- **PersonDetails**: Director/Shareholder/Secretary/SEF details with document arrays
+  - Contains `otherDocuments` array for multiple document storage
+  - Each document includes: fileUrl, fileName, uploadedAt
+  - Field history tracking for audit trail
+  - visaCopy field present but hidden in UI
 
 ### Schema Patterns
 - All models include timestamps (`createdAt`, `updatedAt`)
 - ObjectId references with Mongoose populate
 - Compound indexes for performance
 - Validation at schema level
+- Array fields for multiple document storage with metadata
 
 ## API Structure
 
@@ -127,6 +133,56 @@ RESTful endpoints organized by domain:
 - Real-time notification system with badges
 - Excel export/import functionality available
 - Daily cron job handles expiry notifications
+
+## Recent Updates and Features
+
+### Person Details (Director/Shareholder/Secretary/SEF)
+
+#### Other Documents Feature
+- **Location**: JobDetails.jsx and ClientProfile.jsx
+- **Purpose**: Allow multiple document uploads per person
+- **Features**:
+  - Upload multiple documents with Add button
+  - Replace individual documents (position-preserved)
+  - Delete individual documents
+  - View documents in new tab
+  - Documents visible in ClientProfile page with purple/pink gradient design
+
+- **Implementation Details**:
+  - Backend: `otherDocuments` array field in PersonDetails schema (OperationModels.js)
+  - Position-based array reconstruction for replace operations
+  - Uses indexed field names: `otherDocument_0`, `otherDocument_1`, etc.
+  - Metadata sent as JSON: `otherDocumentsMetadata` with positions
+  - Multer configured with `upload.any()` for dynamic field names
+  - Deep cloning in React state to prevent shallow copy issues
+
+#### Hidden Fields
+- **Visa Copy**: Field is hidden from all UI displays but data remains in database
+  - Hidden in JobDetails.jsx (both form functions)
+  - Hidden in ClientProfile.jsx document display
+  - Removed from Excel export ("Has Visa Copy" column)
+  - Backend schema still contains visaCopy field for data preservation
+
+### File Upload Architecture
+
+#### Dynamic File Uploads
+- Routes use `upload.any()` instead of fixed field definitions
+- Supports position-based metadata for array operations
+- FormData structure: indexed field names + metadata JSON
+- Backend reconstructs arrays based on position metadata
+
+#### Position-Preservation Pattern
+```javascript
+// Frontend sends:
+- otherDocument_0, otherDocument_5 (files at specific positions)
+- otherDocumentsMetadata: { existingDocs: [...], totalCount: 6 }
+
+// Backend reconstructs:
+- Creates array of size totalCount
+- Places existing docs at their positions
+- Uploads and places new files at their positions
+- Filters out null values
+```
 
 ## File Structure Highlights
 
@@ -236,3 +292,47 @@ Before completing any task:
 - Use HTTPS in production
 - Implement proper CORS configuration
 - Never log sensitive information
+
+## Common Implementation Patterns
+
+### React State Management Best Practices
+
+#### Deep Cloning for Array Updates
+When updating nested arrays in state, always create deep clones to prevent shallow copy issues:
+
+```javascript
+// ❌ Wrong - Shallow copy (nested arrays still reference original)
+const newDetails = [...details];
+newDetails[index].otherDocuments[docIndex] = newFile;
+
+// ✅ Correct - Deep clone both levels
+const newDetails = [...details];
+newDetails[index] = {
+  ...newDetails[index],
+  otherDocuments: [...(newDetails[index].otherDocuments || [])]
+};
+newDetails[index].otherDocuments[docIndex] = newFile;
+```
+
+### File Upload Best Practices
+
+#### Position-Based Array Operations
+When replacing items in document arrays:
+1. Send position metadata with file uploads
+2. Use indexed field names in FormData
+3. Backend reconstructs array preserving positions
+4. Frontend maintains position references during operations
+
+#### Multer Configuration
+- Use `upload.any()` for dynamic field names
+- Use `upload.fields([...])` for fixed, known fields
+- Always validate file types and sizes
+- Clean up temp files after upload
+
+### Common Pitfalls to Avoid
+
+1. **Shallow Array Copies**: Always deep clone when updating nested arrays
+2. **Server Restart**: Remember to restart backend after route configuration changes
+3. **WSL/Windows Path Issues**: Run npm install from correct environment (Windows CMD for Windows paths)
+4. **FormData Field Names**: Use consistent naming pattern with indices for array uploads
+5. **State Updates**: Never mutate state directly, always create new references

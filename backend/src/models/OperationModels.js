@@ -103,6 +103,13 @@ const personDetailsSchema = new mongoose.Schema(
     mobileNo: { type: String },
     email: { type: String },
     cv: { type: String }, // URL to document
+    otherDocuments: [
+      {
+        fileUrl: { type: String, required: true },
+        fileName: { type: String },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -216,12 +223,35 @@ const kycDocumentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const otherDocumentsDetailsSchema = new mongoose.Schema(
+  {
+    jobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      required: true,
+    },
+    documentType: { type: String },
+    documentNumber: { type: String },
+    issueDate: { type: Date },
+    expiryDate: { type: Date },
+    uploadedFile: { type: String },
+    description: { type: String },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  { timestamps: true }
+);
+
 const CompanyDetails = mongoose.model("CompanyDetails", companyDetailsSchema);
 const PersonDetails = mongoose.model("PersonDetails", personDetailsSchema);
 const KycDocument = mongoose.model("KycDocument", kycDocumentSchema);
+const OtherDocumentsDetails = mongoose.model("OtherDocumentsDetails", otherDocumentsDetailsSchema);
 
 module.exports = {
   CompanyDetails,
   PersonDetails,
   KycDocument,
+  OtherDocumentsDetails,
 };

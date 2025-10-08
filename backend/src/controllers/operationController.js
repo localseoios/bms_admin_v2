@@ -7,6 +7,7 @@ const {
   CompanyDetails,
   PersonDetails,
   KycDocument,
+  OtherDocumentsDetails,
 } = require("../models/OperationModels");
 const Job = require("../models/Job");
 const notificationService = require("../services/notificationService");
@@ -222,12 +223,7 @@ const getCompanyDetails = asyncHandler(async (req, res) => {
 
 const updateCompanyDetails = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
-  
-  console.log("🔍 UPDATE COMPANY DETAILS DEBUG:");
-  console.log("📁 Available file fields:", req.files ? Object.keys(req.files) : "No files");
-  if (req.files && req.files["crExtract"]) {
-    console.log("📋 CR Extract files found:", req.files["crExtract"].length);
-  }
+
   const {
     companyName,
     qfcNo,
@@ -237,7 +233,7 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     mainPurpose,
     expiryDate,
     kycActiveStatus,
-    syncAcrossJobs, 
+    syncAcrossJobs,
     deletedCompanyMemoIds,
   } = req.body;
 
@@ -499,14 +495,22 @@ if (!Array.isArray(companyDetails.companyMemo)) {
 
   // Update job's clientName to match companyName if it was changed
   if (companyName !== undefined && companyName !== job.clientName) {
+    console.log(`🔄 Updating job.clientName from "${job.clientName}" to "${companyName}"`);
     job.clientName = companyName;
 
     // Also update the Client model's name to keep it in sync
     const Client = require("../models/Client");
-    await Client.findOneAndUpdate(
+    const clientUpdateResult = await Client.findOneAndUpdate(
       { gmail: job.gmail },
-      { name: companyName }
+      { name: companyName },
+      { new: true }
     );
+
+    if (clientUpdateResult) {
+      console.log(`✅ Client model updated successfully. New name: "${clientUpdateResult.name}" for email: ${job.gmail}`);
+    } else {
+      console.log(`⚠️ Client not found for email: ${job.gmail}`);
+    }
   }
 
   // Add a timeline entry for the job
@@ -747,59 +751,91 @@ const addPersonDetails = asyncHandler(async (req, res) => {
     updatedBy: req.user._id,
   });
 
-  // Handle document uploads
-  if (req.files) {
-    // Visa Copy
-    if (req.files["visaCopy"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["visaCopy"][0].path
-      );
-      newPerson.visaCopy = uploadResult.url;
-      fs.unlink(req.files["visaCopy"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+  // Handle document uploads (req.files is an array when using upload.any())
+  if (req.files && Array.isArray(req.files)) {
+    for (const file of req.files) {
+      const { fieldname, path: filePath, originalname } = file;
+
+      // Handle standard document fields
+      if (fieldname === "visaCopy") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        newPerson.visaCopy = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "qidDoc") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        newPerson.qidDoc = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "nationalAddressDoc") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        newPerson.nationalAddressDoc = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "passportDoc") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        newPerson.passportDoc = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "cv") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        newPerson.cv = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
     }
 
-    // QID Document
-    if (req.files["qidDoc"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["qidDoc"][0].path
-      );
-      newPerson.qidDoc = uploadResult.url;
-      fs.unlink(req.files["qidDoc"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
-    }
+    // Other Documents - handle with position preservation
+    if (req.body.otherDocumentsMetadata) {
+      try {
+        const metadata = JSON.parse(req.body.otherDocumentsMetadata);
+        const { existingDocs, totalCount } = metadata;
+        const finalOtherDocs = [];
 
-    // National Address Document
-    if (req.files["nationalAddressDoc"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["nationalAddressDoc"][0].path
-      );
-      newPerson.nationalAddressDoc = uploadResult.url;
-      fs.unlink(req.files["nationalAddressDoc"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
-    }
+        // Create array with correct size
+        for (let i = 0; i < totalCount; i++) {
+          finalOtherDocs[i] = null;
+        }
 
-    // Passport Document
-    if (req.files["passportDoc"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["passportDoc"][0].path
-      );
-      newPerson.passportDoc = uploadResult.url;
-      fs.unlink(req.files["passportDoc"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
-    }
+        // Place existing documents at their positions
+        if (Array.isArray(existingDocs)) {
+          existingDocs.forEach(doc => {
+            finalOtherDocs[doc.index] = {
+              fileUrl: doc.fileUrl,
+              fileName: doc.fileName,
+              uploadedAt: doc.uploadedAt,
+            };
+          });
+        }
 
-    // CV
-    if (req.files["cv"]) {
-      const uploadResult = await safeCloudinaryUpload(req.files["cv"][0].path);
-      newPerson.cv = uploadResult.url;
-      fs.unlink(req.files["cv"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+        // Upload and place new files at their positions
+        for (const file of req.files) {
+          const match = file.fieldname.match(/^otherDocument_(\d+)$/);
+          if (match) {
+            const index = parseInt(match[1]);
+            const uploadResult = await safeCloudinaryUpload(file.path);
+            finalOtherDocs[index] = {
+              fileUrl: uploadResult.url,
+              fileName: file.originalname,
+              uploadedAt: new Date(),
+            };
+            fs.unlink(file.path, (err) => {
+              if (err) console.error("Error deleting temp file:", err);
+            });
+          }
+        }
+
+        // Filter out null values
+        newPerson.otherDocuments = finalOtherDocs.filter(doc => doc !== null);
+      } catch (err) {
+        console.error("Error parsing otherDocumentsMetadata:", err);
+        newPerson.otherDocuments = [];
+      }
     }
   }
 
@@ -941,59 +977,90 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
   if (email !== undefined) personDetails.email = email;
   personDetails.updatedBy = req.user._id;
 
-  // Handle document uploads
-  if (req.files) {
-    // Visa Copy
-    if (req.files["visaCopy"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["visaCopy"][0].path
-      );
-      personDetails.visaCopy = uploadResult.url;
-      fs.unlink(req.files["visaCopy"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+  // Handle document uploads (req.files is an array when using upload.any())
+  if (req.files && Array.isArray(req.files)) {
+    for (const file of req.files) {
+      const { fieldname, path: filePath, originalname } = file;
+
+      // Handle standard document fields
+      if (fieldname === "visaCopy") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        personDetails.visaCopy = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "qidDoc") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        personDetails.qidDoc = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "nationalAddressDoc") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        personDetails.nationalAddressDoc = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "passportDoc") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        personDetails.passportDoc = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      } else if (fieldname === "cv") {
+        const uploadResult = await safeCloudinaryUpload(filePath);
+        personDetails.cv = uploadResult.url;
+        fs.unlink(filePath, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
     }
 
-    // QID Document
-    if (req.files["qidDoc"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["qidDoc"][0].path
-      );
-      personDetails.qidDoc = uploadResult.url;
-      fs.unlink(req.files["qidDoc"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
-    }
+    // Other Documents - handle with position preservation
+    if (req.body.otherDocumentsMetadata) {
+      try {
+        const metadata = JSON.parse(req.body.otherDocumentsMetadata);
+        const { existingDocs, totalCount } = metadata;
+        const finalOtherDocs = [];
 
-    // National Address Document
-    if (req.files["nationalAddressDoc"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["nationalAddressDoc"][0].path
-      );
-      personDetails.nationalAddressDoc = uploadResult.url;
-      fs.unlink(req.files["nationalAddressDoc"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
-    }
+        // Create array with correct size
+        for (let i = 0; i < totalCount; i++) {
+          finalOtherDocs[i] = null;
+        }
 
-    // Passport Document
-    if (req.files["passportDoc"]) {
-      const uploadResult = await safeCloudinaryUpload(
-        req.files["passportDoc"][0].path
-      );
-      personDetails.passportDoc = uploadResult.url;
-      fs.unlink(req.files["passportDoc"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
-    }
+        // Place existing documents at their positions
+        if (Array.isArray(existingDocs)) {
+          existingDocs.forEach(doc => {
+            finalOtherDocs[doc.index] = {
+              fileUrl: doc.fileUrl,
+              fileName: doc.fileName,
+              uploadedAt: doc.uploadedAt,
+            };
+          });
+        }
 
-    // CV
-    if (req.files["cv"]) {
-      const uploadResult = await safeCloudinaryUpload(req.files["cv"][0].path);
-      personDetails.cv = uploadResult.url;
-      fs.unlink(req.files["cv"][0].path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+        // Upload and place new files at their positions
+        for (const file of req.files) {
+          const match = file.fieldname.match(/^otherDocument_(\d+)$/);
+          if (match) {
+            const index = parseInt(match[1]);
+            const uploadResult = await safeCloudinaryUpload(file.path);
+            finalOtherDocs[index] = {
+              fileUrl: uploadResult.url,
+              fileName: file.originalname,
+              uploadedAt: new Date(),
+            };
+            fs.unlink(file.path, (err) => {
+              if (err) console.error("Error deleting temp file:", err);
+            });
+          }
+        }
+
+        // Filter out null values and replace the array
+        personDetails.otherDocuments = finalOtherDocs.filter(doc => doc !== null);
+      } catch (err) {
+        console.error("Error parsing otherDocumentsMetadata:", err);
+      }
     }
   }
 
@@ -4925,6 +4992,252 @@ const getJobDataByEmail = asyncHandler(async (req, res) => {
   }
 });
 
+const fixCorruptedCrExtract = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const companyDetail = await CompanyDetails.findOne({ jobId });
+  if (!companyDetail) {
+    res.status(404);
+    throw new Error("Company details not found");
+  }
+
+  let fixed = false;
+
+  if (Array.isArray(companyDetail.crExtract) && companyDetail.crExtract.length > 0) {
+    const firstElement = companyDetail.crExtract[0];
+
+    if (firstElement && typeof firstElement === 'object' && !firstElement.fileUrl) {
+      const keys = Object.keys(firstElement);
+      const hasNumberKeys = keys.some(key => !isNaN(parseInt(key)));
+
+      if (hasNumberKeys) {
+        const reconstructedUrl = Object.values(firstElement).join('');
+
+        if (reconstructedUrl.startsWith('http')) {
+          companyDetail.crExtract = [{
+            fileUrl: reconstructedUrl,
+            fileName: "CR Extract Document",
+            uploadedAt: firstElement.uploadedAt || new Date(),
+            uploadedBy: firstElement.uploadedBy || companyDetail.updatedBy || req.user._id,
+            description: `Fixed on ${new Date().toLocaleDateString()}`
+          }];
+
+          await companyDetail.save();
+          fixed = true;
+        }
+      }
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    fixed,
+    message: fixed ? "CR Extract data fixed successfully" : "No corruption found",
+    crExtract: companyDetail.crExtract
+  });
+});
+
+const getOtherDocumentsDetails = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const otherDocuments = await OtherDocumentsDetails.find({ jobId });
+  res.status(200).json(otherDocuments);
+});
+
+const addOtherDocumentsDetails = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const {
+    documentType,
+    documentNumber,
+    issueDate,
+    expiryDate,
+    description,
+  } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to update this job");
+  }
+
+  const newDocument = new OtherDocumentsDetails({
+    jobId,
+    documentType: documentType || "",
+    documentNumber: documentNumber || "",
+    issueDate: issueDate || null,
+    expiryDate: expiryDate || null,
+    description: description || "",
+    updatedBy: req.user._id,
+  });
+
+  if (req.file) {
+    const uploadResult = await safeCloudinaryUpload(req.file.path);
+    newDocument.uploadedFile = uploadResult.url;
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+  }
+
+  const savedDocument = await newDocument.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: "Other document details added",
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+
+  await job.save();
+
+  res.status(201).json(savedDocument);
+});
+
+const updateOtherDocumentsDetails = asyncHandler(async (req, res) => {
+  const { jobId, documentId } = req.params;
+  const {
+    documentType,
+    documentNumber,
+    issueDate,
+    expiryDate,
+    description,
+  } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const document = await OtherDocumentsDetails.findById(documentId);
+  if (!document) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to update this job");
+  }
+
+  if (documentType !== undefined) document.documentType = documentType;
+  if (documentNumber !== undefined) document.documentNumber = documentNumber;
+  if (issueDate !== undefined) document.issueDate = issueDate;
+  if (expiryDate !== undefined) document.expiryDate = expiryDate;
+  if (description !== undefined) document.description = description;
+
+  if (req.file) {
+    const uploadResult = await safeCloudinaryUpload(req.file.path);
+    document.uploadedFile = uploadResult.url;
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+  }
+
+  document.updatedBy = req.user._id;
+  const updatedDocument = await document.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: "Other document details updated",
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+
+  await job.save();
+
+  res.status(200).json(updatedDocument);
+});
+
+const deleteOtherDocumentsDetails = asyncHandler(async (req, res) => {
+  const { jobId, documentId } = req.params;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const document = await OtherDocumentsDetails.findById(documentId);
+  if (!document) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to update this job");
+  }
+
+  await OtherDocumentsDetails.findByIdAndDelete(documentId);
+
+  job.timeline.push({
+    status: job.status,
+    description: "Other document details deleted",
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+
+  await job.save();
+
+  res.status(200).json({ message: "Document deleted successfully" });
+});
+
 module.exports = {
   getCompanyDetails,
   updateCompanyDetails,
@@ -4950,6 +5263,11 @@ module.exports = {
   getJobDataByEmail,
   deleteCompanyDocument,
   deletePersonDocument,
-  deleteKycSignedDocument
+  deleteKycSignedDocument,
+  fixCorruptedCrExtract,
+  getOtherDocumentsDetails,
+  addOtherDocumentsDetails,
+  updateOtherDocumentsDetails,
+  deleteOtherDocumentsDetails,
 };
 

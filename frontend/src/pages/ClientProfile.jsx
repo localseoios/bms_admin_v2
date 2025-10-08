@@ -114,7 +114,8 @@ function ClientProfile() {
   useEffect(() => {
     const fetchClientData = async () => {
       try {
-        const response = await axiosInstance.get(`/clients/${gmail}`);
+        const timestamp = new Date().getTime();
+        const response = await axiosInstance.get(`/clients/${gmail}?t=${timestamp}`);
         setClient(response.data.client);
         setJobs(response.data.jobs);
         setExpandedService(response.data.jobs[0]?._id || null);
@@ -125,7 +126,20 @@ function ClientProfile() {
         setIsLoading(false);
       }
     };
+
     fetchClientData();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchClientData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [gmail]);
 
   // ADD THIS useEffect HOOK (after existing useEffect hooks)
@@ -3002,7 +3016,8 @@ function ClientProfile() {
                     </a>
                   ) : null}
 
-                  {person.visaCopy ? (
+                  {/* Visa Copy - HIDDEN */}
+                  {/* {person.visaCopy ? (
                     <a
                       href={person.visaCopy}
                       target="_blank"
@@ -3019,7 +3034,7 @@ function ClientProfile() {
                         <p className="text-xs text-gray-500">View document</p>
                       </div>
                     </a>
-                  ) : null}
+                  ) : null} */}
 
                   {person.cv ? (
                     <a
@@ -3039,14 +3054,35 @@ function ClientProfile() {
                       </div>
                     </a>
                   ) : null}
+
+                  {/* Other Documents */}
+                  {person.otherDocuments && person.otherDocuments.length > 0 && person.otherDocuments.map((doc, docIndex) => (
+                    <a
+                      key={docIndex}
+                      href={doc.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg hover:from-purple-100 hover:to-pink-100 transition-colors border border-purple-100 shadow-sm hover:shadow-md"
+                    >
+                      <div className="bg-white p-2 rounded-lg shadow-sm mr-3 group-hover:bg-purple-500 transition-colors">
+                        <DocumentIcon className="h-5 w-5 text-purple-600 group-hover:text-white transition-colors" />
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-800 group-hover:text-purple-900 transition-colors">
+                          {doc.fileName || `Other Document ${docIndex + 1}`}
+                        </span>
+                        <p className="text-xs text-gray-500">View document</p>
+                      </div>
+                    </a>
+                  ))}
                 </div>
 
                 {/* No documents message */}
                 {!person.qidDoc &&
                   !person.passportDoc &&
                   !person.nationalAddressDoc &&
-                  !person.visaCopy &&
-                  !person.cv && (
+                  !person.cv &&
+                  (!person.otherDocuments || person.otherDocuments.length === 0) && (
                     <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
                       <DocumentIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-500">
@@ -3931,6 +3967,7 @@ function ClientProfile() {
 
         {/* Client Profile Card */}
         <motion.div
+          key={jobs[0]?.clientName || client?.name}
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.1 }}
@@ -3951,7 +3988,7 @@ function ClientProfile() {
                   transition={{ duration: 0.5, delay: 0.2 }}
                   className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent"
                 >
-                  {client.name}
+                  {jobs[0]?.clientName || client.name}
                 </motion.h1>
                 <div className="flex items-center mt-1">
                   <EnvelopeIcon className="h-4 w-4 text-gray-500 mr-1" />
