@@ -71,6 +71,7 @@ cron.schedule("0 9 * * *", async () => {
 app.options("*", function (req, res) {
   const allowedOrigins = [
     "http://localhost:5173",
+    "https://app.newoon.com",
     "https://testapp.newoon.com",
   ];
   const origin = req.headers.origin;
@@ -92,6 +93,7 @@ app.options("*", function (req, res) {
 app.use(function (req, res, next) {
   const allowedOrigins = [
     "http://localhost:5173",
+    "https://app.newoon.com",
     "https://testapp.newoon.com",
   ];
   const origin = req.headers.origin;
