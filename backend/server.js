@@ -129,6 +129,7 @@ app.use(
       const allowedOrigins = [
         "http://localhost:5173",
         "https://testapp.newoon.com",
+        "https://app.newoon.com",
       ];
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
