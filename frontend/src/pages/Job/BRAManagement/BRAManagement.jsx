@@ -247,7 +247,7 @@ function BRAManagement() {
     // If no BRA approval but already in BRA status, it's pending LMRO review
     if (!job.braApproval && job.status === "bra_pending") {
       return {
-        label: "LMRO Review Pending",
+        label: "MLRO Review Pending",
         color: "bg-yellow-50 text-yellow-700 ring-yellow-600/20",
         icon: <UserGroupIcon className="h-5 w-5 text-yellow-500" />,
       };
@@ -277,13 +277,13 @@ function BRAManagement() {
       };
     } else if (stage === "lmro") {
       return {
-        label: "LMRO Review",
+        label: "MLRO Review",
         color: "bg-blue-50 text-blue-700 ring-blue-600/20",
         icon: <UserGroupIcon className="h-5 w-5 text-blue-500" />,
       };
     } else if (stage === "dlmro") {
       return {
-        label: "DLMRO Review",
+        label: "DMLRO Review",
         color: "bg-purple-50 text-purple-700 ring-purple-600/20",
         icon: (
           <ClipboardDocumentCheckIcon className="h-5 w-5 text-purple-500" />
@@ -816,8 +816,8 @@ function BRAManagement() {
                   className="block w-full rounded-md border-gray-300 focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
                 >
                   <option value="all">All Status</option>
-                  <option value="pending">Pending / LMRO Review</option>
-                  <option value="lmro_approved">DLMRO Review</option>
+                  <option value="pending">Pending / MLRO Review</option>
+                  <option value="lmro_approved">DMLRO Review</option>
                   <option value="dlmro_approved">CEO Review</option>
                 </select>
               </div>
