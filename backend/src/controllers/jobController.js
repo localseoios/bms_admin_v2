@@ -1,4 +1,3 @@
-// controllers/jobController.js - FIXED to handle existing documents
 const Job = require("../models/Job");
 const cloudinary = require("../config/cloudinary");
 const fs = require("fs");
@@ -1015,11 +1014,17 @@ const getAssignedJobs = asyncHandler(async (req, res) => {
 
 const updateJob = asyncHandler(async (req, res) => {
   try {
+    console.log('=== UPDATE JOB CONTROLLER CALLED ===');
+    console.log('Job ID:', req.params.id);
+    console.log('Request body:', req.body);
+
     const job = await Job.findById(req.params.id);
     if (!job) {
       res.status(404);
       throw new Error("Job not found");
     }
+
+    console.log('Found job:', job._id, 'current gmail:', job.gmail, 'current startingPoint:', job.startingPoint);
 
     const {
       jobNumber,
@@ -1031,6 +1036,8 @@ const updateJob = asyncHandler(async (req, res) => {
       gmail,
       startingPoint,
     } = req.body;
+
+    console.log('Extracted from body - gmail:', gmail, 'startingPoint:', startingPoint, 'clientName:', clientName);
 
     if (jobNumber && jobNumber !== job.jobNumber) {
       const jobNumberExists = await checkJobNumberExists(jobNumber);
@@ -1119,6 +1126,23 @@ const updateJob = asyncHandler(async (req, res) => {
       ...(startingPoint && { startingPoint }),
       ...updatedDocuments,
     };
+
+    const clientGmail = gmail || job.gmail;
+    if (clientGmail && (startingPoint || clientName)) {
+      const clientUpdateFields = {};
+      if (startingPoint) clientUpdateFields.startingPoint = startingPoint;
+      if (clientName) clientUpdateFields.name = clientName;
+
+      console.log('Updating client with gmail:', clientGmail, 'Fields:', clientUpdateFields);
+
+      await Client.findOneAndUpdate(
+        { gmail: clientGmail },
+        clientUpdateFields,
+        { new: true }
+      );
+
+      console.log('Client updated successfully');
+    }
 
     const updatedJob = await Job.findByIdAndUpdate(
       req.params.id,

@@ -1786,17 +1786,15 @@ const CreatePreApprovedJob = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   Starting Point <span className="text-red-500">*</span>
                 </label>
-                <select
+                <input
+                  type="text"
                   name="startingPoint"
                   value={formData.startingPoint}
                   onChange={handleChange}
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
+                  placeholder="Enter starting point (e.g., QFC, Ministry, Free Zone)"
+                  className="mt-1 block w-full pl-3 pr-3 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
                   required
-                >
-                  <option value="QFC">QFC</option>
-                  <option value="Ministry">Ministry</option>
-                  <option value="Free Zone">Free Zone</option>
-                </select>
+                />
               </div>
 
               <div>

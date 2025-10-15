@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MagnifyingGlassIcon,
@@ -20,6 +21,7 @@ import {
   HashtagIcon,
   PencilIcon, // Add edit icon
   UserIcon,
+  UserCircleIcon,
   EnvelopeIcon,
   MapPinIcon,
   BuildingOfficeIcon,
@@ -150,6 +152,8 @@ const NotificationToast = ({ title, message, type = "success" }) => {
 };
 
 function AdminJobs() {
+  const navigate = useNavigate();
+
   // State for managing jobs data, loading, and errors
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1305,6 +1309,19 @@ function AdminJobs() {
                             >
                               <PencilIcon className="h-5 w-5" />
                             </motion.button>
+
+                            {/* Client Profile button */}
+                            {job.gmail && (
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => navigate(`/clients/${job.gmail}`)}
+                                className="text-purple-600 hover:text-purple-700 p-2 rounded-lg hover:bg-purple-50 transition-colors duration-200"
+                                title="View Client Profile"
+                              >
+                                <UserCircleIcon className="h-5 w-5" />
+                              </motion.button>
+                            )}
 
                             {/* Only show resubmit button if job status is rejected */}
                             {job.status === "rejected" && (

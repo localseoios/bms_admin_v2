@@ -4041,7 +4041,7 @@ function ClientProfile() {
                       Starting Point
                     </p>
                     <p className="text-sm font-medium text-gray-900">
-                      {client.startingPoint}
+                      {jobs.length > 0 ? jobs[0].startingPoint : 'N/A'}
                     </p>
                   </div>
                 </motion.div>
