@@ -584,6 +584,38 @@ const updateClientRiskLevel = asyncHandler(async (req, res) => {
   }
 });
 
+const deleteClient = asyncHandler(async (req, res) => {
+  try {
+    const { gmail } = req.params;
+
+    const client = await Client.findOne({ gmail });
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const jobs = await Job.find({ clientId: client._id });
+    if (jobs.length > 0) {
+      return res.status(400).json({
+        message: 'Cannot delete client with existing jobs. Please delete all jobs first.',
+        jobCount: jobs.length
+      });
+    }
+
+    await Client.deleteOne({ gmail });
+
+    res.status(200).json({
+      message: 'Client deleted successfully',
+      deletedClient: {
+        gmail: client.gmail,
+        name: client.name
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting client:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = {
   getClientByGmail,
   getEngagementLetterByGmail,
@@ -594,4 +626,5 @@ module.exports = {
   getAssignedClients,
   getAllClients,
   updateClientRiskLevel,
+  deleteClient,
 };

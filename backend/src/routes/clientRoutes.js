@@ -11,6 +11,7 @@ const {
   getAssignedClients,
   getAllClients,
   updateClientRiskLevel,
+  deleteClient,
 } = require("../controllers/clientController");
 const { protect, checkPermission } = require("../middleware/authMiddleware");
 
@@ -79,6 +80,13 @@ router.put(
   protect,
   checkPermission("complianceManagement"),
   updateClientRiskLevel
+);
+
+router.delete(
+  "/:gmail",
+  protect,
+  checkPermission("operationManagement"),
+  deleteClient
 );
 
 module.exports = router;
