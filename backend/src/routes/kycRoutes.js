@@ -81,4 +81,11 @@ router.delete(
   deleteKycDocument
 );
 
+// Compliance routes (no auth required)
+router.put(
+  "/compliance/jobs/:jobId/documents/:stage/update",
+  upload.single("document"),
+  updateKycDocument
+);
+
 module.exports = router;

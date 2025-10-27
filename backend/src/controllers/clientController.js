@@ -2,7 +2,7 @@
 
 const Client = require("../models/Client");
 const Job = require("../models/Job");
-const { CompanyDetails } = require("../models/OperationModels");
+const { CompanyDetails, PersonDetails } = require("../models/OperationModels");
 const { findPersonDetailsByGmail } = require("../utils/clientUtils");
 const asyncHandler = require("express-async-handler");
 
@@ -60,12 +60,98 @@ const getClientByGmail = async (req, res) => {
       }
     }
 
+    // Fetch all person details documents for all jobs
+    let personDetailsDocuments = [];
+    if (jobs.length > 0) {
+      const jobIds = jobs.map((job) => job._id);
+      const allPersonDetails = await PersonDetails.find({
+        jobId: { $in: jobIds },
+      });
+
+      allPersonDetails.forEach((person) => {
+        const job = jobs.find((j) => j._id.toString() === person.jobId.toString());
+
+        if (person.passportDoc) {
+          personDetailsDocuments.push({
+            fileName: `Passport - ${person.name}`,
+            fileUrl: person.passportDoc,
+            uploadedAt: person.updatedAt,
+            personName: person.name,
+            personType: person.personType,
+            personId: person._id,
+            jobNumber: job?.jobNumber,
+            jobId: person.jobId,
+            documentType: 'passport'
+          });
+        }
+
+        if (person.qidDoc) {
+          personDetailsDocuments.push({
+            fileName: `QID - ${person.name}`,
+            fileUrl: person.qidDoc,
+            uploadedAt: person.updatedAt,
+            personName: person.name,
+            personType: person.personType,
+            personId: person._id,
+            jobNumber: job?.jobNumber,
+            jobId: person.jobId,
+            documentType: 'qid'
+          });
+        }
+
+        if (person.nationalAddressDoc) {
+          personDetailsDocuments.push({
+            fileName: `National Address - ${person.name}`,
+            fileUrl: person.nationalAddressDoc,
+            uploadedAt: person.updatedAt,
+            personName: person.name,
+            personType: person.personType,
+            personId: person._id,
+            jobNumber: job?.jobNumber,
+            jobId: person.jobId,
+            documentType: 'nationalAddress'
+          });
+        }
+
+        if (person.cv) {
+          personDetailsDocuments.push({
+            fileName: `CV - ${person.name}`,
+            fileUrl: person.cv,
+            uploadedAt: person.updatedAt,
+            personName: person.name,
+            personType: person.personType,
+            personId: person._id,
+            jobNumber: job?.jobNumber,
+            jobId: person.jobId,
+            documentType: 'cv'
+          });
+        }
+
+        if (person.otherDocuments && person.otherDocuments.length > 0) {
+          person.otherDocuments.forEach((doc, index) => {
+            personDetailsDocuments.push({
+              fileName: doc.fileName || `Other Document ${index + 1} - ${person.name}`,
+              fileUrl: doc.fileUrl,
+              uploadedAt: doc.uploadedAt || person.updatedAt,
+              personName: person.name,
+              personType: person.personType,
+              personId: person._id,
+              jobNumber: job?.jobNumber,
+              jobId: person.jobId,
+              documentType: 'other'
+            });
+          });
+        }
+      });
+    }
+
     // Return the enhanced response with engagement letter and documents
     res.status(200).json({
       client,
       jobs,
       engagementLetter,
-      mostRecentDocuments, // Include documents from most recent job
+      mostRecentDocuments,
+      personDetailsDocuments, // Include person details documents
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });

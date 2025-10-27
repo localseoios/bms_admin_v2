@@ -88,7 +88,10 @@ const ComplianceClients = () => {
   };
 
   const getRiskLevel = (client) => {
-    // Simple risk assessment based on job activity
+    if (client.riskLevel) {
+      return client.riskLevel.toLowerCase();
+    }
+
     if (client.activeJobCount > 2) {
       return 'high';
     } else if (client.activeJobCount > 0) {

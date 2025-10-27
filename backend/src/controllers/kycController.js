@@ -875,10 +875,10 @@ const updateKycDocument = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Invalid approval stage" });
   }
 
-  // Check permissions
-  if (!req.user.role.permissions.kycManagement[stage]) {
-    return res.status(403).json({ 
-      message: `Insufficient permissions. ${stage.toUpperCase()} role required.` 
+  // Check permissions (only if user is authenticated)
+  if (req.user && (!req.user.role || !req.user.role.permissions.kycManagement[stage])) {
+    return res.status(403).json({
+      message: `Insufficient permissions. ${stage.toUpperCase()} role required.`
     });
   }
 
@@ -935,7 +935,7 @@ const updateKycDocument = asyncHandler(async (req, res) => {
       fileType: req.file.mimetype,
       cloudinaryId: cloudinaryResult.publicId,
       uploadedAt: new Date(),
-      uploadedBy: req.user._id,
+      uploadedBy: req.user ? req.user._id : null,
     };
 
     // Update notes if provided
@@ -945,17 +945,20 @@ const updateKycDocument = asyncHandler(async (req, res) => {
 
     // FIXED: Mark as modified by current user (ensure ObjectId)
     stageApproval.modifiedAt = new Date();
-    stageApproval.modifiedBy = req.user._id;
+    stageApproval.modifiedBy = req.user ? req.user._id : null;
 
     await kycApproval.save();
 
     // Add timeline entry
     const job = await Job.findById(jobId);
+    const userName = req.user ? req.user.name : 'Compliance User';
+    const userId = req.user ? req.user._id : null;
+
     job.timeline.push({
       status: `kyc_${stage}_document_updated`,
-      description: `KYC ${stage.toUpperCase()} document updated by ${req.user.name}`,
+      description: `KYC ${stage.toUpperCase()} document updated by ${userName}`,
       timestamp: new Date(),
-      updatedBy: req.user._id,
+      updatedBy: userId,
     });
     await job.save();
 
@@ -964,16 +967,18 @@ const updateKycDocument = asyncHandler(async (req, res) => {
       fs.unlinkSync(req.file.path);
     }
 
-    // Send notifications
-    await notificationService.createNotification(
-      {
-        title: "KYC Document Updated",
-        description: `${stage.toUpperCase()} document updated for ${job.clientName}'s KYC by ${req.user.name}`,
-        type: "kyc",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "admin" }
-    );
+    // Send notifications (only if authenticated user)
+    if (req.user) {
+      await notificationService.createNotification(
+        {
+          title: "KYC Document Updated",
+          description: `${stage.toUpperCase()} document updated for ${job.clientName}'s KYC by ${req.user.name}`,
+          type: "kyc",
+          relatedTo: { model: "Job", id: job._id },
+        },
+        { "role.name": "admin" }
+      );
+    }
 
     // FIXED: Return populated data after update
     const populatedKycApproval = await getKycStatusSafely(jobId);

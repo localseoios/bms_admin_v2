@@ -572,14 +572,14 @@ function ClientProfile() {
     }
   };
 
-  // Function to render all KYC documents (Management + General) in Person Details KYC tab
+  // Function to render all KYC documents (Management + General + Person Details) in Person Details KYC tab
   const renderKycManagementDocuments = (jobId) => {
     const kycData = kycStatuses[jobId];
     const generalDocs = generalKycDocuments[jobId] || [];
-    
+
     // Extract documents from KYC Management data
     const managementDocuments = [];
-    
+
     if (kycData?.lmroApproval?.document?.fileUrl) {
       managementDocuments.push({
         id: `lmro-${jobId}`,
@@ -670,8 +670,8 @@ function ClientProfile() {
             className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
           >
             <div className={`absolute top-0 left-0 right-0 h-1.5 ${
-              doc.type === 'management' 
-                ? 'bg-gradient-to-r from-green-500 to-emerald-600' 
+              doc.type === 'management'
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600'
                 : 'bg-gradient-to-r from-blue-500 to-indigo-600'
             }`}></div>
             <div className="p-4">
@@ -694,8 +694,8 @@ function ClientProfile() {
                       </p>
                     )}
                     <span className={`mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      doc.type === 'management' 
-                        ? 'bg-green-100 text-green-800' 
+                      doc.type === 'management'
+                        ? 'bg-green-100 text-green-800'
                         : 'bg-blue-100 text-blue-800'
                     }`}>
                       {doc.docType}
@@ -907,7 +907,9 @@ function ClientProfile() {
       // Step 2: Upload the new document
       const formData = new FormData();
       formData.append('kycDocuments', newFile);
-      formData.append('description_0', docName);
+      const description = notes ? `${docName} - ${notes}` : docName;
+      formData.append('description_0', description);
+      formData.append('date_0', new Date().toISOString());
 
       console.log('⬆️ Uploading new file...');
 
@@ -988,6 +990,9 @@ function ClientProfile() {
 
       const formData = new FormData();
       formData.append('kycDocuments', file);
+      const description = notes ? `${docName} - ${notes}` : docName;
+      formData.append('description_0', description);
+      formData.append('date_0', new Date().toISOString());
 
       const response = await axiosInstance.put(
         `/operations/jobs/${jobId}/kyc-documents`,
@@ -1028,6 +1033,8 @@ function ClientProfile() {
   const fetchGeneralKycDocuments = async (jobId) => {
     try {
       const response = await axiosInstance.get(`/operations/jobs/${jobId}/kyc-documents`);
+      console.log(`📄 CLIENT PROFILE PAGE - Job ${jobId}: Found ${response.data.documents?.length || 0} general KYC documents`);
+      console.log('📄 Documents:', response.data.documents);
       setGeneralKycDocuments(prev => ({
         ...prev,
         [jobId]: response.data.documents || []

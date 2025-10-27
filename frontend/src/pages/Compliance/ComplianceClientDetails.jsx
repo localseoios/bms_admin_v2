@@ -68,7 +68,8 @@ const ComplianceClientDetails = () => {
           // Add additional data for KYC
           jobs: response.data.jobs || [],
           engagementLetter: response.data.engagementLetter || [],
-          documents: response.data.mostRecentDocuments || {}
+          documents: response.data.mostRecentDocuments || {},
+          personDetailsDocuments: response.data.personDetailsDocuments || []
         };
         setClient(transformedClient);
         setRiskLevel(transformedClient.riskLevel || 'Medium');
@@ -90,7 +91,8 @@ const ComplianceClientDetails = () => {
         activeJobCount: 0,
         jobs: [],
         engagementLetter: [],
-        documents: {}
+        documents: {},
+        personDetailsDocuments: []
       });
     } finally {
       setLoading(false);
