@@ -4590,7 +4590,7 @@ function ClientProfile() {
                         </motion.div>
 
                         {/* Enhanced KYC Management Section */}
-                        <motion.div
+                        {/* <motion.div
                           initial={{ y: 20, opacity: 0 }}
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ delay: 0.4 }}
@@ -4612,7 +4612,6 @@ function ClientProfile() {
                             </div>
                           ) : kycStatuses[job._id] ? (
                             <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/60 p-6">
-                              {/* Status Badge and Stage */}
                               <div className="flex flex-col gap-4 mb-5">
                                 <div className="flex flex-wrap items-center justify-between">
                                   <div className="flex items-center">
@@ -4635,7 +4634,6 @@ function ClientProfile() {
                                     </span>
                                   </div>
 
-                                  {/* Status Date */}
                                   {kycStatuses[job._id].exists &&
                                     kycStatuses[job._id].updatedAt && (
                                       <div className="text-sm text-gray-500">
@@ -4647,7 +4645,6 @@ function ClientProfile() {
                                     )}
                                 </div>
 
-                                {/* Status Description */}
                                 <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200">
                                   <p>
                                     {
@@ -4658,7 +4655,6 @@ function ClientProfile() {
                                 </div>
                               </div>
 
-                              {/* KYC Progress Bar */}
                               {kycStatuses[job._id].exists && (
                                 <div className="mb-6">
                                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
@@ -4667,7 +4663,6 @@ function ClientProfile() {
                                     <span>CEO</span>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    {/* LMRO */}
                                     <div
                                       className={`h-2.5 flex-1 rounded-l-full ${
                                         kycStatuses[job._id].lmroApproval
@@ -4677,7 +4672,6 @@ function ClientProfile() {
                                       }`}
                                     ></div>
 
-                                    {/* DLMRO */}
                                     <div
                                       className={`h-2.5 flex-1 ${
                                         kycStatuses[job._id].dlmroApproval
@@ -4687,7 +4681,6 @@ function ClientProfile() {
                                       }`}
                                     ></div>
 
-                                    {/* CEO */}
                                     <div
                                       className={`h-2.5 flex-1 rounded-r-full ${
                                         kycStatuses[job._id].ceoApproval
@@ -4700,7 +4693,6 @@ function ClientProfile() {
                                 </div>
                               )}
 
-                              {/* Enhanced KYC Documents Section */}
                               {kycStatuses[job._id].exists && (
                                 <div>
                                   <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
@@ -4714,7 +4706,6 @@ function ClientProfile() {
                                 </div>
                               )}
 
-                              {/* KYC Document Update Modals */}
                               {Object.entries(kycDocumentModals).map(
                                 ([key, isOpen]) => {
                                   const [jobId, stage] = key.split("-");
@@ -4736,7 +4727,6 @@ function ClientProfile() {
                                 }
                               )}
 
-                              {/* KYC Document Delete Confirmation Modals */}
                               {Object.entries(deleteConfirmModals).map(
                                 ([key, isOpen]) => {
                                   const [jobId, stage] = key.split("-");
@@ -4758,7 +4748,6 @@ function ClientProfile() {
                                 }
                               )}
 
-                              {/* Rejection Reason (if KYC is rejected) */}
                               {kycStatuses[job._id].exists &&
                                 kycStatuses[job._id].status === "rejected" && (
                                   <div className="mt-4 p-3 bg-red-50 rounded-md border border-red-200">
@@ -4790,7 +4779,7 @@ function ClientProfile() {
                               </p>
                             </div>
                           )}
-                        </motion.div>
+                        </motion.div> */}
 
                         {/* BRA Management Section */}
                         <motion.div
