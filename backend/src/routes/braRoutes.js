@@ -30,6 +30,9 @@ router.post(
 // Get BRA status - accessible to any authenticated user with BRA role
 router.get("/jobs/:jobId/status", protect, checkBraPermission, getBraStatus);
 
+// Get BRA status for compliance page (same as above, just different path)
+router.get("/compliance/jobs/:jobId/status", protect, checkBraPermission, getBraStatus);
+
 // Get all BRA jobs for management page
 router.get("/jobs", protect, checkBraPermission, getAllBraJobs);
 
@@ -64,6 +67,15 @@ router.put(
 // Update BRA document for specific stage
 router.put(
   "/jobs/:jobId/documents/:stage/update",
+  protect,
+  checkBraPermission,
+  upload.single("document"),
+  updateBraDocument
+);
+
+// Update BRA document for specific stage (compliance page)
+router.put(
+  "/compliance/jobs/:jobId/documents/:stage/update",
   protect,
   checkBraPermission,
   upload.single("document"),

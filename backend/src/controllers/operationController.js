@@ -7,6 +7,7 @@ const {
   CompanyDetails,
   PersonDetails,
   KycDocument,
+  BraDocument,
   OtherDocumentsDetails,
 } = require("../models/OperationModels");
 const Job = require("../models/Job");
@@ -5238,6 +5239,229 @@ const deleteOtherDocumentsDetails = asyncHandler(async (req, res) => {
   res.status(200).json({ message: "Document deleted successfully" });
 });
 
+const getBraDocuments = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to view this job");
+  }
+
+  let braDocuments = await BraDocument.findOne({ jobId });
+
+  if (!braDocuments) {
+    braDocuments = new BraDocument({
+      jobId,
+      activeStatus: "yes",
+      documents: [],
+      updatedBy: req.user._id,
+    });
+    await braDocuments.save();
+  }
+
+  res.status(200).json(braDocuments);
+});
+
+const updateBraDocuments = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { activeStatus, documents } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to update this job");
+  }
+
+  let braDocuments = await BraDocument.findOne({ jobId });
+
+  if (!braDocuments) {
+    braDocuments = new BraDocument({
+      jobId,
+      activeStatus: activeStatus || "yes",
+      documents: [],
+      updatedBy: req.user._id,
+    });
+  } else {
+    braDocuments.activeStatus = activeStatus || braDocuments.activeStatus;
+    braDocuments.updatedBy = req.user._id;
+  }
+
+  if (req.files && req.files.length > 0) {
+    const braDocumentDescriptions = req.body.braDocumentDescriptions
+      ? JSON.parse(req.body.braDocumentDescriptions)
+      : [];
+    const braDocumentTypes = req.body.braDocumentTypes
+      ? JSON.parse(req.body.braDocumentTypes)
+      : [];
+
+    const uploadPromises = req.files.map(async (file, index) => {
+      const uploadResult = await safeCloudinaryUpload(file.path);
+
+      fs.unlink(file.path, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+
+      const description = braDocumentDescriptions[index] || "";
+      const documentType = braDocumentTypes[index] || "BRA Document";
+      const date = new Date();
+
+      return {
+        file: uploadResult.url,
+        description,
+        documentType,
+        date,
+      };
+    });
+
+    const uploadedDocuments = await Promise.all(uploadPromises);
+
+    braDocuments.documents = [
+      ...braDocuments.documents,
+      ...uploadedDocuments,
+    ];
+  } else if (documents && Array.isArray(documents)) {
+    braDocuments.documents = documents;
+  }
+
+  const updatedBraDocuments = await braDocuments.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: "BRA documents updated",
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+
+  await job.save();
+
+  try {
+    await notificationService.createNotification(
+      {
+        title: "BRA Documents Updated",
+        description: `BRA documents updated for ${job.clientName}'s ${job.serviceType} job.`,
+        type: "job",
+        relatedTo: { model: "Job", id: job._id },
+      },
+      req.user._id
+    );
+  } catch (notificationError) {
+    console.error("Error creating notification:", notificationError);
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "BRA documents updated successfully",
+    documents: updatedBraDocuments,
+  });
+});
+
+const deleteBraDocument = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { fileUrl } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to update this job");
+  }
+
+  let braDocuments = await BraDocument.findOne({ jobId });
+
+  if (!braDocuments) {
+    res.status(404);
+    throw new Error("BRA documents not found");
+  }
+
+  braDocuments.documents = braDocuments.documents.filter(
+    (doc) => doc.file !== fileUrl
+  );
+
+  await braDocuments.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: "BRA document deleted",
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+
+  await job.save();
+
+  try {
+    await notificationService.createNotification(
+      {
+        title: "BRA Document Deleted",
+        description: `BRA document deleted for ${job.clientName}'s ${job.serviceType} job.`,
+        type: "job",
+        relatedTo: { model: "Job", id: job._id },
+      },
+      req.user._id
+    );
+  } catch (notificationError) {
+    console.error("Error creating notification:", notificationError);
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "BRA document deleted successfully",
+  });
+});
+
 module.exports = {
   getCompanyDetails,
   updateCompanyDetails,
@@ -5247,6 +5471,9 @@ module.exports = {
   deletePersonDetails,
   getKycDocuments,
   updateKycDocuments,
+  getBraDocuments,
+  updateBraDocuments,
+  deleteBraDocument,
   uploadEngagementLetter,
   getEngagementLetters,
   completeOperation,

@@ -223,6 +223,34 @@ const kycDocumentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const braDocumentSchema = new mongoose.Schema(
+  {
+    jobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      required: true,
+    },
+    activeStatus: {
+      type: String,
+      enum: ["yes", "no"],
+      default: "yes",
+    },
+    documents: [
+      {
+        file: { type: String },
+        description: { type: String },
+        documentType: { type: String },
+        date: { type: Date },
+      },
+    ],
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  { timestamps: true }
+);
+
 const otherDocumentsDetailsSchema = new mongoose.Schema(
   {
     jobId: {
@@ -247,11 +275,13 @@ const otherDocumentsDetailsSchema = new mongoose.Schema(
 const CompanyDetails = mongoose.model("CompanyDetails", companyDetailsSchema);
 const PersonDetails = mongoose.model("PersonDetails", personDetailsSchema);
 const KycDocument = mongoose.model("KycDocument", kycDocumentSchema);
+const BraDocument = mongoose.model("BraDocument", braDocumentSchema);
 const OtherDocumentsDetails = mongoose.model("OtherDocumentsDetails", otherDocumentsDetailsSchema);
 
 module.exports = {
   CompanyDetails,
   PersonDetails,
   KycDocument,
+  BraDocument,
   OtherDocumentsDetails,
 };

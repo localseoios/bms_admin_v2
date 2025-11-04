@@ -34,7 +34,8 @@
       "Bash(git push:*)",
       "Bash(git config:*)",
       "Bash(gh run list:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Read(//tmp/**)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

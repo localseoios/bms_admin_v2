@@ -12,6 +12,9 @@ const {
   deletePersonDetails,
   getKycDocuments,
   updateKycDocuments,
+  getBraDocuments,
+  updateBraDocuments,
+  deleteBraDocument,
   uploadEngagementLetter,
   completeOperation,
   createPreApprovedJob,
@@ -263,6 +266,28 @@ router.put(
   checkPermission("operationManagement"),
   upload.array("kycDocuments", 10),
   updateKycDocuments
+);
+
+router.get(
+  "/jobs/:jobId/bra-documents",
+  protect,
+  checkPermission("operationManagement"),
+  getBraDocuments
+);
+
+router.post(
+  "/jobs/:jobId/bra-documents",
+  protect,
+  checkPermission("operationManagement"),
+  upload.array("braDocuments", 10),
+  updateBraDocuments
+);
+
+router.delete(
+  "/jobs/:jobId/bra-documents",
+  protect,
+  checkPermission("operationManagement"),
+  deleteBraDocument
 );
 
 // Engagement Letter Route

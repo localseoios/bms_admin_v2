@@ -73,6 +73,10 @@ function ClientProfile() {
   const [sefDetails, setSefDetails] = useState({});
   const [companyDetails, setCompanyDetails] = useState({});
   const [kycDetails, setKycDetails] = useState({});
+  const [braDetails, setBraDetails] = useState({});
+  const [generalBraDocuments, setGeneralBraDocuments] = useState({});
+  const [braUploadModal, setBraUploadModal] = useState({});
+  const [braReplaceModal, setBraReplaceModal] = useState({});
 
   // New states for KYC Management section
   const [kycStatuses, setKycStatuses] = useState({});
@@ -175,6 +179,7 @@ function ClientProfile() {
       fetchBraStatus(expandedService);
       // Fetch general KYC documents
       fetchGeneralKycDocuments(expandedService);
+      fetchGeneralBraDocuments(expandedService);
     }
   }, [expandedService]);
 
@@ -1045,6 +1050,411 @@ function ClientProfile() {
         ...prev,
         [jobId]: []
       }));
+    }
+  };
+
+  const fetchGeneralBraDocuments = async (jobId) => {
+    try {
+      const response = await axiosInstance.get(`/operations/jobs/${jobId}/bra-documents`);
+      console.log(`📄 CLIENT PROFILE PAGE - Job ${jobId}: Found ${response.data.documents?.length || 0} general BRA documents`);
+      console.log('📄 Documents:', response.data.documents);
+      setGeneralBraDocuments(prev => ({
+        ...prev,
+        [jobId]: response.data.documents || []
+      }));
+    } catch (error) {
+      console.error('Error fetching general BRA documents:', error);
+      setGeneralBraDocuments(prev => ({
+        ...prev,
+        [jobId]: []
+      }));
+    }
+  };
+
+  const renderBraManagementDocuments = (jobId) => {
+    const braData = braStatuses[jobId];
+    const generalDocs = generalBraDocuments[jobId] || [];
+
+    const managementDocuments = [];
+
+    if (braData?.lmroApproval?.document?.fileUrl) {
+      managementDocuments.push({
+        id: `lmro-${jobId}`,
+        type: 'management',
+        stage: 'lmro',
+        stageLabel: 'LMRO',
+        document: braData.lmroApproval.document,
+        approval: braData.lmroApproval,
+        name: braData.lmroApproval.document.fileName || 'LMRO Document',
+        url: braData.lmroApproval.document.fileUrl,
+        uploadDate: braData.lmroApproval.document.uploadedAt || braData.lmroApproval.approvedAt,
+        docType: 'LMRO Approval'
+      });
+    }
+
+    if (braData?.dlmroApproval?.document?.fileUrl) {
+      managementDocuments.push({
+        id: `dlmro-${jobId}`,
+        type: 'management',
+        stage: 'dlmro',
+        stageLabel: 'DLMRO',
+        document: braData.dlmroApproval.document,
+        approval: braData.dlmroApproval,
+        name: braData.dlmroApproval.document.fileName || 'DLMRO Document',
+        url: braData.dlmroApproval.document.fileUrl,
+        uploadDate: braData.dlmroApproval.document.uploadedAt || braData.dlmroApproval.approvedAt,
+        docType: 'DLMRO Approval'
+      });
+    }
+
+    if (braData?.ceoApproval?.document?.fileUrl) {
+      managementDocuments.push({
+        id: `ceo-${jobId}`,
+        type: 'management',
+        stage: 'ceo',
+        stageLabel: 'CEO',
+        document: braData.ceoApproval.document,
+        approval: braData.ceoApproval,
+        name: braData.ceoApproval.document.fileName || 'CEO Document',
+        url: braData.ceoApproval.document.fileUrl,
+        uploadDate: braData.ceoApproval.document.uploadedAt || braData.ceoApproval.approvedAt,
+        docType: 'CEO Approval'
+      });
+    }
+
+    const generalDocuments = generalDocs.map((doc, idx) => ({
+      id: doc._id || `general-${idx}`,
+      type: 'general',
+      name: doc.description || doc.name || `Document ${idx + 1}`,
+      url: doc.file || doc.fileUrl || doc.url,
+      uploadDate: doc.date || doc.uploadedAt || doc.createdAt,
+      docType: doc.documentType || doc.docType || 'BRA Document',
+      originalIndex: idx
+    }));
+
+    const allDocuments = [...managementDocuments, ...generalDocuments];
+
+    if (allDocuments.length === 0) {
+      return (
+        <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
+          <div className="bg-gray-100 rounded-full h-12 w-12 flex items-center justify-center mx-auto mb-3 shadow-sm">
+            <DocumentDuplicateIcon className="h-6 w-6 text-gray-400" />
+          </div>
+          <h5 className="text-sm font-medium text-gray-700 mb-2">
+            No BRA Documents
+          </h5>
+          <p className="text-xs text-gray-500 mb-4">
+            No BRA documents have been uploaded yet for this job.
+          </p>
+          <button
+            onClick={() => handleUploadBraDocument(jobId)}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors shadow-sm"
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Upload BRA Document
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {allDocuments.map((doc, idx) => (
+          <div
+            key={doc.id}
+            className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
+          >
+            <div className={`absolute top-0 left-0 right-0 h-1.5 ${
+              doc.type === 'management'
+                ? 'bg-gradient-to-r from-purple-500 to-pink-600'
+                : 'bg-gradient-to-r from-indigo-500 to-purple-600'
+            }`}></div>
+            <div className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start">
+                  <div className={`rounded-lg p-2.5 flex-shrink-0 ${
+                    doc.type === 'management' ? 'bg-purple-100' : 'bg-indigo-100'
+                  }`}>
+                    <DocumentTextIcon className={`h-5 w-5 ${
+                      doc.type === 'management' ? 'text-purple-600' : 'text-indigo-600'
+                    }`} />
+                  </div>
+                  <div className="ml-3 flex-grow">
+                    <h5 className="font-medium text-gray-900 text-sm">
+                      {doc.name}
+                    </h5>
+                    {doc.uploadDate && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Uploaded: {new Date(doc.uploadDate).toLocaleDateString()}
+                      </p>
+                    )}
+                    <span className={`mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                      doc.type === 'management'
+                        ? 'bg-purple-100 text-purple-800'
+                        : 'bg-indigo-100 text-indigo-800'
+                    }`}>
+                      {doc.docType}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(doc.url, '_blank');
+                    }}
+                    className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="View Document"
+                  >
+                    <EyeIcon className="h-4 w-4" />
+                  </button>
+                  {doc.type === 'general' && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplaceBraDocument(jobId, doc, doc.originalIndex);
+                        }}
+                        className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                        title="Replace Document"
+                      >
+                        <ArrowPathIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteGeneralBraDocument(jobId, doc, doc.originalIndex);
+                        }}
+                        className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Document"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                  {doc.type === 'management' && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditBraManagementDocument(jobId, doc);
+                        }}
+                        className="p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                        title="Edit Document"
+                      >
+                        <PencilIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplaceBraManagementDocument(jobId, doc);
+                        }}
+                        disabled={braDocumentUploading[`${jobId}-${doc.stage}`]}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          braDocumentUploading[`${jobId}-${doc.stage}`]
+                            ? 'text-gray-400 cursor-not-allowed'
+                            : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'
+                        }`}
+                        title="Replace Document"
+                      >
+                        {braDocumentUploading[`${jobId}-${doc.stage}`] ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                        ) : (
+                          <ArrowPathIcon className="h-4 w-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteBraManagementDocument(jobId, doc);
+                        }}
+                        className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Document"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const handleEditBraManagementDocument = (jobId, doc) => {
+    const modalKey = `${jobId}-${doc.stage}`;
+    setBraDocumentModals(prev => ({
+      ...prev,
+      [modalKey]: true
+    }));
+  };
+
+  const handleReplaceBraManagementDocument = (jobId, doc) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        await handleUpdateBraDocument(jobId, doc.stage, file);
+      }
+    };
+    input.click();
+  };
+
+  const handleDeleteBraManagementDocument = async (jobId, doc) => {
+    if (window.confirm('Are you sure you want to delete this BRA document?')) {
+      await handleDeleteBraDocument(jobId, doc.stage);
+    }
+  };
+
+  const handleUploadBraDocument = (jobId) => {
+    setBraUploadModal(prev => ({
+      ...prev,
+      [jobId]: true
+    }));
+  };
+
+  const handleReplaceBraDocument = (jobId, doc, docIndex) => {
+    setBraReplaceModal(prev => ({
+      ...prev,
+      [`${jobId}-${docIndex}`]: {
+        isOpen: true,
+        docName: doc.name,
+        docIndex: docIndex
+      }
+    }));
+  };
+
+  const replaceBraDocument = async (jobId, docIndex, docName, newFile, notes = '') => {
+    try {
+      setBraDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-bra-${docIndex}`]: true
+      }));
+
+      const currentDocsResponse = await axiosInstance.get(`/operations/jobs/${jobId}/bra-documents`);
+      const currentDocs = currentDocsResponse.data.documents || [];
+
+      const docToDelete = currentDocs[docIndex];
+      if (!docToDelete) {
+        throw new Error('Document not found');
+      }
+
+      await axiosInstance.delete(`/operations/jobs/${jobId}/bra-documents`, {
+        data: { fileUrl: docToDelete.file }
+      });
+
+      const formData = new FormData();
+      formData.append('braDocuments', newFile);
+      formData.append('braDocumentDescriptions', JSON.stringify([docName]));
+      formData.append('braDocumentTypes', JSON.stringify([docToDelete.documentType || 'BRA Document']));
+
+      if (notes) {
+        formData.append('notes', notes);
+      }
+
+      const uploadResponse = await axiosInstance.post(
+        `/operations/jobs/${jobId}/bra-documents`,
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        }
+      );
+
+      if (uploadResponse.data.success) {
+        await fetchGeneralBraDocuments(jobId);
+        toast.success('BRA document replaced successfully!');
+
+        setBraReplaceModal(prev => ({
+          ...prev,
+          [`${jobId}-${docIndex}`]: { isOpen: false }
+        }));
+      }
+    } catch (error) {
+      console.error('❌ Error replacing BRA document:', error);
+      toast.error(
+        error.response?.data?.message || 'Failed to replace BRA document'
+      );
+    } finally {
+      setBraDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-bra-${docIndex}`]: false
+      }));
+    }
+  };
+
+  const uploadGeneralBraDocument = async (jobId, docName, docType, file, notes = '') => {
+    try {
+      setBraDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-general`]: true
+      }));
+
+      const formData = new FormData();
+      formData.append('braDocuments', file);
+      formData.append('braDocumentDescriptions', JSON.stringify([docName]));
+      formData.append('braDocumentTypes', JSON.stringify([docType]));
+      if (notes) {
+        formData.append('notes', notes);
+      }
+
+      const uploadResponse = await axiosInstance.post(
+        `/operations/jobs/${jobId}/bra-documents`,
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        }
+      );
+
+      if (uploadResponse.data.success) {
+        toast.success('BRA document uploaded successfully!');
+
+        await fetchGeneralBraDocuments(jobId);
+
+        setBraUploadModal(prev => ({
+          ...prev,
+          [jobId]: false
+        }));
+      }
+    } catch (error) {
+      console.error('Error uploading general BRA document:', error);
+      toast.error(
+        error.response?.data?.message || 'Failed to upload BRA document'
+      );
+    } finally {
+      setBraDocumentUploading(prev => ({
+        ...prev,
+        [`${jobId}-general`]: false
+      }));
+    }
+  };
+
+  const handleDeleteGeneralBraDocument = async (jobId, doc, docIndex) => {
+    if (window.confirm('Are you sure you want to delete this BRA document?')) {
+      try {
+        const currentDocsResponse = await axiosInstance.get(`/operations/jobs/${jobId}/bra-documents`);
+        const currentDocs = currentDocsResponse.data.documents || [];
+        const docToDelete = currentDocs[docIndex];
+
+        if (docToDelete) {
+          await axiosInstance.delete(
+            `/operations/jobs/${jobId}/bra-documents`,
+            { data: { fileUrl: docToDelete.file } }
+          );
+          toast.success('BRA document deleted successfully!');
+          await fetchGeneralBraDocuments(jobId);
+        }
+      } catch (error) {
+        console.error('Error deleting general BRA document:', error);
+        toast.error(
+          error.response?.data?.message || 'Failed to delete BRA document'
+        );
+      }
     }
   };
 
@@ -2212,6 +2622,8 @@ function ClientProfile() {
       fetchCompanyDetails(jobId);
     } else if (personType === "kyc") {
       fetchKycDetails(jobId);
+    } else if (personType === "bra") {
+      fetchBraDetails(jobId);
     } else {
       fetchPersonTypeDetails(jobId, personType);
     }
@@ -2244,11 +2656,30 @@ function ClientProfile() {
         ...prev,
         [jobId]: response.data,
       }));
-      
+
       // Also fetch general KYC documents for display
       await fetchGeneralKycDocuments(jobId);
     } catch (err) {
       console.error(`Error fetching KYC details for job ${jobId}:`, err);
+    } finally {
+      setPersonDetailsLoading((prev) => ({ ...prev, [jobId]: false }));
+    }
+  };
+
+  const fetchBraDetails = async (jobId) => {
+    setPersonDetailsLoading((prev) => ({ ...prev, [jobId]: true }));
+    try {
+      const response = await axiosInstance.get(
+        `/operations/jobs/${jobId}/bra-documents`
+      );
+      setBraDetails((prev) => ({
+        ...prev,
+        [jobId]: response.data,
+      }));
+
+      await fetchGeneralBraDocuments(jobId);
+    } catch (err) {
+      console.error(`Error fetching BRA details for job ${jobId}:`, err);
     } finally {
       setPersonDetailsLoading((prev) => ({ ...prev, [jobId]: false }));
     }
@@ -3786,6 +4217,51 @@ function ClientProfile() {
     );
   };
 
+  const renderViewOnlyBraDetails = (jobId) => {
+    if (personDetailsLoading[jobId]) {
+      return (
+        <div className="py-10 text-center bg-white rounded-xl shadow-md">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-sm text-gray-500">Loading BRA details...</p>
+        </div>
+      );
+    }
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="bg-gradient-to-br from-purple-50/70 to-pink-50/70 rounded-xl p-5 border border-purple-100/40 shadow-sm hover:shadow-md transition-all duration-300"
+      >
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-purple-100">
+          <h4 className="text-sm font-semibold text-purple-900 flex items-center">
+            <DocumentTextIcon className="h-4 w-4 mr-2 text-purple-600" />
+            BRA Documents
+          </h4>
+          {(
+            (braStatuses[jobId] && (
+              braStatuses[jobId].lmroApproval?.document?.fileUrl ||
+              braStatuses[jobId].dlmroApproval?.document?.fileUrl ||
+              braStatuses[jobId].ceoApproval?.document?.fileUrl
+            )) ||
+            (generalBraDocuments[jobId] && generalBraDocuments[jobId].length > 0)
+          ) && (
+            <button
+              onClick={() => handleUploadBraDocument(jobId)}
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-100 rounded-lg hover:bg-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors"
+            >
+              <PlusIcon className="h-3 w-3 mr-1" />
+              Add Document
+            </button>
+          )}
+        </div>
+
+        {renderBraManagementDocuments(jobId)}
+      </motion.div>
+    );
+  };
+
   // Get KYC approval status - UPDATED to include compliance documents
   // const getKycStatus = asyncHandler(async (req, res) => {
   //   const { jobId } = req.params;
@@ -4450,6 +4926,23 @@ function ClientProfile() {
                                   />
                                   <span>KYC</span>
                                 </button>
+                                <button
+                                  onClick={() => setActivePersonTab("bra")}
+                                  className={`${
+                                    activePersonTab === "bra"
+                                      ? "bg-white text-purple-700 shadow-sm border-purple-200"
+                                      : "text-gray-600 hover:text-gray-900 hover:bg-white/50 border-transparent"
+                                  } flex-1 whitespace-nowrap py-2.5 px-3 rounded-lg font-medium text-sm flex items-center justify-center space-x-1 transition-all duration-200 border`}
+                                >
+                                  <ShieldCheckIcon
+                                    className={`h-4 w-4 ${
+                                      activePersonTab === "bra"
+                                        ? "text-purple-600"
+                                        : "text-gray-500"
+                                    }`}
+                                  />
+                                  <span>BRA</span>
+                                </button>
                               </nav>
                             </div>
                           </div>
@@ -4469,6 +4962,8 @@ function ClientProfile() {
                               renderViewOnlyPersonDetails(job._id, "sef")}
                             {activePersonTab === "kyc" &&
                               renderViewOnlyKycDetails(job._id)}
+                            {activePersonTab === "bra" &&
+                              renderViewOnlyBraDetails(job._id)}
                           </div>
                         </motion.div>
 
@@ -4781,8 +5276,8 @@ function ClientProfile() {
                           )}
                         </motion.div> */}
 
-                        {/* BRA Management Section */}
-                        <motion.div
+                        {/* BRA Management Section - COMMENTED OUT */}
+                        {/* <motion.div
                           initial={{ y: 20, opacity: 0 }}
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ delay: 0.5 }}
@@ -4805,7 +5300,7 @@ function ClientProfile() {
                           ) : braStatuses[job._id] ? (
                             <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/60 p-6">
                               {/* Status Badge and Stage */}
-                              <div className="flex flex-col gap-4 mb-5">
+                              {/* <div className="flex flex-col gap-4 mb-5">
                                 <div className="flex flex-wrap items-center justify-between">
                                   <div className="flex items-center">
                                     <span
@@ -4828,7 +5323,7 @@ function ClientProfile() {
                                   </div>
 
                                   {/* Status Date */}
-                                  {braStatuses[job._id].exists &&
+                                  {/* {braStatuses[job._id].exists &&
                                     braStatuses[job._id].updatedAt && (
                                       <div className="text-sm text-gray-500">
                                         Last Updated:{" "}
@@ -4840,7 +5335,7 @@ function ClientProfile() {
                                 </div>
 
                                 {/* Status Description */}
-                                <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                {/* <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200">
                                   <p>
                                     {
                                       getBRAStatusInfo(braStatuses[job._id])
@@ -4851,7 +5346,7 @@ function ClientProfile() {
                               </div>
 
                               {/* BRA Progress Bar */}
-                              {braStatuses[job._id].exists && (
+                              {/* {braStatuses[job._id].exists && (
                                 <div className="mb-6">
                                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                                     <span>MLRO</span>
@@ -4860,7 +5355,7 @@ function ClientProfile() {
                                   </div>
                                   <div className="flex items-center gap-1">
                                     {/* LMRO */}
-                                    <div
+                                    {/* <div
                                       className={`h-2.5 flex-1 rounded-l-full ${
                                         braStatuses[job._id].lmroApproval
                                           ?.approved
@@ -4870,7 +5365,7 @@ function ClientProfile() {
                                     ></div>
 
                                     {/* DLMRO */}
-                                    <div
+                                    {/* <div
                                       className={`h-2.5 flex-1 ${
                                         braStatuses[job._id].dlmroApproval
                                           ?.approved
@@ -4880,7 +5375,7 @@ function ClientProfile() {
                                     ></div>
 
                                     {/* CEO */}
-                                    <div
+                                    {/* <div
                                       className={`h-2.5 flex-1 rounded-r-full ${
                                         braStatuses[job._id].ceoApproval
                                           ?.approved
@@ -4893,7 +5388,7 @@ function ClientProfile() {
                               )}
 
                               {/* Enhanced BRA Documents Section */}
-                              {braStatuses[job._id].exists && (
+                              {/* {braStatuses[job._id].exists && (
                                 <div>
                                   <h5 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center">
                                     <DocumentTextIcon className="h-4 w-4 mr-1.5 text-teal-600" />
@@ -4906,7 +5401,7 @@ function ClientProfile() {
                                 </div>
                               )}
                               {/* BRA Document Update Modals */}
-                              {Object.entries(braDocumentModals).map(
+                              {/* {Object.entries(braDocumentModals).map(
                                 ([key, isOpen]) => {
                                   const [jobId, stage] = key.split("-");
                                   return (
@@ -4928,7 +5423,7 @@ function ClientProfile() {
                               )}
 
                               {/* BRA Document Delete Confirmation Modals */}
-                              {Object.entries(braDeleteConfirmModals).map(
+                              {/* {Object.entries(braDeleteConfirmModals).map(
                                 ([key, isOpen]) => {
                                   const [jobId, stage] = key.split("-");
                                   return (
@@ -4949,7 +5444,7 @@ function ClientProfile() {
                                 }
                               )}
                               {/* Rejection Reason (if BRA is rejected) */}
-                              {braStatuses[job._id].exists &&
+                              {/* {braStatuses[job._id].exists &&
                                 braStatuses[job._id].status === "rejected" && (
                                   <div className="mt-4 p-3 bg-red-50 rounded-md border border-red-200">
                                     <div className="flex items-start">
@@ -4980,7 +5475,7 @@ function ClientProfile() {
                               </p>
                             </div>
                           )}
-                        </motion.div>
+                        </motion.div> */}
                       </div>
 
                       {/* Monthly Payment Records Section */}
@@ -5544,6 +6039,261 @@ function ClientProfile() {
                       }`}
                     >
                       {kycDocumentUploading[`${jobId}-replace-${docIndex}`] ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                          Replacing...
+                        </>
+                      ) : (
+                        <>
+                          <ArrowPathIcon className="h-4 w-4 mr-2" />
+                          Replace Document
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {Object.keys(braUploadModal).map((jobId) => {
+        if (!braUploadModal[jobId]) return null;
+
+        return (
+          <div
+            key={`bra-upload-${jobId}`}
+            className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          >
+            <div className="relative p-6 border w-full max-w-md mx-4 shadow-lg rounded-xl bg-white">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                    <DocumentTextIcon className="h-5 w-5 mr-2 text-purple-600" />
+                    Upload BRA Document
+                  </h3>
+                  <button
+                    onClick={() =>
+                      setBraUploadModal(prev => ({
+                        ...prev,
+                        [jobId]: false
+                      }))
+                    }
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Document Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id={`bra-doc-name-${jobId}`}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Enter document name"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Document
+                    </label>
+                    <input
+                      type="file"
+                      id={`bra-file-${jobId}`}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG (Max 50MB)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notes (Optional)
+                    </label>
+                    <textarea
+                      id={`bra-notes-${jobId}`}
+                      rows="3"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Add any notes about this document..."
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() =>
+                        setBraUploadModal(prev => ({
+                          ...prev,
+                          [jobId]: false
+                        }))
+                      }
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const docName = document.getElementById(`bra-doc-name-${jobId}`).value.trim();
+                        const file = document.getElementById(`bra-file-${jobId}`).files[0];
+                        const notes = document.getElementById(`bra-notes-${jobId}`).value;
+
+                        if (!docName) {
+                          toast.error('Please enter a document name');
+                          return;
+                        }
+
+                        if (!file) {
+                          toast.error('Please select a document to upload');
+                          return;
+                        }
+
+                        uploadGeneralBraDocument(jobId, docName, 'BRA Document', file, notes);
+                      }}
+                      disabled={braDocumentUploading[`${jobId}-general`]}
+                      className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                        braDocumentUploading[`${jobId}-general`]
+                          ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                          : 'text-white bg-purple-600 hover:bg-purple-700 focus:ring-purple-500'
+                      }`}
+                    >
+                      {braDocumentUploading[`${jobId}-general`] ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                          Upload Document
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {Object.entries(braReplaceModal).map(([key, replaceData]) => {
+        if (!replaceData?.isOpen) return null;
+
+        const jobId = key.split('-')[0];
+        const docIndex = replaceData.docIndex;
+        const docName = replaceData.docName;
+
+        return (
+          <div
+            key={`bra-replace-${key}`}
+            className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          >
+            <div className="relative p-6 border w-full max-w-md mx-4 shadow-lg rounded-xl bg-white">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                    <ArrowPathIcon className="h-5 w-5 mr-2 text-purple-600" />
+                    Replace BRA Document
+                  </h3>
+                  <button
+                    onClick={() =>
+                      setBraReplaceModal(prev => ({
+                        ...prev,
+                        [key]: { ...prev[key], isOpen: false }
+                      }))
+                    }
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Document Name
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={docName}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Enter document name"
+                      id={`bra-replace-doc-name-${key}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select New Document
+                    </label>
+                    <input
+                      type="file"
+                      id={`bra-replace-file-${key}`}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG (Max 50MB)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notes (Optional)
+                    </label>
+                    <textarea
+                      id={`bra-replace-notes-${key}`}
+                      rows="3"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Add any notes about this replacement..."
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() =>
+                        setBraReplaceModal(prev => ({
+                          ...prev,
+                          [key]: { ...prev[key], isOpen: false }
+                        }))
+                      }
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newDocName = document.getElementById(`bra-replace-doc-name-${key}`).value.trim();
+                        const file = document.getElementById(`bra-replace-file-${key}`).files[0];
+                        const notes = document.getElementById(`bra-replace-notes-${key}`).value;
+
+                        if (!newDocName) {
+                          toast.error('Please enter a document name');
+                          return;
+                        }
+
+                        if (!file) {
+                          toast.error('Please select a new document');
+                          return;
+                        }
+
+                        replaceBraDocument(jobId, docIndex, newDocName, file, notes);
+                      }}
+                      disabled={braDocumentUploading[`${jobId}-bra-${docIndex}`]}
+                      className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                        braDocumentUploading[`${jobId}-bra-${docIndex}`]
+                          ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                          : 'text-white bg-purple-600 hover:bg-purple-700 focus:ring-purple-500'
+                      }`}
+                    >
+                      {braDocumentUploading[`${jobId}-bra-${docIndex}`] ? (
                         <>
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
                           Replacing...

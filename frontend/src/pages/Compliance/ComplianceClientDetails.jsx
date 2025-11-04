@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Tab } from '@headlessui/react';
 import axios from '../../utils/axios';
 import KYCSheet from './components/KYCSheet';
+import BRASheet from './components/BRASheet';
 import ScreeningRecords from './components/ScreeningRecords';
 import OngoingMonitoring from './components/OngoingMonitoring';
 import MoreSections from './components/MoreSections';
@@ -128,6 +129,7 @@ const ComplianceClientDetails = () => {
 
   const tabs = [
     { name: 'KYC Sheet', icon: DocumentTextIcon, component: KYCSheet },
+    { name: 'BRA Sheet', icon: DocumentTextIcon, component: BRASheet },
     { name: 'Screening Records', icon: ShieldCheckIcon, component: ScreeningRecords },
     { name: 'Ongoing Monitoring', icon: ChartBarIcon, component: OngoingMonitoring },
     { name: 'More Sections', icon: EllipsisHorizontalIcon, component: MoreSections }
