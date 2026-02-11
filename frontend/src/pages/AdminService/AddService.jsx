@@ -3,9 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeftIcon,
   ExclamationCircleIcon,
+  CheckIcon,
+  XMarkIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
-import { motion } from "framer-motion";
-import axiosInstance from "../../utils/axios"; // CHANGED: Use axiosInstance instead of axios
+import { motion } from "framer-motion"; // eslint-disable-line no-unused-vars
+import axiosInstance from "../../utils/axios";
 
 function AddService() {
   const navigate = useNavigate();
@@ -14,38 +17,39 @@ function AddService() {
     name: "",
     description: "",
     status: "active",
+    roles: [],
   });
+  const [allRoles, setAllRoles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [authInfo, setAuthInfo] = useState(null); // DEBUG: Added to check auth state
 
-  // DEBUG: Check authentication state on load
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    setAuthInfo({
-      isLoggedIn: !!user.token,
-      hasToken: !!user.token,
-      roles: user.roles || []
-    });
-    console.log('Current user state:', user);
+    fetchRoles();
   }, []);
 
-  // Fetch service data if editing
+  const fetchRoles = async () => {
+    try {
+      const res = await axiosInstance.get("roles");
+      setAllRoles(res.data || []);
+    } catch (err) {
+      console.error("Error fetching roles:", err);
+    }
+  };
+
   useEffect(() => {
     const fetchService = async () => {
       if (id) {
         try {
           setLoading(true);
-          console.log('Fetching service with ID:', id);
-          
-          const res = await axiosInstance.get(`services/${id}`); // CHANGED: Use axiosInstance & removed /api prefix
-          
+          const res = await axiosInstance.get(`services/${id}`);
+
           if (res.data && typeof res.data === 'object') {
             setService({
               name: res.data.name || "",
               description: res.data.description || "",
               status: res.data.status || "active",
+              roles: res.data.roles?.map(r => r._id || r) || [],
             });
             setError(null);
           } else {
@@ -54,7 +58,7 @@ function AddService() {
         } catch (err) {
           console.error("Error fetching service:", err.response || err);
           setError(
-            err.response?.data?.message || 
+            err.response?.data?.message ||
             "Failed to load service details. Please try again."
           );
         } finally {
@@ -71,29 +75,19 @@ function AddService() {
     setSubmitting(true);
 
     try {
-      // Debug: Log the request details
-      console.log('Submitting service with data:', service);
-      console.log('Auth info:', authInfo);
-      
       if (id) {
-        // Update existing service
-        await axiosInstance.put(`services/${id}`, service); // CHANGED: Use axiosInstance & removed /api prefix
+        await axiosInstance.put(`services/${id}`, service);
       } else {
-        // Create new service
-        await axiosInstance.post("services", service); // CHANGED: Use axiosInstance & removed /api prefix
+        await axiosInstance.post("services", service);
       }
 
       navigate("/admin/services");
     } catch (err) {
       console.error("Error saving service:", err.response || err);
-      
-      // More detailed error handling
+
       let errorMessage = "Failed to save service. Please check your inputs and try again.";
-      
+
       if (err.response) {
-        console.error("Response status:", err.response.status);
-        console.error("Response data:", err.response.data);
-        
         if (err.response.status === 401) {
           errorMessage = "Authentication error. Please log in again.";
         } else if (err.response.status === 403) {
@@ -101,13 +95,26 @@ function AddService() {
         } else if (err.response.status === 405) {
           errorMessage = "This operation is not allowed. Please contact support.";
         }
-        
+
         errorMessage = err.response.data?.message || errorMessage;
       }
-      
+
       setError(errorMessage);
       setSubmitting(false);
     }
+  };
+
+  const toggleRole = (roleId) => {
+    setService(prev => ({
+      ...prev,
+      roles: prev.roles.includes(roleId)
+        ? prev.roles.filter(r => r !== roleId)
+        : [...prev.roles, roleId]
+    }));
+  };
+
+  const isRoleSelected = (roleId) => {
+    return service.roles.includes(roleId);
   };
 
   return (
@@ -129,17 +136,7 @@ function AddService() {
           </div>
         </div>
 
-        {/* Auth Debug Info - Remove in production */}
-        {authInfo && (
-          <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md text-xs">
-            <p><strong>Debug Auth Info:</strong></p>
-            <p>Logged in: {authInfo.isLoggedIn ? 'Yes' : 'No'}</p>
-            <p>Token exists: {authInfo.hasToken ? 'Yes' : 'No'}</p>
-            <p>Roles: {authInfo.roles.length > 0 ? authInfo.roles.join(', ') : 'None'}</p>
-          </div>
-        )}
-
-        {/* Loading State */}
+{/* Loading State */}
         {loading && (
           <div className="text-center py-12">
             <div className="mx-auto h-8 w-8 border-4 border-t-blue-500 border-gray-200 rounded-full animate-spin"></div>
@@ -222,6 +219,68 @@ function AddService() {
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    <div className="flex items-center">
+                      <UserGroupIcon className="h-5 w-5 mr-2 text-indigo-600" />
+                      Assigned Roles
+                    </div>
+                  </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Select the roles that can access this service
+                  </p>
+
+                  {allRoles.length === 0 ? (
+                    <div className="text-sm text-gray-500 bg-gray-50 rounded-lg p-4 text-center">
+                      No roles available. Please create roles first.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {allRoles.map((role) => (
+                        <button
+                          key={role._id}
+                          type="button"
+                          onClick={() => toggleRole(role._id)}
+                          className={`relative flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all duration-200 ${
+                            isRoleSelected(role._id)
+                              ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className="font-medium text-sm capitalize">{role.name}</span>
+                          {isRoleSelected(role._id) && (
+                            <CheckIcon className="h-5 w-5 text-indigo-600" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {service.roles.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="text-xs text-gray-500">Selected:</span>
+                      {service.roles.map((roleId) => {
+                        const role = allRoles.find(r => r._id === roleId);
+                        return role ? (
+                          <span
+                            key={roleId}
+                            className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
+                          >
+                            {role.name}
+                            <button
+                              type="button"
+                              onClick={() => toggleRole(roleId)}
+                              className="ml-1.5 hover:text-indigo-600"
+                            >
+                              <XMarkIcon className="h-3.5 w-3.5" />
+                            </button>
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 

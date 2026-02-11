@@ -39,8 +39,7 @@ const sectionSettingsSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for faster queries
-sectionSettingsSchema.index({ sectionId: 1 });
+// Index for faster queries (sectionId already indexed via unique: true)
 sectionSettingsSchema.index({ isActive: 1 });
 
 module.exports = mongoose.model('SectionSettings', sectionSettingsSchema);

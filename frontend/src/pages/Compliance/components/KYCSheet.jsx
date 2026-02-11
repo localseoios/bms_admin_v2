@@ -23,7 +23,7 @@ import {
   ArrowPathIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import axios, { fileUploadInstance } from '../../../utils/axios';
 import { toast } from 'react-toastify';
 
@@ -31,7 +31,7 @@ const KYCSheet = ({ client }) => {
   const [activeSection, setActiveSection] = useState('personal');
   const [kycApprovals, setKycApprovals] = useState([]);
   const [loadingKyc, setLoadingKyc] = useState(false);
-  const [riskLevel, setRiskLevel] = useState(client?.riskLevel || 'Medium');
+  const [riskLevel, setRiskLevel] = useState(client?.riskLevel || 'Pending');
   const [updatingRiskLevel, setUpdatingRiskLevel] = useState(false);
   const [personDetailsDocuments, setPersonDetailsDocuments] = useState([]);
 
@@ -41,6 +41,29 @@ const KYCSheet = ({ client }) => {
   const [uploading, setUploading] = useState(false);
   const [jobPersons, setJobPersons] = useState({});
   const [generalKycDocuments, setGeneralKycDocuments] = useState({});
+
+  const isOfficeFile = (url) => {
+    if (!url) return false;
+    const extension = url.toLowerCase().split('.').pop().split('?')[0];
+    return ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(extension);
+  };
+
+  const isPublicUrl = (url) => {
+    return url && (url.includes('cloudinary.com') || url.includes('res.cloudinary.com'));
+  };
+
+  const openDocument = (url, fileName) => {
+    if (!url) {
+      alert('Document not available');
+      return;
+    }
+
+    if (isOfficeFile(url) && isPublicUrl(url)) {
+      window.open(`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`, '_blank');
+    } else {
+      window.open(url, '_blank');
+    }
+  };
 
   // Update risk level when client changes
   useEffect(() => {
@@ -55,6 +78,7 @@ const KYCSheet = ({ client }) => {
       setPersonDetailsDocuments(client.personDetailsDocuments);
     }
   }, [client?.personDetailsDocuments]);
+
 
   const updateRiskLevel = async (newRiskLevel) => {
     if (!client) return;
@@ -138,52 +162,20 @@ const KYCSheet = ({ client }) => {
     kycApprovals.forEach(approval => {
       const kyc = approval.kycApproval;
       console.log('Processing KYC approval:', kyc);
-      
-      // Add LMRO document if exists
-      if (kyc.lmroApproval?.document?.fileUrl) {
-        console.log('Found LMRO document:', kyc.lmroApproval.document);
-        clientDocuments.push({
-          id: docId++,
-          name: kyc.lmroApproval.document.fileName || 'LMRO KYC Document',
-          status: 'verified',
-          uploadDate: kyc.lmroApproval.document.uploadedAt ? new Date(kyc.lmroApproval.document.uploadedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          verifiedBy: kyc.lmroApproval.approvedBy?.name || 'LMRO',
-          type: 'kyc',
-          url: kyc.lmroApproval.document.fileUrl,
-          jobNumber: approval.jobNumber,
-          stage: 'LMRO Approval'
-        });
-      }
-      
-      // Add DLMRO document if exists
-      if (kyc.dlmroApproval?.document?.fileUrl) {
-        console.log('Found DLMRO document:', kyc.dlmroApproval.document);
-        clientDocuments.push({
-          id: docId++,
-          name: kyc.dlmroApproval.document.fileName || 'DLMRO KYC Document',
-          status: 'verified',
-          uploadDate: kyc.dlmroApproval.document.uploadedAt ? new Date(kyc.dlmroApproval.document.uploadedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          verifiedBy: kyc.dlmroApproval.approvedBy?.name || 'DLMRO',
-          type: 'kyc',
-          url: kyc.dlmroApproval.document.fileUrl,
-          jobNumber: approval.jobNumber,
-          stage: 'DLMRO Approval'
-        });
-      }
-      
-      // Add CEO document if exists
+
+      // Only show the final CEO signed document (contains all signatures)
       if (kyc.ceoApproval?.document?.fileUrl) {
-        console.log('Found CEO document:', kyc.ceoApproval.document);
+        console.log('Found CEO document (final signed):', kyc.ceoApproval.document);
         clientDocuments.push({
           id: docId++,
-          name: kyc.ceoApproval.document.fileName || 'CEO KYC Document',
+          name: kyc.ceoApproval.document.fileName || 'Signed KYC Document',
           status: 'verified',
           uploadDate: kyc.ceoApproval.document.uploadedAt ? new Date(kyc.ceoApproval.document.uploadedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           verifiedBy: kyc.ceoApproval.approvedBy?.name || 'CEO',
           type: 'kyc',
           url: kyc.ceoApproval.document.fileUrl,
           jobNumber: approval.jobNumber,
-          stage: 'CEO Approval'
+          stage: 'Fully Signed'
         });
       }
     });
@@ -234,13 +226,9 @@ const KYCSheet = ({ client }) => {
 
 
   const handleViewDocument = (doc) => {
-    if (doc.fileUrl) {
-      window.open(doc.fileUrl, '_blank');
-    } else if (doc.url) {
-      window.open(doc.url, '_blank');
-    } else {
-      alert('Document preview not available');
-    }
+    const url = doc.fileUrl || doc.url;
+    const fileName = doc.fileName || doc.name || '';
+    openDocument(url, fileName);
   };
 
   const handleDownloadDocument = (doc) => {
@@ -496,61 +484,21 @@ const KYCSheet = ({ client }) => {
     try {
       setUploading(true);
 
-      const response = await axios.get(`/operations/jobs/${jobId}/kyc-documents`);
-      const existingDocs = response.data.documents || [];
-      const currentDoc = existingDocs[documentIndex];
-
-      let updatedDoc;
-
+      const formData = new FormData();
       if (file) {
-        const formData = new FormData();
-        formData.append('kycDocuments', file);
-        const description = notes ? `${documentName} - ${notes}` : documentName;
-        formData.append('description_0', description);
-        formData.append('date_0', new Date().toISOString());
-
-        const uploadResponse = await fileUploadInstance.put(
-          `/operations/jobs/${jobId}/kyc-documents`,
-          formData
-        );
-
-        updatedDoc = uploadResponse.data.documents[uploadResponse.data.documents.length - 1];
-
-        const updatedResponse = await axios.get(`/operations/jobs/${jobId}/kyc-documents`);
-        const allDocs = updatedResponse.data.documents || [];
-
-        const updatedDocs = allDocs.map((doc, index) => {
-          if (index === documentIndex) {
-            return updatedDoc;
-          } else if (index === allDocs.length - 1 && allDocs.length - 1 !== documentIndex) {
-            return null;
-          }
-          return doc;
-        }).filter(doc => doc !== null);
-
-        await axios.put(
-          `/operations/jobs/${jobId}/kyc-documents`,
-          { documents: updatedDocs }
-        );
-      } else {
-        const description = notes ? `${documentName} - ${notes}` : documentName;
-        updatedDoc = {
-          ...currentDoc,
-          description: description,
-          date: new Date().toISOString()
-        };
-
-        const updatedDocs = existingDocs.map((doc, index) =>
-          index === documentIndex ? updatedDoc : doc
-        );
-
-        await axios.put(
-          `/operations/jobs/${jobId}/kyc-documents`,
-          { documents: updatedDocs }
-        );
+        formData.append('kycDocument', file);
+      }
+      formData.append('documentName', documentName);
+      if (notes) {
+        formData.append('notes', notes);
       }
 
-      toast.success('Document updated successfully');
+      await fileUploadInstance.put(
+        `/operations/jobs/${jobId}/kyc-documents/${documentIndex}/replace`,
+        formData
+      );
+
+      toast.success('Document replaced successfully');
       setReplaceModal({ open: false, document: null, jobId: null, documentIndex: null });
 
       const fileInput = document.getElementById('replaceFile');
@@ -567,7 +515,7 @@ const KYCSheet = ({ client }) => {
       }));
     } catch (error) {
       console.error('Error replacing document:', error);
-      toast.error(error.response?.data?.message || 'Failed to update document');
+      toast.error(error.response?.data?.message || 'Failed to replace document');
     } finally {
       setUploading(false);
     }
@@ -697,15 +645,13 @@ const KYCSheet = ({ client }) => {
                         )}
                       </div>
                       <div className="mt-2 flex gap-2">
-                        <a
-                          href={doc.file}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() => openDocument(doc.file, doc.description || doc.fileName)}
                           className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 bg-white rounded-md px-2 py-1 border border-blue-200 hover:shadow-sm transition-all"
                         >
                           <EyeIcon className="h-3.5 w-3.5 mr-1" />
                           View
-                        </a>
+                        </button>
                         <button
                           onClick={() => setReplaceModal({ open: true, document: doc, jobId, documentIndex: index })}
                           className="inline-flex items-center text-xs text-green-600 hover:text-green-800 bg-white rounded-md px-2 py-1 border border-green-200 hover:shadow-sm transition-all"
@@ -784,15 +730,13 @@ const KYCSheet = ({ client }) => {
                       )}
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <a
-                        href={doc.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => openDocument(doc.fileUrl, doc.fileName)}
                         className="inline-flex items-center text-xs text-purple-600 hover:text-purple-800 bg-white rounded-md px-2 py-1 border border-purple-200 hover:shadow-sm transition-all"
                       >
                         <EyeIcon className="h-3.5 w-3.5 mr-1" />
                         View
-                      </a>
+                      </button>
                       <button
                         onClick={() => setReplaceModal({ open: true, document: doc, personId: doc.personId, documentType: doc.documentType })}
                         className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 bg-white rounded-md px-2 py-1 border border-blue-200 hover:shadow-sm transition-all"
@@ -835,14 +779,7 @@ const KYCSheet = ({ client }) => {
       };
     };
 
-    if (kycData.lmroApproval?.document?.fileUrl) {
-      documents.push(createDocumentInfo("lmro", kycData.lmroApproval));
-    }
-
-    if (kycData.dlmroApproval?.document?.fileUrl) {
-      documents.push(createDocumentInfo("dlmro", kycData.dlmroApproval));
-    }
-
+    // Only show the final CEO signed document (contains all signatures)
     if (kycData.ceoApproval?.document?.fileUrl) {
       documents.push(createDocumentInfo("ceo", kycData.ceoApproval));
     }
@@ -955,15 +892,13 @@ const KYCSheet = ({ client }) => {
                     </div>
 
                     <div className="mt-3 flex items-center gap-2">
-                      <a
-                        href={doc.document.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => openDocument(doc.document.fileUrl, doc.document.fileName)}
                         className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
                       >
                         <EyeIcon className="h-3.5 w-3.5 mr-1" />
                         View
-                      </a>
+                      </button>
                       <a
                         href={doc.document.fileUrl}
                         download
@@ -1012,23 +947,31 @@ const KYCSheet = ({ client }) => {
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Client Information</h3>
-            
+
             <div className="bg-gray-50 rounded-lg p-4 space-y-3">
               <div className="flex justify-between">
-                <span className="text-gray-600">Full Name:</span>
-                <span className="font-medium">{client?.name || 'John Doe'}</span>
+                <span className="text-gray-600">Client Name:</span>
+                <span className="font-medium">{client?.name || 'N/A'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Date of Birth:</span>
-                <span className="font-medium">1985-06-15</span>
+                <span className="text-gray-600">Email:</span>
+                <span className="font-medium">{client?.email || 'N/A'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Nationality:</span>
-                <span className="font-medium">British</span>
+                <span className="text-gray-600">Phone:</span>
+                <span className="font-medium">{client?.phone || client?.contactNumber || 'N/A'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">ID Number:</span>
-                <span className="font-medium">AB123456789</span>
+                <span className="text-gray-600">Address:</span>
+                <span className="font-medium">{client?.address || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Starting Point:</span>
+                <span className="font-medium">{client?.startingPoint || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">CR Number:</span>
+                <span className="font-medium">{client?.crNo || 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Risk Level:</span>
@@ -1040,33 +983,17 @@ const KYCSheet = ({ client }) => {
                     className={`px-3 py-1 rounded-full text-xs font-semibold border-none outline-none cursor-pointer pr-6 ${
                       riskLevel === 'High' ? 'bg-red-100 text-red-800' :
                       riskLevel === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
+                      riskLevel === 'Low' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
                     } ${updatingRiskLevel ? 'opacity-50' : ''}`}
                     style={{ appearance: 'none' }}
                   >
+                    <option value="Pending" className="bg-white text-gray-900">Pending</option>
                     <option value="Low" className="bg-white text-gray-900">Low Risk</option>
                     <option value="Medium" className="bg-white text-gray-900">Medium Risk</option>
                     <option value="High" className="bg-white text-gray-900">High Risk</option>
                   </select>
                   <ChevronDownIcon className="h-3 w-3 absolute right-1 top-1/2 transform -translate-y-1/2 text-gray-600 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-semibold text-blue-900 mb-2">Verification Status</h4>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Identity Verification</span>
-                  <CheckCircleIcon className="h-5 w-5 text-green-500" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Address Verification</span>
-                  <CheckCircleIcon className="h-5 w-5 text-green-500" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Source of Funds</span>
-                  <ClockIcon className="h-5 w-5 text-yellow-500" />
                 </div>
               </div>
             </div>
@@ -1285,15 +1212,16 @@ const KYCSheet = ({ client }) => {
                     {replaceModal.document?.fileName || replaceModal.document?.description || 'Document'}
                   </p>
                   {(replaceModal.document?.file || replaceModal.document?.fileUrl) && (
-                    <a
-                      href={replaceModal.document?.file || replaceModal.document?.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => openDocument(
+                        replaceModal.document?.file || replaceModal.document?.fileUrl,
+                        replaceModal.document?.fileName || replaceModal.document?.description
+                      )}
                       className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 bg-white rounded-md px-2 py-1 border border-blue-200 hover:shadow-sm transition-all"
                     >
                       <EyeIcon className="h-3.5 w-3.5 mr-1" />
                       View
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>

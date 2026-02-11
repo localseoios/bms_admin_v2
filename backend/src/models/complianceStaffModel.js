@@ -168,7 +168,7 @@ const complianceStaffSchema = mongoose.Schema(
   { timestamps: true }
 );
 
-complianceStaffSchema.index({ email: 1 });
+// email already indexed via unique: true
 complianceStaffSchema.index({ role: 1 });
 complianceStaffSchema.index({ department: 1 });
 complianceStaffSchema.index({ status: 1 });

@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion } from "framer-motion"; // eslint-disable-line no-unused-vars
 import {
   ShieldCheckIcon,
   UsersIcon,
-  DocumentTextIcon,
-  AcademicCapIcon,
   ChevronRightIcon,
   ArrowLeftIcon,
   HomeIcon,
   Squares2X2Icon,
   ArrowRightOnRectangleIcon,
   UserCircleIcon,
+  BuildingOffice2Icon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext";
 import axiosInstance from "../utils/axios";
@@ -55,19 +54,7 @@ const ComplianceSelection = () => {
 
   const complianceCards = [
     {
-      id: "compliance-culture",
-      title: "Compliance Culture",
-      description: "Foster and maintain organizational compliance culture with policies, training, and monitoring systems.",
-      icon: AcademicCapIcon,
-      gradient: "from-blue-500 to-indigo-600",
-      bgGradient: "from-blue-50 to-indigo-50",
-      shadowColor: "shadow-blue-500/25",
-      hoverShadow: "group-hover:shadow-blue-500/40",
-      route: "/compliance-culture",
-      stats: "12 Active Programs"
-    },
-    {
-      id: "compliance-staff", 
+      id: "compliance-staff",
       title: "Compliance Staff",
       description: "Manage compliance team members, roles, responsibilities, and performance tracking.",
       icon: UsersIcon,
@@ -83,7 +70,7 @@ const ComplianceSelection = () => {
       title: "Compliance Client",
       description: "Client onboarding, KYC processes, risk assessments, and ongoing compliance monitoring.",
       icon: ShieldCheckIcon,
-      gradient: "from-purple-500 to-violet-600", 
+      gradient: "from-purple-500 to-violet-600",
       bgGradient: "from-purple-50 to-violet-50",
       shadowColor: "shadow-purple-500/25",
       hoverShadow: "group-hover:shadow-purple-500/40",
@@ -91,16 +78,16 @@ const ComplianceSelection = () => {
       stats: "156 Active Clients"
     },
     {
-      id: "compliance-resource",
-      title: "Compliance Resource",
-      description: "Access compliance documentation, regulatory guidelines, templates, and knowledge base.",
-      icon: DocumentTextIcon,
-      gradient: "from-orange-500 to-red-600",
-      bgGradient: "from-orange-50 to-red-50", 
-      shadowColor: "shadow-orange-500/25",
-      hoverShadow: "group-hover:shadow-orange-500/40",
-      route: "/compliance-resources",
-      stats: "89 Documents"
+      id: "organizational-structure",
+      title: "Organizational Structure",
+      description: "Manage organizational structure documents, charts, and related compliance documentation.",
+      icon: BuildingOffice2Icon,
+      gradient: "from-amber-500 to-orange-600",
+      bgGradient: "from-amber-50 to-orange-50",
+      shadowColor: "shadow-amber-500/25",
+      hoverShadow: "group-hover:shadow-amber-500/40",
+      route: "/organizational-structure",
+      stats: "Structure Documents"
     }
   ];
 
@@ -253,7 +240,7 @@ const ComplianceSelection = () => {
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-2 gap-8"
+          className="grid grid-cols-1 md:grid-cols-3 gap-6"
         >
           {complianceCards.map((card, index) => (
             <motion.div

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import axios from '../../utils/axios';
 import toast from 'react-hot-toast';
+import { AuthContext } from "../../context/AuthContext";
 import {
   DocumentTextIcon,
   ArrowLeftIcon,
@@ -158,6 +159,9 @@ const EditResourceForm = ({ document, onUpdate, onCancel, loading }) => {
 
 const ComplianceResource = () => {
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  const isAdmin = user?.role?.name === "admin";
+  const canManageResources = isAdmin; // Only admin can add, edit, delete resources
   const [sections, setSections] = useState([
     {
       id: "authority-notification",
@@ -844,7 +848,14 @@ const ComplianceResource = () => {
                 <DocumentTextIcon className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-800">Compliance Resources</h1>
+                <div className="flex items-center space-x-2">
+                  <h1 className="text-lg font-bold text-gray-800">Compliance Resources</h1>
+                  {isAdmin && (
+                    <span className="px-2 py-0.5 bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-medium rounded-full">
+                      Admin
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500">Legal & Regulatory Documentation</p>
               </div>
             </div>
@@ -872,6 +883,33 @@ const ComplianceResource = () => {
         >
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Compliance Resource Center</h2>
           <p className="text-gray-600">Access and manage regulatory compliance resources, laws, and external references</p>
+        </motion.div>
+
+        {/* Info Banner */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-8 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-4 shadow-sm"
+        >
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center">
+                <BookOpenIcon className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-orange-800 mb-1">About This Resource Center</h3>
+              <p className="text-sm text-orange-700">
+                This is the place where all staff can access important documents stored. Browse through the sections below to find regulatory documents, compliance guidelines, AML/CFT laws, and other essential resources for your work.
+                {!isAdmin && (
+                  <span className="block mt-1 text-orange-600">
+                    Contact an administrator if you need to add or modify resources.
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
         </motion.div>
 
         {loading && (
@@ -923,30 +961,34 @@ const ComplianceResource = () => {
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleSectionSettings(section)}
-                    className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all"
-                    title="Section Settings"
-                  >
-                    <Cog6ToothIcon className="w-5 h-5 text-gray-600" />
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleUploadClick(section)}
-                    disabled={section.documents.length >= section.maxDocuments || loading}
-                    className={`flex items-center space-x-2 px-4 py-2 bg-white rounded-lg shadow hover:shadow-md transition-all ${
-                      section.documents.length >= section.maxDocuments || loading
-                        ? 'opacity-50 cursor-not-allowed' 
-                        : ''
-                    }`}
-                  >
-                    <CloudArrowUpIcon className="w-5 h-5 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-700">Add</span>
-                  </motion.button>
-                  {section.isCustom && (
+                  {canManageResources && (
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleSectionSettings(section)}
+                      className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all"
+                      title="Section Settings"
+                    >
+                      <Cog6ToothIcon className="w-5 h-5 text-gray-600" />
+                    </motion.button>
+                  )}
+                  {canManageResources && (
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleUploadClick(section)}
+                      disabled={section.documents.length >= section.maxDocuments || loading}
+                      className={`flex items-center space-x-2 px-4 py-2 bg-white rounded-lg shadow hover:shadow-md transition-all ${
+                        section.documents.length >= section.maxDocuments || loading
+                          ? 'opacity-50 cursor-not-allowed'
+                          : ''
+                      }`}
+                    >
+                      <CloudArrowUpIcon className="w-5 h-5 text-gray-600" />
+                      <span className="text-sm font-medium text-gray-700">Add</span>
+                    </motion.button>
+                  )}
+                  {canManageResources && section.isCustom && (
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
@@ -1072,23 +1114,27 @@ const ComplianceResource = () => {
                                 <CloudArrowUpIcon className="w-5 h-5" />
                               </motion.button>
                             )}
-                            <motion.button
-                              whileHover={{ scale: 1.1 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => handleEditDocument(document, section)}
-                              className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
-                            >
-                              <PencilIcon className="w-5 h-5" />
-                            </motion.button>
-                            <motion.button
-                              whileHover={{ scale: 1.1 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => handleDeleteClick(document, section)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              disabled={loading}
-                            >
-                              <TrashIcon className="w-5 h-5" />
-                            </motion.button>
+                            {canManageResources && (
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleEditDocument(document, section)}
+                                className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+                              >
+                                <PencilIcon className="w-5 h-5" />
+                              </motion.button>
+                            )}
+                            {canManageResources && (
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleDeleteClick(document, section)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                disabled={loading}
+                              >
+                                <TrashIcon className="w-5 h-5" />
+                              </motion.button>
+                            )}
                           </div>
                         </div>
                       </motion.div>
@@ -1106,30 +1152,36 @@ const ComplianceResource = () => {
                 >
                   <DocumentTextIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500">No resources added yet</p>
-                  <p className="text-sm text-gray-400 mt-1">Click "Add" to add your first resource or link</p>
+                  {isAdmin ? (
+                    <p className="text-sm text-gray-400 mt-1">Click "Add" to add your first resource or link</p>
+                  ) : (
+                    <p className="text-sm text-gray-400 mt-1">Resources will appear here once added by an administrator</p>
+                  )}
                 </motion.div>
               )}
             </motion.div>
           ))}
         </div>
 
-        {/* Add More Sections Button */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="mt-8 text-center"
-        >
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowAddSectionModal(true)}
-            className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-red-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all"
+        {/* Add More Sections Button - Users with manage permission */}
+        {canManageResources && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mt-8 text-center"
           >
-            <FolderPlusIcon className="w-5 h-5" />
-            <span>Add Custom Section</span>
-          </motion.button>
-        </motion.div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowAddSectionModal(true)}
+              className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-red-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all"
+            >
+              <FolderPlusIcon className="w-5 h-5" />
+              <span>Add Custom Section</span>
+            </motion.button>
+          </motion.div>
+        )}
       </div>
 
       {/* Upload Modal */}

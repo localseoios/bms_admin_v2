@@ -26,8 +26,17 @@ const jobSchema = new mongoose.Schema(
     assignedPerson: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
     },
+    selectedServiceUser: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+    },
+    selectedServiceUsers: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    }],
     jobDetails: { type: String, required: true },
     specialDescription: { type: String },
     clientName: { type: String, required: true }, // Kept for denormalization
@@ -42,8 +51,11 @@ const jobSchema = new mongoose.Schema(
         "corrected",
         "cancelled",
         "om_completed",
-        // KYC statuses
+        // KYC statuses (AML Supervisor workflow)
         "kyc_pending",
+        "kyc_aml_uploaded",
+        "kyc_dlmro_signed",
+        "kyc_lmro_signed",
         "kyc_lmro_approved",
         "kyc_dlmro_approved",
         "kyc_rejected",
@@ -98,7 +110,10 @@ const jobSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Add compound index for better query performance
+// Add indexes for better query performance
 jobSchema.index({ jobNumber: 1, createdAt: -1 });
+jobSchema.index({ createdAt: -1 });
+jobSchema.index({ status: 1 });
+jobSchema.index({ clientId: 1 });
 
 module.exports = mongoose.model("Job", jobSchema);

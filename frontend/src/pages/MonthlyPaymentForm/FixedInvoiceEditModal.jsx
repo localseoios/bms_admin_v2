@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import { format } from "date-fns";
 import accountService from "../../utils/accountService"; // Use accountService instead of direct axios
 import {
@@ -359,7 +359,7 @@ const FixedInvoiceEditModal = ({
                 )}
 
                 {/* Debug info in development */}
-                {process.env.NODE_ENV === 'development' && (
+                {import.meta.env.DEV && (
                   <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs">
                     <strong>Debug Info:</strong> PaymentID: {paymentId} | InvoiceID: {invoice?._id} | Mode: {mode}
                   </div>

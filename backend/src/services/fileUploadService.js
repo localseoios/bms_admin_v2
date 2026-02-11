@@ -77,14 +77,20 @@ const uploadToCloudinary = async (filePath, options = {}) => {
       console.error(`❌ File not found: ${filePath}`);
       throw new Error(`File not found: ${filePath}`);
     }
-    
+
     const fileSize = fs.statSync(filePath).size;
     console.log(`📊 File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
+
+    // Determine resource type based on file extension
+    const ext = path.extname(filePath).toLowerCase();
+    const rawExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'];
+    const resourceType = rawExtensions.includes(ext) ? 'raw' : 'auto';
+    console.log(`📄 File extension: ${ext}, Resource type: ${resourceType}`);
 
     // Set default folder if not provided
     const uploadOptions = {
       folder: options.folder || "uploads",
-      resource_type: "auto", // Auto-detect resource type
+      resource_type: resourceType,
       timeout: 60000, // 60 seconds timeout
       ...options,
     };

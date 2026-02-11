@@ -11,6 +11,7 @@ const {
   getRoleStatistics,
   addStaffSection,
   deleteStaffSection,
+  updateStaffSection,
   uploadStaffDocument,
   deleteStaffDocument,
   updateStaffDocument,
@@ -48,6 +49,7 @@ router.post("/upload-document", upload.single("file"), (req, res, next) => {
 }, uploadStaffDocument);
 router.delete("/delete-document", deleteStaffDocument);
 router.delete("/delete-section", deleteStaffSection);
+router.put("/update-section", updateStaffSection);
 router.put("/update-document", updateStaffDocument);
 router.post("/replace-document", upload.single("file"), replaceStaffDocument);
 router.post("/add-section", addStaffSection);

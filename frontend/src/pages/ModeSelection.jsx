@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import {
   ChartBarIcon,
   ShieldCheckIcon,
@@ -12,15 +12,46 @@ import {
   DocumentChartBarIcon,
   UserGroupIcon,
   ClipboardDocumentCheckIcon,
-  AcademicCapIcon,
   DocumentTextIcon,
   UsersIcon,
+  BookOpenIcon,
+  FolderIcon,
+  NewspaperIcon,
+  DocumentDuplicateIcon,
+  LockClosedIcon,
+  ArchiveBoxIcon,
+  ClockIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
+import { useAuth } from "../context/AuthContext";
 
 const ModeSelection = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [selectedMode, setSelectedMode] = useState(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Debug: Log user data when it changes
+  React.useEffect(() => {
+    console.log('ModeSelection - Current user data:', {
+      name: user?.name,
+      role: user?.role?.name,
+      permissions: user?.role?.permissions,
+      complianceManagement: user?.role?.permissions?.complianceManagement
+    });
+  }, [user]);
+
+  const hasComplianceAccess = () => {
+    if (!user) return false;
+
+    // Admin always has access
+    if (user.role?.name?.toLowerCase() === 'admin') return true;
+
+    // Check complianceManagement permission (boolean)
+    if (user.role?.permissions?.complianceManagement === true) return true;
+
+    return false;
+  };
 
   const modes = [
     {
@@ -54,22 +85,68 @@ const ModeSelection = () => {
       hoverShadow: "hover:shadow-purple-500/30",
       route: "/compliance-selection",
       features: [
-        { icon: AcademicCapIcon, text: "Compliance Culture" },
         { icon: UsersIcon, text: "Staff Management" },
         { icon: ClipboardDocumentCheckIcon, text: "Client Compliance" },
-        { icon: DocumentTextIcon, text: "Resource Center" },
+        { icon: ShieldCheckIcon, text: "Risk Assessment" },
+        { icon: BuildingOfficeIcon, text: "Org Structure" },
       ],
-      accentColor: "purple"
+      accentColor: "purple",
+      requiresComplianceAccess: true
+    },
+    {
+      id: "compliance-resource",
+      title: "Resource Center",
+      subtitle: "Documentation & Guidelines",
+      description: "Access compliance documentation, regulatory guidelines, templates, and knowledge base",
+      icon: DocumentTextIcon,
+      gradient: "from-orange-500 to-red-600",
+      bgGradient: "from-orange-50 via-red-50 to-orange-50",
+      shadowColor: "shadow-orange-500/20",
+      hoverShadow: "hover:shadow-orange-500/30",
+      route: "/compliance-resources",
+      features: [
+        { icon: DocumentDuplicateIcon, text: "Templates" },
+        { icon: NewspaperIcon, text: "Guidelines" },
+        { icon: FolderIcon, text: "Documents" },
+        { icon: BookOpenIcon, text: "Knowledge Base" },
+      ],
+      accentColor: "orange"
+    },
+    {
+      id: "library",
+      title: "Document Library",
+      subtitle: "Archive & Document History",
+      description: "Access archived documents, view document history, and retrieve past versions - retained for 10 years",
+      icon: ArchiveBoxIcon,
+      gradient: "from-emerald-500 to-teal-600",
+      bgGradient: "from-emerald-50 via-teal-50 to-emerald-50",
+      shadowColor: "shadow-emerald-500/20",
+      hoverShadow: "hover:shadow-emerald-500/30",
+      route: "/library",
+      features: [
+        { icon: DocumentDuplicateIcon, text: "Archived Documents" },
+        { icon: ClockIcon, text: "Document History" },
+        { icon: MagnifyingGlassIcon, text: "Search & Filter" },
+        { icon: FolderIcon, text: "Client-wise Archive" },
+      ],
+      accentColor: "emerald"
     }
   ];
 
   const handleModeSelect = (mode) => {
+    if (mode.requiresComplianceAccess && !hasComplianceAccess()) {
+      return;
+    }
     setSelectedMode(mode.id);
     setIsTransitioning(true);
-    
+
     setTimeout(() => {
       navigate(mode.route);
     }, 600);
+  };
+
+  const isCardDisabled = (mode) => {
+    return mode.requiresComplianceAccess && !hasComplianceAccess();
   };
 
   return (
@@ -142,26 +219,40 @@ const ModeSelection = () => {
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.5 }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl w-full"
+          className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl w-full"
         >
-          {modes.map((mode, index) => (
+          {modes.map((mode, index) => {
+            const disabled = isCardDisabled(mode);
+            return (
             <motion.div
               key={mode.id}
               initial={{ opacity: 0, x: index === 0 ? -50 : 50 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.6 + index * 0.1 }}
-              whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={disabled ? {} : { scale: 1.02, transition: { duration: 0.2 } }}
+              whileTap={disabled ? {} : { scale: 0.98 }}
               onClick={() => handleModeSelect(mode)}
-              className={`relative group cursor-pointer ${
+              className={`relative group ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'} ${
                 selectedMode === mode.id ? 'ring-4 ring-offset-4' : ''
               } ${
-                mode.accentColor === 'blue' 
-                  ? 'ring-blue-500 ring-offset-blue-100' 
-                  : 'ring-purple-500 ring-offset-purple-100'
+                mode.accentColor === 'blue'
+                  ? 'ring-blue-500 ring-offset-blue-100'
+                  : mode.accentColor === 'purple'
+                  ? 'ring-purple-500 ring-offset-purple-100'
+                  : mode.accentColor === 'orange'
+                  ? 'ring-orange-500 ring-offset-orange-100'
+                  : 'ring-emerald-500 ring-offset-emerald-100'
               } rounded-3xl transition-all duration-300`}
             >
-              <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${mode.bgGradient} p-8 border border-white/60 backdrop-blur-sm shadow-xl ${mode.shadowColor} ${mode.hoverShadow} transition-all duration-300`}>
+              <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${mode.bgGradient} p-8 border border-white/60 backdrop-blur-sm shadow-xl ${mode.shadowColor} ${disabled ? '' : mode.hoverShadow} transition-all duration-300 ${disabled ? 'opacity-60' : ''}`}>
+                {disabled && (
+                  <div className="absolute inset-0 bg-gray-900/10 backdrop-blur-[1px] rounded-3xl z-20 flex items-center justify-center">
+                    <div className="bg-white/90 backdrop-blur-sm px-4 py-2 rounded-xl shadow-lg flex items-center space-x-2">
+                      <LockClosedIcon className="w-5 h-5 text-gray-600" />
+                      <span className="text-sm font-medium text-gray-700">Access Restricted</span>
+                    </div>
+                  </div>
+                )}
                 {/* Animated Background Pattern */}
                 <div className="absolute inset-0 opacity-5">
                   <div className="absolute inset-0" style={{
@@ -191,7 +282,10 @@ const ModeSelection = () => {
                           transition={{ duration: 0.3 }}
                         >
                           <CheckCircleIcon className={`w-8 h-8 ${
-                            mode.accentColor === 'blue' ? 'text-blue-500' : 'text-purple-500'
+                            mode.accentColor === 'blue' ? 'text-blue-500'
+                            : mode.accentColor === 'purple' ? 'text-purple-500'
+                            : mode.accentColor === 'orange' ? 'text-orange-500'
+                            : 'text-emerald-500'
                           }`} />
                         </motion.div>
                       )}
@@ -203,7 +297,10 @@ const ModeSelection = () => {
                     {mode.title}
                   </h2>
                   <p className={`text-sm font-semibold mb-4 ${
-                    mode.accentColor === 'blue' ? 'text-blue-600' : 'text-purple-600'
+                    mode.accentColor === 'blue' ? 'text-blue-600'
+                    : mode.accentColor === 'purple' ? 'text-purple-600'
+                    : mode.accentColor === 'orange' ? 'text-orange-600'
+                    : 'text-emerald-600'
                   }`}>
                     {mode.subtitle}
                   </p>
@@ -224,9 +321,13 @@ const ModeSelection = () => {
                         className="flex items-center space-x-2"
                       >
                         <div className={`p-2 rounded-lg ${
-                          mode.accentColor === 'blue' 
-                            ? 'bg-blue-100 text-blue-600' 
-                            : 'bg-purple-100 text-purple-600'
+                          mode.accentColor === 'blue'
+                            ? 'bg-blue-100 text-blue-600'
+                            : mode.accentColor === 'purple'
+                            ? 'bg-purple-100 text-purple-600'
+                            : mode.accentColor === 'orange'
+                            ? 'bg-orange-100 text-orange-600'
+                            : 'bg-emerald-100 text-emerald-600'
                         }`}>
                           <feature.icon className="w-4 h-4" />
                         </div>
@@ -239,12 +340,17 @@ const ModeSelection = () => {
 
                   {/* Action Button */}
                   <motion.button
-                    whileHover={{ x: 5 }}
+                    whileHover={disabled ? {} : { x: 5 }}
                     transition={{ type: "spring", stiffness: 400 }}
-                    className={`w-full py-4 px-6 rounded-2xl bg-gradient-to-r ${mode.gradient} text-white font-semibold flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-300 group`}
+                    disabled={disabled}
+                    className={`w-full py-4 px-6 rounded-2xl bg-gradient-to-r ${mode.gradient} text-white font-semibold flex items-center justify-center space-x-2 shadow-lg transition-all duration-300 group ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-xl'}`}
                   >
-                    <span>Enter {mode.title}</span>
-                    <ArrowRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                    <span>{disabled ? 'Access Restricted' : `Enter ${mode.title}`}</span>
+                    {disabled ? (
+                      <LockClosedIcon className="w-5 h-5" />
+                    ) : (
+                      <ArrowRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                    )}
                   </motion.button>
                 </div>
 
@@ -252,7 +358,8 @@ const ModeSelection = () => {
                 <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl pointer-events-none"></div>
               </div>
             </motion.div>
-          ))}
+          );
+          })}
         </motion.div>
 
         {/* Loading Transition Overlay */}

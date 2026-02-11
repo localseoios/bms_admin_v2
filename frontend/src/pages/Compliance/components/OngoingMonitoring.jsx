@@ -9,7 +9,7 @@ import {
   DocumentIcon,
   MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
-import { motion } from 'framer-motion';
+import { motion } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import axios from '../../../utils/axios';
 import { toast } from 'react-hot-toast';
 

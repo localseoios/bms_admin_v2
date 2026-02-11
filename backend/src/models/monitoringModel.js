@@ -52,8 +52,7 @@ const monitoringDocumentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Index for efficient queries
+// Index for efficient queries (documentId already indexed via unique: true)
 monitoringDocumentSchema.index({ clientId: 1, createdAt: -1 });
-monitoringDocumentSchema.index({ documentId: 1 });
 
 module.exports = mongoose.model("MonitoringDocument", monitoringDocumentSchema);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import { useAuth } from "../../../context/AuthContext";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -25,6 +25,7 @@ import {
   DocumentCheckIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
+import PDFSignatureViewer from "../../../components/PDFSignatureViewer";
 
 // Toast notification helper function
 const showNotification = ({ type, message, duration = 3000 }) => {
@@ -49,6 +50,10 @@ function KYCManagement() {
   const [documentFile, setDocumentFile] = useState(null);
   const [documentError, setDocumentError] = useState("");
 
+  // State for PDF signature viewer
+  const [showPdfViewer, setShowPdfViewer] = useState(false);
+  const [currentSignerSignature, setCurrentSignerSignature] = useState(null);
+
   // Loading states for different actions
   const [initializingId, setInitializingId] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
@@ -58,11 +63,12 @@ function KYCManagement() {
   const { user } = useAuth();
 
   // Check user permissions for KYC roles
+  const isAmlSupervisor = user?.role?.permissions?.kycManagement?.amlSupervisor;
   const isLMRO = user?.role?.permissions?.kycManagement?.lmro;
   const isDLMRO = user?.role?.permissions?.kycManagement?.dlmro;
   const isCEO = user?.role?.permissions?.kycManagement?.ceo;
   const isAdmin = user?.role?.name === "admin";
-  const hasKYCRole = isLMRO || isDLMRO || isCEO || isAdmin;
+  const hasKYCRole = isAmlSupervisor || isLMRO || isDLMRO || isCEO || isAdmin;
 
   // Navigate to client profile
   const navigateToClientProfile = (job, e) => {
@@ -106,6 +112,110 @@ function KYCManagement() {
     setDocumentError("");
     setSelectedJob(null);
     setUploadProgress(0);
+    setShowPdfViewer(false);
+    setCurrentSignerSignature(null);
+  };
+
+  // Get current document URL for signing
+  const getCurrentDocumentUrl = (job) => {
+    if (!job?.kycApproval) return null;
+    const stage = job.kycApproval.currentApprovalStage;
+
+    if (stage === "dlmro" && job.kycApproval.amlSupervisorApproval?.document?.fileUrl) {
+      return job.kycApproval.amlSupervisorApproval.document.fileUrl;
+    } else if (stage === "lmro" && job.kycApproval.dlmroApproval?.document?.fileUrl) {
+      return job.kycApproval.dlmroApproval.document.fileUrl;
+    } else if (stage === "ceo" && job.kycApproval.lmroApproval?.document?.fileUrl) {
+      return job.kycApproval.lmroApproval.document.fileUrl;
+    }
+    return null;
+  };
+
+  // Fetch current signer's signature
+  const fetchCurrentSignerSignature = async () => {
+    try {
+      const response = await axiosInstance.get("/users/me");
+      if (response.data?.signatureImage?.fileUrl) {
+        setCurrentSignerSignature(response.data.signatureImage.fileUrl);
+      }
+    } catch (error) {
+      console.error("Error fetching signature:", error);
+    }
+  };
+
+  // Handle opening PDF viewer for signing
+  const handleOpenPdfViewer = async (job) => {
+    setSelectedJob(job);
+    await fetchCurrentSignerSignature();
+    setShowPdfViewer(true);
+  };
+
+  // Handle signature position selection from PDF viewer (supports multiple positions)
+  const handleSignaturePositionSelect = async (positions) => {
+    if (!selectedJob) return;
+
+    // Convert single position to array for backward compatibility
+    const positionsArray = Array.isArray(positions) ? positions : [positions];
+
+    if (positionsArray.length === 0) return;
+
+    setSubmitting(true);
+    setApprovingId(selectedJob._id);
+    setUploadProgress(10);
+
+    try {
+      const stage = selectedJob.kycApproval?.currentApprovalStage;
+      let endpoint = "";
+
+      if (stage === "dlmro") {
+        endpoint = `/kyc/jobs/${selectedJob._id}/dlmro-sign`;
+      } else if (stage === "lmro") {
+        endpoint = `/kyc/jobs/${selectedJob._id}/lmro-sign`;
+      } else if (stage === "ceo") {
+        endpoint = `/kyc/jobs/${selectedJob._id}/ceo-sign`;
+      }
+
+      if (!endpoint) {
+        throw new Error("Invalid signing stage");
+      }
+
+      setUploadProgress(30);
+
+      // Send multiple signature positions
+      const signaturePositions = positionsArray.map((pos) => ({
+        x: pos.x,
+        y: pos.y,
+        width: pos.width,
+        height: pos.height,
+        page: pos.page,
+        pdfWidth: pos.pdfWidth,
+        pdfHeight: pos.pdfHeight,
+      }));
+
+      await axiosInstance.put(endpoint, {
+        notes: approvalNotes,
+        signaturePositions: signaturePositions,
+      });
+
+      setUploadProgress(100);
+
+      await refreshJobStatus(selectedJob._id);
+
+      setShowPdfViewer(false);
+      setApprovalModalOpen(false);
+      resetForm();
+
+      showNotification({
+        type: "success",
+        message: `Document signed successfully with ${signaturePositions.length} signature(s)!`,
+      });
+    } catch (err) {
+      handleApiError(err, "Failed to sign document");
+      setUploadProgress(0);
+    } finally {
+      setSubmitting(false);
+      setApprovingId(null);
+    }
   };
 
   // Function to refresh a single job's status
@@ -145,6 +255,9 @@ function KYCManagement() {
           status: [
             "om_completed",
             "kyc_pending",
+            "kyc_aml_uploaded",
+            "kyc_dlmro_signed",
+            "kyc_lmro_signed",
             "kyc_lmro_approved",
             "kyc_dlmro_approved",
           ],
@@ -207,34 +320,62 @@ function KYCManagement() {
     }
   }, [fetchKYCRequests, hasKYCRole]);
 
-  // Filter KYC requests based on search and status filter
+  // Check if user has all KYC permissions
+  const hasAllKycPermissions = isAmlSupervisor && isDLMRO && isLMRO && isCEO;
+
+  // Filter KYC requests based on search, status filter, and user permissions
   const filteredRequests = kycRequests.filter((job) => {
-    // Match search query
+    // Match search query (search by client name, job ID, or job number)
     const searchMatch =
       searchQuery === "" ||
       job.clientName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job._id?.toLowerCase().includes(searchQuery.toLowerCase());
+      job._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      job.jobNumber?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    // Match status filter
-    let statusMatch = true;
-    if (selectedFilter !== "all") {
-      if (selectedFilter === "pending") {
-        statusMatch =
-          job.status === "om_completed" ||
-          (!job.kycApproval && job.status === "kyc_pending") ||
-          (job.kycApproval && job.kycApproval.currentApprovalStage === "lmro");
-      } else if (selectedFilter === "lmro_approved") {
-        statusMatch =
-          job.status === "kyc_lmro_approved" ||
-          (job.kycApproval && job.kycApproval.currentApprovalStage === "dlmro");
-      } else if (selectedFilter === "dlmro_approved") {
-        statusMatch =
-          job.status === "kyc_dlmro_approved" ||
-          (job.kycApproval && job.kycApproval.currentApprovalStage === "ceo");
+    // Permission-based filter - show only jobs at stages the user can handle
+    let permissionMatch = true;
+    if (!isAdmin && !hasAllKycPermissions) {
+      const stage = job.kycApproval?.currentApprovalStage;
+      const isOmCompleted = job.status === "om_completed" && !job.kycApproval;
+      const isKycPending = !job.kycApproval && job.status === "kyc_pending";
+
+      permissionMatch = false;
+
+      if (isAmlSupervisor && (isOmCompleted || isKycPending || stage === "amlSupervisor")) {
+        permissionMatch = true;
+      }
+      if (isDLMRO && stage === "dlmro") {
+        permissionMatch = true;
+      }
+      if (isLMRO && stage === "lmro") {
+        permissionMatch = true;
+      }
+      if (isCEO && stage === "ceo") {
+        permissionMatch = true;
       }
     }
 
-    return searchMatch && statusMatch;
+    // Match status filter (dropdown filter)
+    let statusMatch = true;
+    if (selectedFilter !== "all") {
+      if (selectedFilter === "aml_supervisor") {
+        statusMatch =
+          job.status === "om_completed" ||
+          (!job.kycApproval && job.status === "kyc_pending") ||
+          (job.kycApproval && job.kycApproval.currentApprovalStage === "amlSupervisor");
+      } else if (selectedFilter === "dlmro") {
+        statusMatch =
+          job.kycApproval && job.kycApproval.currentApprovalStage === "dlmro";
+      } else if (selectedFilter === "lmro") {
+        statusMatch =
+          job.kycApproval && job.kycApproval.currentApprovalStage === "lmro";
+      } else if (selectedFilter === "ceo") {
+        statusMatch =
+          job.kycApproval && job.kycApproval.currentApprovalStage === "ceo";
+      }
+    }
+
+    return searchMatch && permissionMatch && statusMatch;
   });
 
   // Get KYC status display info
@@ -249,10 +390,10 @@ function KYCManagement() {
       };
     }
 
-    // If no KYC approval but already in KYC status, it's pending LMRO review
+    // If no KYC approval but already in KYC status, it's pending AML Supervisor
     if (!job.kycApproval && job.status === "kyc_pending") {
       return {
-        label: "MLRO Review Pending",
+        label: "AML Supervisor Pending",
         color: "bg-yellow-50 text-yellow-700 ring-yellow-600/20",
         icon: <UserGroupIcon className="h-5 w-5 text-yellow-500" />,
       };
@@ -280,15 +421,21 @@ function KYCManagement() {
         color: "bg-green-50 text-green-700 ring-green-600/20",
         icon: <CheckIcon className="h-5 w-5 text-green-500" />,
       };
-    } else if (stage === "lmro") {
+    } else if (stage === "amlSupervisor") {
       return {
-        label: "MLRO Review",
-        color: "bg-blue-50 text-blue-700 ring-blue-600/20",
-        icon: <UserGroupIcon className="h-5 w-5 text-blue-500" />,
+        label: "AML Supervisor",
+        color: "bg-amber-50 text-amber-700 ring-amber-600/20",
+        icon: <DocumentArrowUpIcon className="h-5 w-5 text-amber-500" />,
       };
     } else if (stage === "dlmro") {
       return {
-        label: "DMLRO Review",
+        label: "DMLRO Signing",
+        color: "bg-blue-50 text-blue-700 ring-blue-600/20",
+        icon: <UserGroupIcon className="h-5 w-5 text-blue-500" />,
+      };
+    } else if (stage === "lmro") {
+      return {
+        label: "MLRO Signing",
         color: "bg-purple-50 text-purple-700 ring-purple-600/20",
         icon: (
           <ClipboardDocumentCheckIcon className="h-5 w-5 text-purple-500" />
@@ -296,7 +443,7 @@ function KYCManagement() {
       };
     } else if (stage === "ceo") {
       return {
-        label: "CEO Review",
+        label: "SEF Signing",
         color: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
         icon: <LockClosedIcon className="h-5 w-5 text-indigo-500" />,
       };
@@ -314,28 +461,55 @@ function KYCManagement() {
     if (!job || !job.kycApproval) return "";
 
     const stage = job.kycApproval.currentApprovalStage;
-    if (stage === "lmro") return "LMRO";
-    if (stage === "dlmro") return "DLMRO";
-    if (stage === "ceo") return "CEO";
+    if (stage === "amlSupervisor") return "AML Supervisor";
+    if (stage === "dlmro") return "DMLRO";
+    if (stage === "lmro") return "MLRO";
+    if (stage === "ceo") return "SEF";
     return "";
   };
 
-  // Check if the current user can approve a job
-  const canApprove = (job) => {
-    // Admin can approve at any stage
+  // Check if the current user can take action on a job (upload or sign)
+  const canTakeAction = (job) => {
+    // Admin can take action at any stage
     if (isAdmin) return true;
 
     // Jobs ready for KYC initialization
     if (!job.kycApproval && job.status === "om_completed") {
-      return false; // Can't approve, can only initialize
+      return false; // Can't take action, can only initialize
     }
 
     if (!job.kycApproval) return false;
 
     const stage = job.kycApproval.currentApprovalStage;
 
-    if (stage === "lmro" && isLMRO) return true;
+    if (stage === "amlSupervisor" && isAmlSupervisor) return true;
     if (stage === "dlmro" && isDLMRO) return true;
+    if (stage === "lmro" && isLMRO) return true;
+    if (stage === "ceo" && isCEO) return true;
+
+    return false;
+  };
+
+  // Check if current stage requires document upload (AML Supervisor) or signing (DLMRO/LMRO/CEO)
+  const isUploadStage = (job) => {
+    if (!job.kycApproval) return false;
+    return job.kycApproval.currentApprovalStage === "amlSupervisor";
+  };
+
+  // Alias for backward compatibility
+  const canApprove = canTakeAction;
+
+  // Check if user can reject (only DLMRO, LMRO, CEO can reject - not AML Supervisor)
+  const canReject = (job) => {
+    if (!job.kycApproval) return false;
+
+    const stage = job.kycApproval.currentApprovalStage;
+
+    // Admin can reject at DLMRO, LMRO, CEO stages
+    if (isAdmin && (stage === "dlmro" || stage === "lmro" || stage === "ceo")) return true;
+
+    if (stage === "dlmro" && isDLMRO) return true;
+    if (stage === "lmro" && isLMRO) return true;
     if (stage === "ceo" && isCEO) return true;
 
     return false;
@@ -407,12 +581,15 @@ function KYCManagement() {
     validateFile(file);
   };
 
-  // Handle submit approval with Cloudinary upload
+  // Handle submit approval - for AML Supervisor (upload) or signing stages (DLMRO/LMRO/CEO)
   const handleSubmitApproval = async () => {
     if (!selectedJob) return;
 
-    // Validate document upload
-    if (!validateFile(documentFile)) {
+    const stage = selectedJob.kycApproval?.currentApprovalStage;
+    const isAmlUpload = stage === "amlSupervisor";
+
+    // For AML Supervisor, validate document upload
+    if (isAmlUpload && !validateFile(documentFile)) {
       return;
     }
 
@@ -423,51 +600,56 @@ function KYCManagement() {
     try {
       let endpoint = "";
 
-      // If the user is an admin, they can approve at any stage
+      // Determine the correct endpoint based on stage
       if (isAdmin && selectedJob.kycApproval) {
-        const stage = selectedJob.kycApproval.currentApprovalStage;
-        if (stage === "lmro") {
-          endpoint = `/kyc/jobs/${selectedJob._id}/lmro-approve`;
+        if (stage === "amlSupervisor") {
+          endpoint = `/kyc/jobs/${selectedJob._id}/aml-supervisor-upload`;
         } else if (stage === "dlmro") {
-          endpoint = `/kyc/jobs/${selectedJob._id}/dlmro-approve`;
+          endpoint = `/kyc/jobs/${selectedJob._id}/dlmro-sign`;
+        } else if (stage === "lmro") {
+          endpoint = `/kyc/jobs/${selectedJob._id}/lmro-sign`;
         } else if (stage === "ceo") {
-          endpoint = `/kyc/jobs/${selectedJob._id}/ceo-approve`;
+          endpoint = `/kyc/jobs/${selectedJob._id}/ceo-sign`;
         }
       } else if (selectedJob.kycApproval) {
         // Normal user flow
-        const stage = selectedJob.kycApproval.currentApprovalStage;
-        if (stage === "lmro" && isLMRO) {
-          endpoint = `/kyc/jobs/${selectedJob._id}/lmro-approve`;
+        if (stage === "amlSupervisor" && isAmlSupervisor) {
+          endpoint = `/kyc/jobs/${selectedJob._id}/aml-supervisor-upload`;
         } else if (stage === "dlmro" && isDLMRO) {
-          endpoint = `/kyc/jobs/${selectedJob._id}/dlmro-approve`;
+          endpoint = `/kyc/jobs/${selectedJob._id}/dlmro-sign`;
+        } else if (stage === "lmro" && isLMRO) {
+          endpoint = `/kyc/jobs/${selectedJob._id}/lmro-sign`;
         } else if (stage === "ceo" && isCEO) {
-          endpoint = `/kyc/jobs/${selectedJob._id}/ceo-approve`;
+          endpoint = `/kyc/jobs/${selectedJob._id}/ceo-sign`;
         }
       }
 
       if (!endpoint) {
-        throw new Error("You don't have permission to approve at this stage");
+        throw new Error("You don't have permission to take action at this stage");
       }
 
-      // Create FormData for file upload to Cloudinary
-      const formData = new FormData();
-      formData.append("notes", approvalNotes);
-      formData.append("document", documentFile);
+      setUploadProgress(30);
 
-      setUploadProgress(30); // Update progress during form preparation
+      if (isAmlUpload) {
+        // AML Supervisor - upload document
+        const formData = new FormData();
+        formData.append("notes", approvalNotes);
+        formData.append("document", documentFile);
 
-      // Send request with FormData for Cloudinary upload
-      await axiosInstance.put(endpoint, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-        onUploadProgress: (progressEvent) => {
-          // Calculate and update upload progress
-          const percentCompleted =
-            Math.round((progressEvent.loaded * 70) / progressEvent.total) + 30; // Start from 30% (after form prep)
-          setUploadProgress(percentCompleted > 100 ? 100 : percentCompleted);
-        },
-      });
+        await axiosInstance.put(endpoint, formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted =
+              Math.round((progressEvent.loaded * 70) / progressEvent.total) + 30;
+            setUploadProgress(percentCompleted > 100 ? 100 : percentCompleted);
+          },
+        });
+      } else {
+        // DLMRO/LMRO/CEO - sign document (no file upload needed)
+        await axiosInstance.put(endpoint, { notes: approvalNotes });
+      }
 
       setUploadProgress(100); // Complete progress
 
@@ -481,10 +663,12 @@ function KYCManagement() {
       // Show success message
       showNotification({
         type: "success",
-        message: "Approval submitted successfully with document!",
+        message: isAmlUpload
+          ? "Document uploaded successfully!"
+          : "Document signed successfully!",
       });
     } catch (err) {
-      handleApiError(err, "Failed to submit approval");
+      handleApiError(err, isAmlUpload ? "Failed to upload document" : "Failed to sign document");
       setUploadProgress(0); // Reset progress on error
     } finally {
       setSubmitting(false);
@@ -556,7 +740,7 @@ function KYCManagement() {
     });
   };
 
-  // Render document link - fixed for proper handling of compliance documents
+  // Render document link - shows the current/latest document in the workflow
   const renderDocumentLink = (job) => {
     if (!job.kycApproval) return null;
 
@@ -564,37 +748,45 @@ function KYCManagement() {
     let document = null;
     let stageLabel = "";
 
-    // For completed KYC, show CEO document
+    // For completed KYC, show CEO signed document
     if (
       job.kycApproval.status === "completed" &&
       job.kycApproval.ceoApproval?.document
     ) {
       document = job.kycApproval.ceoApproval.document;
-      stageLabel = "Final Approved";
+      stageLabel = "Final Signed";
     }
-    // For CEO stage, show DLMRO document
+    // For CEO stage, show LMRO signed document
     else if (
       job.kycApproval.currentApprovalStage === "ceo" &&
+      job.kycApproval.lmroApproval?.document
+    ) {
+      document = job.kycApproval.lmroApproval.document;
+      stageLabel = "MLRO Signed";
+    }
+    // For LMRO stage, show DLMRO signed document
+    else if (
+      job.kycApproval.currentApprovalStage === "lmro" &&
       job.kycApproval.dlmroApproval?.document
     ) {
       document = job.kycApproval.dlmroApproval.document;
-      stageLabel = "DLMRO";
+      stageLabel = "DMLRO Signed";
     }
-    // For DLMRO stage, show LMRO document
+    // For DLMRO stage, show AML Supervisor uploaded document
     else if (
       job.kycApproval.currentApprovalStage === "dlmro" &&
-      job.kycApproval.lmroApproval?.document
+      job.kycApproval.amlSupervisorApproval?.document
     ) {
-      document = job.kycApproval.lmroApproval.document;
-      stageLabel = "LMRO";
+      document = job.kycApproval.amlSupervisorApproval.document;
+      stageLabel = "AML Supervisor";
     }
-    // For LMRO stage, also show LMRO document if available
+    // For AML Supervisor stage, show document if available
     else if (
-      job.kycApproval.currentApprovalStage === "lmro" &&
-      job.kycApproval.lmroApproval?.document
+      job.kycApproval.currentApprovalStage === "amlSupervisor" &&
+      job.kycApproval.amlSupervisorApproval?.document
     ) {
-      document = job.kycApproval.lmroApproval.document;
-      stageLabel = "LMRO";
+      document = job.kycApproval.amlSupervisorApproval.document;
+      stageLabel = "AML Supervisor";
     }
 
     // If no document is available, return null
@@ -671,11 +863,11 @@ function KYCManagement() {
                 </h1>
                 {/* <p className="mt-2 text-sm text-gray-600">
                   {isLMRO
-                    ? "LMRO"
+                    ? "MLRO"
                     : isDLMRO
-                    ? "DLMRO"
+                    ? "DMLRO"
                     : isCEO
-                    ? "CEO"
+                    ? "SEF"
                     : "Admin"}{" "}
                   Dashboard - Review and approve KYC submissions
                 </p> */}
@@ -694,7 +886,7 @@ function KYCManagement() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-4 mb-8">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-5 mb-8">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
@@ -718,12 +910,12 @@ function KYCManagement() {
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <UserGroupIcon className="h-6 w-6 text-blue-400" />
+                  <DocumentArrowUpIcon className="h-6 w-6 text-amber-400" />
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                    MLRO Review
+                      AML Supervisor
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {
@@ -732,7 +924,32 @@ function KYCManagement() {
                             (!job.kycApproval &&
                               job.status === "kyc_pending") ||
                             (job.kycApproval &&
-                              job.kycApproval.currentApprovalStage === "lmro")
+                              job.kycApproval.currentApprovalStage === "amlSupervisor")
+                        ).length
+                      }
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserGroupIcon className="h-6 w-6 text-blue-400" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      DMLRO Signing
+                    </dt>
+                    <dd className="text-lg font-semibold text-gray-900">
+                      {
+                        kycRequests.filter(
+                          (job) =>
+                            job.kycApproval &&
+                            job.kycApproval.currentApprovalStage === "dlmro"
                         ).length
                       }
                     </dd>
@@ -750,15 +967,14 @@ function KYCManagement() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                    DMLRO Review
+                      MLRO Signing
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {
                         kycRequests.filter(
                           (job) =>
-                            job.status === "kyc_lmro_approved" ||
-                            (job.kycApproval &&
-                              job.kycApproval.currentApprovalStage === "dlmro")
+                            job.kycApproval &&
+                            job.kycApproval.currentApprovalStage === "lmro"
                         ).length
                       }
                     </dd>
@@ -776,15 +992,14 @@ function KYCManagement() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      CEO Review
+                      SEF Signing
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {
                         kycRequests.filter(
                           (job) =>
-                            job.status === "kyc_dlmro_approved" ||
-                            (job.kycApproval &&
-                              job.kycApproval.currentApprovalStage === "ceo")
+                            job.kycApproval &&
+                            job.kycApproval.currentApprovalStage === "ceo"
                         ).length
                       }
                     </dd>
@@ -820,9 +1035,10 @@ function KYCManagement() {
                   className="block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 >
                   <option value="all">All Status</option>
-                  <option value="pending">Pending / MLRO Review</option>
-                  <option value="lmro_approved">DMLRO Review</option>
-                  <option value="dlmro_approved">CEO Review</option>
+                  <option value="aml_supervisor">AML Supervisor Upload</option>
+                  <option value="dlmro">DMLRO Signing</option>
+                  <option value="lmro">MLRO Signing</option>
+                  <option value="ceo">SEF Signing</option>
                 </select>
               </div>
             </div>
@@ -918,25 +1134,41 @@ function KYCManagement() {
                             </button>
                           )}
 
-                          {/* Show approval/rejection buttons for jobs at user's approval stage */}
+                          {/* Show action buttons for jobs at user's stage */}
                           {canApprove(job) && (
                             <div className="flex space-x-2">
                               <button
-                                onClick={() => handleOpenApprovalModal(job)}
+                                onClick={() => isUploadStage(job) ? handleOpenApprovalModal(job) : handleOpenPdfViewer(job)}
                                 disabled={approvingId === job._id}
-                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                                className={`inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed ${
+                                  isUploadStage(job)
+                                    ? "bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
+                                    : "bg-green-600 hover:bg-green-700 focus:ring-green-500"
+                                }`}
                               >
-                                <DocumentArrowUpIcon className="h-4 w-4 mr-1.5" />
-                                Upload & Approve
+                                {isUploadStage(job) ? (
+                                  <>
+                                    <CloudArrowUpIcon className="h-4 w-4 mr-1.5" />
+                                    Upload Document
+                                  </>
+                                ) : (
+                                  <>
+                                    <DocumentCheckIcon className="h-4 w-4 mr-1.5" />
+                                    Sign Document
+                                  </>
+                                )}
                               </button>
-                              <button
-                                onClick={() => handleOpenRejectionModal(job)}
-                                disabled={rejectingId === job._id}
-                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
-                              >
-                                <XMarkIcon className="h-4 w-4 mr-1.5" />
-                                Reject
-                              </button>
+                              {/* Reject button only for DLMRO, LMRO, CEO */}
+                              {canReject(job) && (
+                                <button
+                                  onClick={() => handleOpenRejectionModal(job)}
+                                  disabled={rejectingId === job._id}
+                                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                  <XMarkIcon className="h-4 w-4 mr-1.5" />
+                                  Reject
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1002,20 +1234,21 @@ function KYCManagement() {
                         )}
                       </div>
 
-                      {/* KYC Progress Bar */}
+                      {/* KYC Progress Bar - 4 Stages */}
                       {job.kycApproval && (
                         <div className="mt-3">
                           <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                            <span>MLRO</span>
+                            <span>AML Supervisor</span>
                             <span>DMLRO</span>
-                            <span>CEO</span>
+                            <span>MLRO</span>
+                            <span>SEF</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            {/* LMRO */}
+                            {/* AML Supervisor */}
                             <div
                               className={`h-2 flex-1 rounded-l-full ${
-                                job.kycApproval.lmroApproval &&
-                                job.kycApproval.lmroApproval.approved
+                                job.kycApproval.amlSupervisorApproval &&
+                                job.kycApproval.amlSupervisorApproval.approved
                                   ? "bg-green-500"
                                   : "bg-gray-200"
                               }`}
@@ -1026,6 +1259,16 @@ function KYCManagement() {
                               className={`h-2 flex-1 ${
                                 job.kycApproval.dlmroApproval &&
                                 job.kycApproval.dlmroApproval.approved
+                                  ? "bg-green-500"
+                                  : "bg-gray-200"
+                              }`}
+                            ></div>
+
+                            {/* LMRO */}
+                            <div
+                              className={`h-2 flex-1 ${
+                                job.kycApproval.lmroApproval &&
+                                job.kycApproval.lmroApproval.approved
                                   ? "bg-green-500"
                                   : "bg-gray-200"
                               }`}
@@ -1082,70 +1325,94 @@ function KYCManagement() {
               className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
             >
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                {getCurrentStageName(selectedJob)} Approval
+                {isUploadStage(selectedJob)
+                  ? "Upload Document - AML Supervisor"
+                  : `Sign Document - ${getCurrentStageName(selectedJob)}`}
               </h3>
 
-              {/* Document Upload Section */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Document Upload <span className="text-red-500">*</span>
-                </label>
-                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-                  <div className="space-y-1 text-center">
-                    <div className="flex text-sm text-gray-600">
-                      <label
-                        htmlFor="document-upload"
-                        className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
-                      >
-                        <span>Upload a file</span>
-                        <input
-                          id="document-upload"
-                          name="document"
-                          type="file"
-                          className="sr-only"
-                          onChange={handleDocumentChange}
-                        />
-                      </label>
-                      <p className="pl-1">or drag and drop</p>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      PDF, Word, Excel or image file up to 10MB
-                    </p>
-                    {documentFile && (
-                      <div className="flex items-center mt-2 text-sm text-gray-800">
-                        <PaperClipIcon className="h-4 w-4 mr-1 text-gray-400" />
-                        {documentFile.name} (
-                        {(documentFile.size / 1024 / 1024).toFixed(2)}MB)
+              {/* Document Upload Section - Only for AML Supervisor */}
+              {isUploadStage(selectedJob) ? (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Upload <span className="text-red-500">*</span>
+                  </label>
+                  <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                    <div className="space-y-1 text-center">
+                      <div className="flex text-sm text-gray-600">
+                        <label
+                          htmlFor="document-upload"
+                          className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
+                        >
+                          <span>Upload a file</span>
+                          <input
+                            id="document-upload"
+                            name="document"
+                            type="file"
+                            className="sr-only"
+                            onChange={handleDocumentChange}
+                          />
+                        </label>
+                        <p className="pl-1">or drag and drop</p>
                       </div>
-                    )}
+                      <p className="text-xs text-gray-500">
+                        PDF file up to 10MB (required for digital signing)
+                      </p>
+                      {documentFile && (
+                        <div className="flex items-center mt-2 text-sm text-gray-800">
+                          <PaperClipIcon className="h-4 w-4 mr-1 text-gray-400" />
+                          {documentFile.name} (
+                          {(documentFile.size / 1024 / 1024).toFixed(2)}MB)
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-                {documentError && (
-                  <p className="mt-1 text-sm text-red-600">{documentError}</p>
-                )}
-                <p className="mt-2 text-sm text-indigo-600 font-medium">
-                  Document submission is mandatory for approval
-                </p>
-                {/* Information about document replacement */}
-                {selectedJob &&
-                  selectedJob.kycApproval &&
-                  (selectedJob.kycApproval.currentApprovalStage === "dlmro" ||
-                    selectedJob.kycApproval.currentApprovalStage === "ceo") && (
-                    <p className="mt-2 text-sm text-amber-600 font-medium">
-                      Note: Uploading a new document will replace the previous
-                      one
-                    </p>
+                  {documentError && (
+                    <p className="mt-1 text-sm text-red-600">{documentError}</p>
                   )}
-              </div>
+                  <p className="mt-2 text-sm text-indigo-600 font-medium">
+                    This document will be digitally signed by DMLRO, MLRO, and SEF
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <DocumentCheckIcon className="h-8 w-8 text-green-500 mr-3" />
+                      <div>
+                        <p className="text-sm font-medium text-green-800">
+                          Digital Signature Required
+                        </p>
+                        <p className="text-xs text-green-600 mt-1">
+                          Your digital signature will be added to the KYC document.
+                          This action cannot be undone.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  {selectedJob?.kycApproval?.amlSupervisorApproval?.document && (
+                    <div className="mt-3">
+                      <a
+                        href={selectedJob.kycApproval.amlSupervisorApproval.document.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+                        View Current Document
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Upload Progress Bar (for Cloudinary) */}
+              {/* Upload Progress Bar (for upload stages) */}
               {uploadProgress > 0 && (
                 <div className="mb-4">
                   <div className="relative pt-1">
                     <div className="flex mb-2 items-center justify-between">
                       <div>
                         <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200">
-                          Uploading...
+                          {isUploadStage(selectedJob) ? "Uploading..." : "Signing..."}
                         </span>
                       </div>
                       <div className="text-right">
@@ -1173,7 +1440,7 @@ function KYCManagement() {
                   onChange={(e) => setApprovalNotes(e.target.value)}
                   className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   rows={3}
-                  placeholder="Add any notes about this approval..."
+                  placeholder={isUploadStage(selectedJob) ? "Add any notes about the uploaded document..." : "Add any notes about your signature..."}
                 ></textarea>
               </div>
 
@@ -1191,10 +1458,14 @@ function KYCManagement() {
                   onClick={handleSubmitApproval}
                   disabled={
                     submitting ||
-                    !documentFile ||
+                    (isUploadStage(selectedJob) && !documentFile) ||
                     (uploadProgress > 0 && uploadProgress < 100)
                   }
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-70 disabled:cursor-not-allowed"
+                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed ${
+                    isUploadStage(selectedJob)
+                      ? "bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
+                      : "bg-green-600 hover:bg-green-700 focus:ring-green-500"
+                  }`}
                 >
                   {submitting ? (
                     <>
@@ -1218,12 +1489,17 @@ function KYCManagement() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         ></path>
                       </svg>
-                      Submitting...
+                      {isUploadStage(selectedJob) ? "Uploading..." : "Signing..."}
+                    </>
+                  ) : isUploadStage(selectedJob) ? (
+                    <>
+                      <CloudArrowUpIcon className="h-4 w-4 mr-1.5" />
+                      Upload Document
                     </>
                   ) : (
                     <>
-                      <CloudArrowUpIcon className="h-4 w-4 mr-1.5" />
-                      Upload & Approve
+                      <DocumentCheckIcon className="h-4 w-4 mr-1.5" />
+                      Sign Document
                     </>
                   )}
                 </button>
@@ -1316,6 +1592,62 @@ function KYCManagement() {
                   )}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PDF Signature Viewer Modal */}
+      <AnimatePresence>
+        {showPdfViewer && selectedJob && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-white rounded-lg shadow-xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden"
+            >
+              <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
+                <h3 className="text-lg font-medium text-white">
+                  Sign Document - {getCurrentStageName(selectedJob)}
+                </h3>
+                <p className="text-green-100 text-sm mt-1">
+                  Click on the document where you want to place your signature
+                </p>
+              </div>
+
+              <div className="flex-1 overflow-hidden">
+                <PDFSignatureViewer
+                  pdfUrl={getCurrentDocumentUrl(selectedJob)}
+                  signatureImageUrl={currentSignerSignature}
+                  signerName={getCurrentStageName(selectedJob)}
+                  onSignaturePositionSelect={handleSignaturePositionSelect}
+                  onCancel={() => {
+                    setShowPdfViewer(false);
+                    resetForm();
+                  }}
+                />
+              </div>
+
+              {submitting && (
+                <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500 mx-auto mb-4"></div>
+                    <p className="text-green-600 font-medium">Signing document...</p>
+                    <div className="w-48 h-2 bg-gray-200 rounded-full mt-2 mx-auto overflow-hidden">
+                      <div
+                        className="h-full bg-green-500 transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

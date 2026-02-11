@@ -136,6 +136,54 @@ RESTful endpoints organized by domain:
 
 ## Recent Updates and Features
 
+### Service-Role Association System
+
+#### Overview
+Services can now be associated with specific roles, controlling which users can access which service types.
+
+#### Implementation
+- **Service Model**: Added `roles` array field to link services with roles
+  ```javascript
+  roles: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Role",
+  }]
+  ```
+- **Service Controller**: Populates roles on fetch, handles roles in create/update operations
+- **AddService.jsx**: Multi-select role buttons for assigning roles to services
+- **AllServices.jsx**: Displays role badges for each service
+
+#### Role-Based Filtering
+- **Job Creation**: Service Type dropdown filters based on user's role
+  - Admin sees all services
+  - Non-admin users see only services with their role assigned
+- **My Role Clients Page**: Shows clients based on accessible service types
+  - Route: `/my-role-clients`
+  - Backend: `getClientsByRole` in clientController.js
+  - Only shows clients with jobs matching user's accessible services
+
+### Admin-Only Sidebar Items
+Certain sidebar items are restricted to admin users only:
+- **All Jobs** (`/admin/jobs`) - `adminOnly: true`
+- **All Clients** (`/all-clients`) - `adminOnly: true`
+
+Implementation in Sidebar.jsx:
+```javascript
+if (item.adminOnly) {
+  return user?.role?.name === "admin";
+}
+```
+
+### Document Library/Archive System
+- **Location**: `/library`
+- **Features**:
+  - Automatic document archiving after 10 years
+  - Search and filter functionality
+  - Grid and list view options
+  - Admin-only delete functionality
+  - Welcome popup explaining how library works (first visit)
+  - Info button to reopen welcome popup anytime
+
 ### Person Details (Director/Shareholder/Secretary/SEF)
 
 #### Other Documents Feature

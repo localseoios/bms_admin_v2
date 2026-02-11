@@ -31,6 +31,17 @@ const navigation = [
     ],
   },
   {
+    name: "Role Based",
+    items: [
+      {
+        name: "My Role Clients",
+        href: "/my-role-clients",
+        icon: UserGroupIcon,
+        badge: "New",
+      },
+    ],
+  },
+  {
     name: "Management",
     items: [
       {
@@ -54,9 +65,8 @@ const navigation = [
         name: "All Jobs",
         href: "/admin/jobs",
         icon: BriefcaseIcon,
+        adminOnly: true,
       },
-      // { name: "Profile", href: "/profile", icon: UserIcon },
-      // { name: "Settings", href: "/settings", icon: Cog6ToothIcon },
     ],
   },
   {
@@ -72,7 +82,7 @@ const navigation = [
         href: "/bra-management",
         icon: ClipboardIcon,
       },
-      {
+      { 
         name: "KYC Management",
         href: "/kyc-management",
         icon: IdentificationIcon,
@@ -82,11 +92,11 @@ const navigation = [
         href: "/compliance-resource-center",
         icon: BookOpenIcon,
       },
-      {
-        name: "Staff Management",
-        href: "/compliance-staff-management",
-        icon: UsersIcon,
-      },
+      // {
+      //   name: "Staff Management",
+      //   href: "/compliance-staff-management",
+      //   icon: UsersIcon,
+      // },
     ],
   },
   {
@@ -101,16 +111,16 @@ const navigation = [
         name: "My Clients",
         href: "/assigned-clients",
         icon: UsersIcon,
-        badge: "New",
       },
       {
         name: "All Clients",
         href: "/all-clients",
         icon: UsersIcon,
+        allowedRoles: ["admin", "compliance manager"],
       },
-      
     ],
   },
+
   //   {
   //   name: "BRA Management",
   //   items: [
@@ -157,7 +167,7 @@ const navigation = [
 
 function Sidebar() {
   const location = useLocation();
-  const { checkPermission } = useAuth();
+  const { checkPermission, user } = useAuth();
   const [expandedSections, setExpandedSections] = useState(
     navigation.map((section) => section.name)
   );
@@ -170,9 +180,18 @@ function Sidebar() {
     );
   };
 
-  // Check if user has permission to see a navigation item
   const hasAccessToItem = (item) => {
-    const { user } = useAuth();
+
+    // Check adminOnly items
+    if (item.adminOnly) {
+      return user?.role?.name === "admin";
+    }
+
+    // Check allowedRoles items
+    if (item.allowedRoles) {
+      return item.allowedRoles.includes(user?.role?.name?.toLowerCase());
+    }
+
     switch(item.href) {
       case "/reports":
         // Check for Audited Financial permission ONLY (viewer or editor)

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion } from "framer-motion"; // eslint-disable-line no-unused-vars
 import AutoSuggestPersonInput from "../../../components/AutoSuggestPersonInput";
 import { toast } from "react-hot-toast";
 import {
@@ -22,13 +22,18 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
+import { useAuth } from "../../../context/AuthContext";
 
 const CreatePreApprovedJob = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [services, setServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [serviceUsers, setServiceUsers] = useState([]);
+  const [loadingServiceUsers, setLoadingServiceUsers] = useState(false);
+  const [selectedServiceUsers, setSelectedServiceUsers] = useState([]);
 
   // New state for job number availability checking
   const [jobNumberStatus, setJobNumberStatus] = useState({
@@ -77,6 +82,8 @@ const CreatePreApprovedJob = () => {
     clientName: "",
     gmail: "",
     startingPoint: "QFC",
+    crNo: "",
+    contactNumber: "",
 
     // Document URLs for display
     documentPassportUrl: "",
@@ -272,6 +279,8 @@ const CreatePreApprovedJob = () => {
       jobDetails: data.basicInfo?.jobDetails || prev.jobDetails,
       specialDescription: data.basicInfo?.specialDescription || prev.specialDescription,
       startingPoint: data.basicInfo?.startingPoint || prev.startingPoint,
+      crNo: data.basicInfo?.crNo || prev.crNo,
+      contactNumber: data.basicInfo?.contactNumber || prev.contactNumber,
       // Auto-fill document references
       documentPassportUrl: data.documents?.documentPassport || prev.documentPassportUrl,
       documentIDUrl: data.documents?.documentID || prev.documentIDUrl,
@@ -532,9 +541,24 @@ const CreatePreApprovedJob = () => {
         setLoadingServices(true);
         const response = await axiosInstance.get("/services");
         // Only use active services
-        const activeServices = response.data.filter(
+        let activeServices = response.data.filter(
           (service) => service.status === "active"
         );
+
+        // Filter services based on user's role (admin sees all)
+        if (user && user.role && user.role.name !== "admin") {
+          activeServices = activeServices.filter((service) => {
+            // If service has no roles assigned, show it to everyone
+            if (!service.roles || service.roles.length === 0) {
+              return true;
+            }
+            // Check if user's role is in the service's roles
+            return service.roles.some(
+              (role) => role._id === user.role._id || role === user.role._id
+            );
+          });
+        }
+
         setServices(activeServices);
       } catch (error) {
         console.error("Error fetching services:", error);
@@ -544,8 +568,37 @@ const CreatePreApprovedJob = () => {
       }
     };
 
-    fetchServices();
-  }, []);
+    if (user) {
+      fetchServices();
+    }
+  }, [user]);
+
+  // Fetch users when service type changes
+  useEffect(() => {
+    const fetchUsersByService = async () => {
+      if (!formData.serviceType) {
+        setServiceUsers([]);
+        setSelectedServiceUsers([]);
+        return;
+      }
+
+      try {
+        setLoadingServiceUsers(true);
+        setSelectedServiceUsers([]);
+        const response = await axiosInstance.get(
+          `/users/by-service/${encodeURIComponent(formData.serviceType)}`
+        );
+        setServiceUsers(response.data || []);
+      } catch (error) {
+        console.error("Error fetching users by service:", error);
+        setServiceUsers([]);
+      } finally {
+        setLoadingServiceUsers(false);
+      }
+    };
+
+    fetchUsersByService();
+  }, [formData.serviceType]);
 
   // Handle form input changes
   const handleChange = (e) => {
@@ -972,11 +1025,16 @@ const CreatePreApprovedJob = () => {
       // Add basic job info
       formDataToSend.append("serviceType", formData.serviceType);
       formDataToSend.append("assignedPerson", formData.assignedPerson);
+      if (selectedServiceUsers && selectedServiceUsers.length > 0) {
+        formDataToSend.append("selectedServiceUsers", JSON.stringify(selectedServiceUsers));
+      }
       formDataToSend.append("jobDetails", formData.jobDetails);
       formDataToSend.append("specialDescription", formData.specialDescription);
       formDataToSend.append("clientName", formData.clientName);
       formDataToSend.append("gmail", formData.gmail);
       formDataToSend.append("startingPoint", formData.startingPoint);
+      formDataToSend.append("crNo", formData.crNo || "");
+      formDataToSend.append("contactNumber", formData.contactNumber || "");
 
       // Add company details
       formDataToSend.append(
@@ -1680,14 +1738,14 @@ const CreatePreApprovedJob = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Assigned Person <span className="text-red-500">*</span>
+                  Assigned Person{" "}
+                  <span className="text-gray-500 text-xs">(Optional)</span>
                 </label>
                 <select
                   name="assignedPerson"
                   value={formData.assignedPerson}
                   onChange={handleChange}
                   className="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
-                  required
                 >
                   <option value="">Select Assigned Person</option>
                   {assignableUsers.map((user) => (
@@ -1697,6 +1755,72 @@ const CreatePreApprovedJob = () => {
                   ))}
                 </select>
               </div>
+
+              {/* Multi-Select Users for This Service */}
+              {formData.serviceType && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Users for This Service
+                    <span className="text-gray-500 text-xs ml-1">(Optional - Select multiple)</span>
+                  </label>
+                  {loadingServiceUsers ? (
+                    <div className="flex items-center space-x-2 text-gray-500">
+                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Loading users...</span>
+                    </div>
+                  ) : serviceUsers.length > 0 ? (
+                    <>
+                      <div className="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto bg-white">
+                        {serviceUsers.map((serviceUser) => (
+                          <label
+                            key={serviceUser._id}
+                            className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedServiceUsers.includes(serviceUser._id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedServiceUsers([...selectedServiceUsers, serviceUser._id]);
+                                } else {
+                                  setSelectedServiceUsers(
+                                    selectedServiceUsers.filter((id) => id !== serviceUser._id)
+                                  );
+                                }
+                              }}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <div className="flex-1">
+                              <span className="text-sm font-medium text-gray-700">
+                                {serviceUser.name}
+                              </span>
+                              <span className="text-xs text-gray-500 ml-2">
+                                ({serviceUser.role?.name || "N/A"})
+                              </span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <p className="text-xs text-gray-500">
+                          {serviceUsers.length} user{serviceUsers.length !== 1 ? "s" : ""} available
+                        </p>
+                        {selectedServiceUsers.length > 0 && (
+                          <p className="text-xs text-blue-600 font-medium">
+                            {selectedServiceUsers.length} selected
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-sm text-yellow-700">
+                        No specific users assigned to this service.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
@@ -1794,6 +1918,34 @@ const CreatePreApprovedJob = () => {
                   placeholder="Enter starting point (e.g., QFC, Ministry, Free Zone)"
                   className="mt-1 block w-full pl-3 pr-3 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  CR Number <span className="text-gray-500">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  name="crNo"
+                  value={formData.crNo}
+                  onChange={handleChange}
+                  placeholder="Enter CR number"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Contact Number <span className="text-gray-500">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  name="contactNumber"
+                  value={formData.contactNumber}
+                  onChange={handleChange}
+                  placeholder="Enter contact number"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
 
@@ -3300,7 +3452,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "shareholders",
                               index,
                               "visaCopy",
@@ -3341,7 +3493,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "shareholders",
                               index,
                               "qidDoc",
@@ -3382,7 +3534,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "shareholders",
                               index,
                               "nationalAddressDoc",
@@ -3423,7 +3575,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "shareholders",
                               index,
                               "passportDoc",
@@ -3464,7 +3616,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "shareholders",
                               index,
                               "cv",
@@ -3651,7 +3803,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "secretaries",
                               index,
                               "visaCopy",
@@ -3692,7 +3844,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "secretaries",
                               index,
                               "qidDoc",
@@ -3733,7 +3885,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "secretaries",
                               index,
                               "nationalAddressDoc",
@@ -3774,7 +3926,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "secretaries",
                               index,
                               "passportDoc",
@@ -3815,7 +3967,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "secretaries",
                               index,
                               "cv",
@@ -4002,7 +4154,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "sefs",
                               index,
                               "visaCopy",
@@ -4043,7 +4195,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "sefs",
                               index,
                               "qidDoc",
@@ -4084,7 +4236,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "sefs",
                               index,
                               "nationalAddressDoc",
@@ -4125,7 +4277,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "sefs",
                               index,
                               "passportDoc",
@@ -4166,7 +4318,7 @@ const CreatePreApprovedJob = () => {
                         <input
                           type="file"
                           onChange={(e) =>
-                            handlePersonDocumentChange(
+                            handlePersonDocChange(
                               "sefs",
                               index,
                               "cv",

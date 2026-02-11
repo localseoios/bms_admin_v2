@@ -9,13 +9,17 @@ const {
 const {
   initializeKyc,
   getKycStatus,
+  amlSupervisorUpload,
+  dlmroSign,
+  lmroSign,
+  ceoSign,
   lmroApprove,
   dlmroApprove,
   ceoApprove,
   rejectKyc,
   getAllKycJobs,
-  updateKycDocument, // NEW
-  deleteKycDocument, // NEW
+  updateKycDocument,
+  deleteKycDocument,
 } = require("../controllers/kycController");
 const { upload } = require("../services/fileUploadService");
 
@@ -33,33 +37,58 @@ router.get("/jobs/:jobId/status", protect, checkKycPermission, getKycStatus);
 // Get KYC status for compliance (no auth required)
 router.get("/compliance/jobs/:jobId/status", getKycStatus);
 
-// Get all KYC jobs for management page
 router.get("/jobs", protect, checkKycPermission, getAllKycJobs);
 
-// LMRO Approval with document upload requirement using Cloudinary
+router.put(
+  "/jobs/:jobId/aml-supervisor-upload",
+  protect,
+  checkPermission("kycManagement.amlSupervisor"),
+  upload.single("document"),
+  amlSupervisorUpload
+);
+
+router.put(
+  "/jobs/:jobId/dlmro-sign",
+  protect,
+  checkPermission("kycManagement.dlmro"),
+  dlmroSign
+);
+
+router.put(
+  "/jobs/:jobId/lmro-sign",
+  protect,
+  checkPermission("kycManagement.lmro"),
+  lmroSign
+);
+
+router.put(
+  "/jobs/:jobId/ceo-sign",
+  protect,
+  checkPermission("kycManagement.ceo"),
+  ceoSign
+);
+
 router.put(
   "/jobs/:jobId/lmro-approve",
   protect,
   checkPermission("kycManagement.lmro"),
-  upload.single("document"), // Use Cloudinary upload middleware
+  upload.single("document"),
   lmroApprove
 );
 
-// DLMRO Approval with document upload requirement using Cloudinary
 router.put(
   "/jobs/:jobId/dlmro-approve",
   protect,
   checkPermission("kycManagement.dlmro"),
-  upload.single("document"), // Use Cloudinary upload middleware
+  upload.single("document"),
   dlmroApprove
 );
 
-// CEO Approval with document upload requirement using Cloudinary
 router.put(
   "/jobs/:jobId/ceo-approve",
   protect,
   checkPermission("kycManagement.ceo"),
-  upload.single("document"), // Use Cloudinary upload middleware
+  upload.single("document"),
   ceoApprove
 );
 

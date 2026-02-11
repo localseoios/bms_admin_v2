@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import axios from "../../utils/axios";
 import { toast } from "react-toastify";
 import {
@@ -79,6 +79,7 @@ const ComplianceStaff = () => {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddSectionModal, setShowAddSectionModal] = useState(false);
+  const [showEditSectionModal, setShowEditSectionModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -89,6 +90,10 @@ const ComplianceStaff = () => {
     expireDate: "",
   });
   const [newSection, setNewSection] = useState({
+    title: "",
+    description: "",
+  });
+  const [editSectionData, setEditSectionData] = useState({
     title: "",
     description: "",
   });
@@ -239,12 +244,13 @@ const ComplianceStaff = () => {
     if (!uploadData.file || !uploadData.description) return;
 
     console.log('Frontend uploadData:', uploadData);
+    console.log('Selected section:', selectedSection);
     setIsUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', uploadData.file);
       formData.append('staffId', selectedStaff.id);
-      formData.append('sectionId', selectedSection._id);
+      formData.append('sectionId', selectedSection.id);
       formData.append('description', uploadData.description);
       if (uploadData.expireDate) {
         console.log('Adding expireDate to formData:', uploadData.expireDate);
@@ -315,19 +321,19 @@ const ComplianceStaff = () => {
       const response = await axios.delete('/compliance-staff/delete-document', {
         data: {
           staffId: selectedStaff.id,
-          sectionId: selectedSection._id,
+          sectionId: selectedSection.id,
           documentId: selectedDocument.id
         }
       });
 
       if (response.data.success) {
         // Update local state after successful backend deletion
-        setStaffMembers(staffMembers.map(staff => 
+        setStaffMembers(staffMembers.map(staff =>
           staff.id === selectedStaff.id
             ? {
                 ...staff,
-                sections: staff.sections.map(section => 
-                  section._id === selectedSection._id
+                sections: staff.sections.map(section =>
+                  section.id === selectedSection.id
                     ? { ...section, documents: section.documents.filter(doc => doc.id !== selectedDocument.id) }
                     : section
                 )
@@ -368,7 +374,7 @@ const ComplianceStaff = () => {
       const formData = new FormData();
       formData.append('file', replaceFile);
       formData.append('staffId', selectedStaff.id);
-      formData.append('sectionId', selectedSection._id);
+      formData.append('sectionId', selectedSection.id);
       formData.append('documentId', selectedDocument.id);
       if (replaceExpireDate) {
         formData.append('expireDate', replaceExpireDate);
@@ -382,17 +388,17 @@ const ComplianceStaff = () => {
 
       if (response.data.success) {
         const updatedDocument = response.data.data;
-        
+
         // Update local state with the replaced document from backend
-        setStaffMembers(staffMembers.map(staff => 
+        setStaffMembers(staffMembers.map(staff =>
           staff.id === selectedStaff.id
             ? {
                 ...staff,
-                sections: staff.sections.map(section => 
-                  section._id === selectedSection._id
+                sections: staff.sections.map(section =>
+                  section.id === selectedSection.id
                     ? {
                         ...section,
-                        documents: section.documents.map(doc => 
+                        documents: section.documents.map(doc =>
                           doc.id === selectedDocument.id
                             ? updatedDocument
                             : doc
@@ -423,10 +429,10 @@ const ComplianceStaff = () => {
   const handleUpdateDocument = async (updatedDescription, updatedExpireDate) => {
     try {
       setIsUploading(true);
-      
+
       const response = await axios.put('/compliance-staff/update-document', {
         staffId: selectedStaff.id,
-        sectionId: selectedSection._id,
+        sectionId: selectedSection.id,
         documentId: selectedDocument.id,
         description: updatedDescription,
         expireDate: updatedExpireDate || null
@@ -434,15 +440,15 @@ const ComplianceStaff = () => {
 
       if (response.data.success) {
         // Update local state after successful backend update
-        setStaffMembers(staffMembers.map(staff => 
+        setStaffMembers(staffMembers.map(staff =>
           staff.id === selectedStaff.id
             ? {
                 ...staff,
-                sections: staff.sections.map(section => 
-                  section._id === selectedSection._id
+                sections: staff.sections.map(section =>
+                  section.id === selectedSection.id
                     ? {
                         ...section,
-                        documents: section.documents.map(doc => 
+                        documents: section.documents.map(doc =>
                           doc.id === selectedDocument.id
                             ? { ...doc, description: updatedDescription, expireDate: updatedExpireDate || null }
                             : doc
@@ -465,18 +471,9 @@ const ComplianceStaff = () => {
     }
   };
 
-  const handleDeleteSection = async (section, staff) => {
+  const handleDeleteSection = async (section, staff, forceDelete = false) => {
     if (!section.isCustom) {
       toast.error('Cannot delete default sections');
-      return;
-    }
-
-    if (section.documents && section.documents.length > 0) {
-      toast.error('Cannot delete section with documents. Please remove all documents first.');
-      return;
-    }
-
-    if (!window.confirm(`Are you sure you want to delete the "${section.title}" section? This action cannot be undone.`)) {
       return;
     }
 
@@ -484,13 +481,27 @@ const ComplianceStaff = () => {
       const response = await axios.delete('/compliance-staff/delete-section', {
         data: {
           staffId: staff.id,
-          sectionId: section.id
+          sectionId: section.id,
+          forceDelete: forceDelete
         }
       });
 
+      if (response.data.requiresConfirmation) {
+        const documentCount = response.data.documentCount;
+        const confirmDelete = window.confirm(
+          `⚠️ Warning: This folder "${section.title}" contains ${documentCount} document(s).\n\n` +
+          `Deleting this folder will permanently remove all ${documentCount} document(s) inside it.\n\n` +
+          `Are you sure you want to delete this folder and all its contents?`
+        );
+
+        if (confirmDelete) {
+          await handleDeleteSection(section, staff, true);
+        }
+        return;
+      }
+
       if (response.data.success) {
-        // Update local state by removing the section
-        setStaffMembers(staffMembers.map(s => 
+        setStaffMembers(staffMembers.map(s =>
           s.id === staff.id
             ? {
                 ...s,
@@ -499,7 +510,12 @@ const ComplianceStaff = () => {
             : s
         ));
 
-        toast.success(`${section.title} section deleted successfully`);
+        const deletedDocs = response.data.deletedDocuments || 0;
+        if (deletedDocs > 0) {
+          toast.success(`${section.title} folder and ${deletedDocs} document(s) deleted successfully`);
+        } else {
+          toast.success(`${section.title} folder deleted successfully`);
+        }
       }
     } catch (error) {
       console.error('Error deleting section:', error);
@@ -538,6 +554,56 @@ const ComplianceStaff = () => {
     }
   };
 
+  const handleEditSectionClick = (section, staff) => {
+    if (!section.isCustom) {
+      toast.error('Cannot edit default sections');
+      return;
+    }
+    setSelectedSection(section);
+    setSelectedStaff(staff);
+    setEditSectionData({
+      title: section.title,
+      description: section.description || "",
+    });
+    setShowEditSectionModal(true);
+  };
+
+  const handleUpdateSection = async () => {
+    if (!editSectionData.title || !selectedStaff || !selectedSection) return;
+
+    try {
+      const response = await axios.put('/compliance-staff/update-section', {
+        staffId: selectedStaff.id,
+        sectionId: selectedSection.id,
+        title: editSectionData.title,
+        description: editSectionData.description
+      });
+
+      if (response.data.success) {
+        setStaffMembers(staffMembers.map(staff =>
+          staff.id === selectedStaff.id
+            ? {
+                ...staff,
+                sections: staff.sections.map(section =>
+                  section.id === selectedSection.id
+                    ? { ...section, title: editSectionData.title, description: editSectionData.description }
+                    : section
+                )
+              }
+            : staff
+        ));
+
+        toast.success('Section updated successfully');
+        setShowEditSectionModal(false);
+        setEditSectionData({ title: "", description: "" });
+        setSelectedSection(null);
+        setSelectedStaff(null);
+      }
+    } catch (error) {
+      console.error('Error updating section:', error);
+      toast.error(error.response?.data?.message || 'Failed to update section');
+    }
+  };
 
   const toggleSectionExpand = (sectionId, staffId) => {
     setStaffMembers(staffMembers.map(staff => 
@@ -1134,15 +1200,26 @@ const ComplianceStaff = () => {
                                           <span className="text-xs font-medium text-gray-700">Upload</span>
                                         </motion.button>
                                         {section.isCustom && (
-                                          <motion.button
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={() => handleDeleteSection(section, staff)}
-                                            className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all text-red-600 hover:bg-red-50"
-                                            title="Delete Section"
-                                          >
-                                            <TrashIcon className="w-4 h-4" />
-                                          </motion.button>
+                                          <>
+                                            <motion.button
+                                              whileHover={{ scale: 1.05 }}
+                                              whileTap={{ scale: 0.95 }}
+                                              onClick={() => handleEditSectionClick(section, staff)}
+                                              className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all text-blue-600 hover:bg-blue-50"
+                                              title="Edit Section"
+                                            >
+                                              <PencilIcon className="w-4 h-4" />
+                                            </motion.button>
+                                            <motion.button
+                                              whileHover={{ scale: 1.05 }}
+                                              whileTap={{ scale: 0.95 }}
+                                              onClick={() => handleDeleteSection(section, staff)}
+                                              className="p-2 bg-white rounded-lg shadow hover:shadow-md transition-all text-red-600 hover:bg-red-50"
+                                              title="Delete Section"
+                                            >
+                                              <TrashIcon className="w-4 h-4" />
+                                            </motion.button>
+                                          </>
                                         )}
                                         <motion.button
                                           whileHover={{ scale: 1.05 }}
@@ -1557,6 +1634,93 @@ const ComplianceStaff = () => {
         )}
       </AnimatePresence>
 
+      {/* Edit Section Modal */}
+      <AnimatePresence>
+        {showEditSectionModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowEditSectionModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-800">Edit Section</h3>
+                <button
+                  onClick={() => setShowEditSectionModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              {selectedStaff && selectedSection && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Staff:</strong> {selectedStaff.name}
+                  </p>
+                  <p className="text-xs text-blue-600">Editing: {selectedSection.title}</p>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Section Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={editSectionData.title}
+                    onChange={(e) => setEditSectionData({ ...editSectionData, title: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter section title..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Section Description
+                  </label>
+                  <textarea
+                    value={editSectionData.description}
+                    onChange={(e) => setEditSectionData({ ...editSectionData, description: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                    rows="3"
+                    placeholder="Enter section description..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowEditSectionModal(false);
+                    setEditSectionData({ title: "", description: "" });
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateSection}
+                  disabled={!editSectionData.title}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update Section
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* View Document Modal */}
       <AnimatePresence>
         {showViewModal && selectedDocument && (
@@ -1866,7 +2030,7 @@ const ComplianceStaff = () => {
       {/* Replace Document Modal */}
       <AnimatePresence>
         {showReplaceModal && selectedDocument && (
-          <motion.di   v
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1984,7 +2148,7 @@ const ComplianceStaff = () => {
                 </button>
               </div>
             </motion.div>
-          </motion.di>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

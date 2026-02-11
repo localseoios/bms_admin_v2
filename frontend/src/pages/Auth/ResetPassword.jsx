@@ -84,7 +84,7 @@ function ResetPassword() {
       await axiosInstance.post("auth/forgot-password", { email: formData.email });
       setMessage("New reset code sent to your email");
       setError("");
-    } catch (err) {
+    } catch {
       setError("Failed to resend code");
     }
   };

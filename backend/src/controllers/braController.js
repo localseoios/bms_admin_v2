@@ -2,6 +2,7 @@
 const asyncHandler = require("express-async-handler");
 const BraApproval = require("../models/braApprovalModel");
 const Job = require("../models/Job");
+const Archive = require("../models/archiveModel");
 const notificationService = require("../services/notificationService");
 const {
   uploadToCloudinary,
@@ -631,8 +632,8 @@ const ceoApprove = asyncHandler(async (req, res) => {
     });
     await job.save();
 
-    // Send notifications to all parties
-    await notificationService.createNotification(
+    // Send notifications to job parties
+    await notificationService.createJobNotification(
       {
         title: "BRA Process Completed",
         description: `BRA process for ${job.clientName}'s job has been completed successfully.`,
@@ -640,19 +641,8 @@ const ceoApprove = asyncHandler(async (req, res) => {
         subType: "bra",
         relatedTo: { model: "Job", id: job._id },
       },
-      { _id: job.assignedPerson }
-    );
-
-    // Notify admin
-    await notificationService.createNotification(
-      {
-        title: "BRA Completed",
-        description: `BRA process for ${job.clientName}'s job has been completed successfully.`,
-        type: "job",
-        subType: "bra",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "admin" }
+      job,
+      req.user._id
     );
 
     // Clean up temporary file
@@ -742,20 +732,8 @@ const rejectBra = asyncHandler(async (req, res) => {
   });
   await job.save();
 
-  // Send notifications
-  await notificationService.createNotification(
-    {
-      title: "BRA Request Rejected",
-      description: `BRA for ${job.clientName}'s job has been rejected: ${rejectionReason}`,
-      type: "job",
-      subType: "bra",
-      relatedTo: { model: "Job", id: job._id },
-    },
-    { _id: job.assignedPerson }
-  );
-
-  // Notify admin
-  await notificationService.createNotification(
+  // Send notifications to job parties
+  await notificationService.createJobNotification(
     {
       title: "BRA Rejected",
       description: `BRA for ${job.clientName}'s job rejected by ${req.user.name}: ${rejectionReason}`,
@@ -763,7 +741,8 @@ const rejectBra = asyncHandler(async (req, res) => {
       subType: "bra",
       relatedTo: { model: "Job", id: job._id },
     },
-    { "role.name": "admin" }
+    job,
+    req.user._id
   );
 
   res.status(200).json({
@@ -815,6 +794,40 @@ const updateBraDocument = asyncHandler(async (req, res) => {
       });
     }
 
+    // Get the job to find clientId for archiving
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    // Archive old document before deleting if it exists
+    if (currentApproval.document?.fileUrl) {
+      try {
+        const stageLabels = { lmro: 'LMRO', dlmro: 'DLMRO', ceo: 'CEO' };
+        await Archive.create({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "bra_document",
+          sourceType: "bra",
+          fileUrl: currentApproval.document.fileUrl,
+          fileName: currentApproval.document.fileName || `${stageLabels[stage]} BRA Document`,
+          title: `${stageLabels[stage]} BRA Approval Document`,
+          description: `Archived ${stageLabels[stage]} BRA approval document - replaced`,
+          archivedBy: req.user._id,
+          reason: "replaced",
+          originalUploadedAt: currentApproval.document.uploadedAt,
+          metadata: {
+            stage: stage,
+            approvedBy: currentApproval.approvedBy,
+            approvedAt: currentApproval.approvedAt
+          }
+        });
+        console.log(`Archived old ${stage} BRA document for job ${jobId}`);
+      } catch (archiveError) {
+        console.error(`Error archiving ${stage} BRA document:`, archiveError);
+      }
+    }
+
     // Delete old document from Cloudinary if it exists
     if (currentApproval.document?.cloudinaryId) {
       const deleteResult = await deleteFromCloudinary(currentApproval.document.cloudinaryId);
@@ -860,6 +873,15 @@ const updateBraDocument = asyncHandler(async (req, res) => {
     if (fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
+
+    // Add timeline entry
+    job.timeline.push({
+      status: job.status,
+      description: `BRA ${stage.toUpperCase()} document updated`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
 
     // Populate the response with user details
     await braApproval.populate([
@@ -943,6 +965,18 @@ const deleteBraDocument = asyncHandler(async (req, res) => {
     braApproval[approvalField].document = undefined;
 
     await braApproval.save();
+
+    // Add timeline entry
+    const job = await Job.findById(jobId);
+    if (job) {
+      job.timeline.push({
+        status: job.status,
+        description: `BRA ${stage.toUpperCase()} document deleted`,
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+      });
+      await job.save();
+    }
 
     // Populate the response with user details
     await braApproval.populate([

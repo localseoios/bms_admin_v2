@@ -12,15 +12,21 @@ const safeCloudinaryUpload = async (filePath, options = {}) => {
     console.log('\n💰 === FINANCIAL DOCUMENT UPLOAD ===');
     console.log('📄 File:', path.basename(filePath));
     console.log('📂 Folder:', options.folder || 'default');
-    
+
+    const ext = path.extname(filePath).toLowerCase();
+    const rawExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'];
+    const resourceType = rawExtensions.includes(ext) ? 'raw' : 'auto';
+    console.log(`📄 Resource type: ${resourceType}`);
+
     const result = await cloudinary.uploader.upload(filePath, {
       timeout: 60000,
+      resource_type: resourceType,
       ...options,
     });
-    
+
     console.log('✅ Upload successful!');
     console.log('🌐 URL:', result.secure_url);
-    
+
     return { success: true, url: result.secure_url, publicId: result.public_id };
   } catch (error) {
     console.error(`❌ Cloudinary upload error:`, error.message);

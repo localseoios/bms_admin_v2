@@ -4,6 +4,7 @@ const Client = require("../models/Client");
 const Job = require("../models/Job");
 const cloudinary = require("../config/cloudinary");
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 
 // Get all screening records for a client
 const getClientScreeningRecords = asyncHandler(async (req, res) => {
@@ -263,10 +264,15 @@ const uploadScreeningDocument = asyncHandler(async (req, res) => {
       });
     }
 
+    // Determine resource type based on file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    const rawExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'];
+    const resourceType = rawExtensions.includes(ext) ? 'raw' : 'auto';
+
     // Upload to Cloudinary
     const uploadResult = await cloudinary.uploader.upload(file.path, {
       folder: "screening-documents",
-      resource_type: "auto",
+      resource_type: resourceType,
       public_id: `screening_${Date.now()}_${file.originalname.split('.')[0]}`
     });
 
@@ -293,6 +299,7 @@ const uploadScreeningDocument = asyncHandler(async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Document uploaded successfully",
+      screeningId: screening._id,
       document: newDocument
     });
 
@@ -399,10 +406,15 @@ const updateScreeningDocument = asyncHandler(async (req, res) => {
     if (file) {
       const oldCloudinaryId = documentToUpdate.cloudinaryId;
       
+      // Determine resource type based on file extension
+      const ext = path.extname(file.originalname).toLowerCase();
+      const rawExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'];
+      const resourceType = rawExtensions.includes(ext) ? 'raw' : 'auto';
+
       // Upload new file to Cloudinary
       const uploadResult = await cloudinary.uploader.upload(file.path, {
         folder: "screening-documents",
-        resource_type: "auto",
+        resource_type: resourceType,
         public_id: `screening_${Date.now()}_${file.originalname.split('.')[0]}`
       });
 
@@ -469,42 +481,54 @@ const deleteScreeningDocument = asyncHandler(async (req, res) => {
   const { id: documentId } = req.params;
   const { clientGmail, screeningType } = req.body;
 
+  console.log("=== DELETE SCREENING DOCUMENT ===");
+  console.log("Document ID:", documentId);
+  console.log("Request body:", req.body);
+  console.log("Client Gmail:", clientGmail);
+  console.log("Screening Type:", screeningType);
+
   if (!clientGmail || !screeningType) {
-    return res.status(400).json({ 
+    console.log("Missing required fields - clientGmail or screeningType");
+    return res.status(400).json({
       success: false,
-      message: "Client Gmail and screening type are required" 
+      message: "Client Gmail and screening type are required"
     });
   }
 
   try {
     // Find client
     const client = await Client.findOne({ gmail: clientGmail });
+    console.log("Client found:", client ? client._id : "NOT FOUND");
     if (!client) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Client not found" 
+        message: "Client not found"
       });
     }
 
     // Find screening record
-    const screening = await Screening.findOne({ 
-      clientId: client._id, 
-      screeningType: screeningType 
+    const screening = await Screening.findOne({
+      clientId: client._id,
+      screeningType: screeningType
     });
+    console.log("Screening found:", screening ? screening._id : "NOT FOUND");
 
     if (!screening) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Screening record not found" 
+        message: "Screening record not found"
       });
     }
 
     // Find document
-    const documentIndex = screening.documents.findIndex(doc => doc.id === documentId);
+    console.log("Looking for document ID:", documentId);
+    console.log("Available documents:", screening.documents?.map(d => ({ id: d.id, _id: d._id })));
+    const documentIndex = screening.documents.findIndex(doc => doc.id === documentId || doc._id?.toString() === documentId);
+    console.log("Document index:", documentIndex);
     if (documentIndex === -1) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Document not found" 
+        message: "Document not found"
       });
     }
 

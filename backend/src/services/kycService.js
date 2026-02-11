@@ -52,8 +52,8 @@ const kycService = {
           { "role.permissions.kycManagement.lmro": true } // Target LMRO users specifically
         );
 
-        // Also notify management/admin
-        await notificationService.createNotification(
+        // Also notify job parties
+        await notificationService.createJobNotification(
           {
             title: "KYC Job Ready for Review",
             description: `Job #${job.jobNumber || job._id} for ${job.clientName} has been completed by Operations and is ready for KYC approval process.`,
@@ -61,14 +61,14 @@ const kycService = {
             subType: "kyc",
             relatedTo: { model: "Job", id: job._id },
           },
-          { "role.name": "admin" }
+          job,
+          user?._id
         );
       }
 
-      // Document completeness check
+      // Document completeness check - notify job parties
       if (!kycDocuments || !kycDocuments.documents || kycDocuments.documents.length === 0) {
-        // Alert that operational KYC documents might be missing
-        await notificationService.createNotification(
+        await notificationService.createJobNotification(
           {
             title: "KYC Documents Check Required",
             description: `Job #${job.jobNumber || job._id} for ${job.clientName} is ready for KYC review. Please verify all required operational documents are uploaded before starting the approval process.`,
@@ -76,7 +76,8 @@ const kycService = {
             subType: "kyc_documents_check",
             relatedTo: { model: "Job", id: job._id },
           },
-          { "role.permissions.operationManagement": true }
+          job,
+          user?._id
         );
       }
 
@@ -177,8 +178,8 @@ const kycService = {
               { "role.permissions.kycManagement.ceo": true }
             );
           } else if (stage === 'ceo') {
-            // KYC completed - notify relevant parties
-            await notificationService.createNotification(
+            // KYC completed - notify job parties
+            await notificationService.createJobNotification(
               {
                 title: "KYC Process Completed",
                 description: `KYC process for ${job.clientName} has been completed successfully. Job is now ready for next phase.`,
@@ -186,52 +187,30 @@ const kycService = {
                 subType: "completed",
                 relatedTo: { model: "Job", id: job._id },
               },
-              { _id: job.assignedPerson }
-            );
-
-            // Notify admin
-            await notificationService.createNotification(
-              {
-                title: "KYC Completed",
-                description: `KYC for ${job.clientName} (Job #${job.jobNumber || job._id}) has been completed by CEO.`,
-                type: "job",
-                subType: "kyc_completed",
-                relatedTo: { model: "Job", id: job._id },
-              },
-              { "role.name": "admin" }
+              job,
+              user?._id
             );
           }
           break;
 
         case 'rejected':
-          // Notify relevant parties about rejection
-          await notificationService.createNotification(
+          // Notify job parties about rejection
+          await notificationService.createJobNotification(
             {
-              title: "KYC Request Rejected",
-              description: `${stageDisplayName} has rejected KYC for ${job.clientName}. Reason: ${kycApproval.rejectionReason || 'Not specified'}`,
+              title: "KYC Rejected",
+              description: `KYC for ${job.clientName} rejected by ${stageDisplayName}: ${kycApproval.rejectionReason || 'No reason provided'}`,
               type: "kyc",
               subType: "rejected",
               relatedTo: { model: "Job", id: job._id },
             },
-            { _id: job.assignedPerson }
-          );
-
-          // Notify admin about rejection
-          await notificationService.createNotification(
-            {
-              title: "KYC Rejected",
-              description: `KYC for ${job.clientName} rejected by ${stageDisplayName}: ${kycApproval.rejectionReason || 'No reason provided'}`,
-              type: "job",
-              subType: "kyc_rejected",
-              relatedTo: { model: "Job", id: job._id },
-            },
-            { "role.name": "admin" }
+            job,
+            user?._id
           );
           break;
 
         case 'document_updated':
-          // Notify admin about document changes
-          await notificationService.createNotification(
+          // Notify job parties about document changes
+          await notificationService.createJobNotification(
             {
               title: "KYC Document Updated",
               description: `${stageDisplayName} document updated for ${job.clientName}'s KYC by ${user.name}`,
@@ -239,13 +218,14 @@ const kycService = {
               subType: "document_updated",
               relatedTo: { model: "Job", id: job._id },
             },
-            { "role.name": "admin" }
+            job,
+            user?._id
           );
           break;
 
         case 'document_deleted':
-          // Notify admin about document deletion
-          await notificationService.createNotification(
+          // Notify job parties about document deletion
+          await notificationService.createJobNotification(
             {
               title: "KYC Document Deleted",
               description: `${stageDisplayName} document deleted for ${job.clientName}'s KYC by ${user.name}`,
@@ -253,7 +233,8 @@ const kycService = {
               subType: "document_deleted",
               relatedTo: { model: "Job", id: job._id },
             },
-            { "role.name": "admin" }
+            job,
+            user?._id
           );
           break;
 

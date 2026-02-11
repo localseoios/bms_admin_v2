@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import axiosInstance from "../../utils/axios"; // CHANGED: Use axiosInstance instead of axios
 import {
   PlusIcon,
@@ -12,6 +12,7 @@ import {
   CheckBadgeIcon,
   ChartBarIcon,
   ExclamationCircleIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 
 function AllServices() {
@@ -285,10 +286,35 @@ function AllServices() {
                     <p className="text-sm text-gray-600 mb-4 line-clamp-2">
                       {service.description}
                     </p>
-                    <div className="flex items-center justify-end pt-4 border-t border-gray-100">
+
+                    {service.roles && service.roles.length > 0 && (
+                      <div className="mb-4">
+                        <div className="flex items-center text-xs text-gray-500 mb-2">
+                          <UserGroupIcon className="h-4 w-4 mr-1" />
+                          Assigned Roles
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {service.roles.map((role) => (
+                            <span
+                              key={role._id || role}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100"
+                            >
+                              {role.name || role}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                       <div className="text-sm text-gray-500">
                         {service.usageCount || 0} uses
                       </div>
+                      {service.roles && service.roles.length > 0 && (
+                        <div className="text-xs text-indigo-600 font-medium">
+                          {service.roles.length} role{service.roles.length > 1 ? 's' : ''}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>

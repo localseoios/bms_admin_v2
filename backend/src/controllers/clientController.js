@@ -2,9 +2,10 @@
 
 const Client = require("../models/Client");
 const Job = require("../models/Job");
-const { CompanyDetails, PersonDetails } = require("../models/OperationModels");
+const { CompanyDetails, PersonDetails, KycDocument, UboDetails, BraDocument, OtherDocumentsDetails, CddDetails } = require("../models/OperationModels");
 const { findPersonDetailsByGmail } = require("../utils/clientUtils");
 const asyncHandler = require("express-async-handler");
+const notificationService = require("../services/notificationService");
 
 // Modified getClientByGmail to include documents from most recent job
 const getClientByGmail = async (req, res) => {
@@ -17,9 +18,10 @@ const getClientByGmail = async (req, res) => {
     }
 
     // Get all jobs for this client, sorted by most recent first
-    const jobs = await Job.find({ clientId: client._id }).sort({
-      createdAt: -1,
-    });
+    const jobs = await Job.find({ clientId: client._id })
+      .populate("assignedPerson", "name email")
+      .populate("selectedServiceUsers", "name email")
+      .sort({ createdAt: -1 });
 
     // Find the most recent engagement letter for this client
     let engagementLetter = null;
@@ -145,9 +147,13 @@ const getClientByGmail = async (req, res) => {
       });
     }
 
+    // Transform client to include phone (mapped from contactNumber) for frontend compatibility
+    const clientData = client.toObject();
+    clientData.phone = clientData.contactNumber || '';
+
     // Return the enhanced response with engagement letter and documents
     res.status(200).json({
-      client,
+      client: clientData,
       jobs,
       engagementLetter,
       mostRecentDocuments,
@@ -430,6 +436,7 @@ const getAssignedClients = asyncHandler(async (req, res) => {
           jobCount: 0,
           activeJobCount: 0,
           latestJobDate: null,
+          lastReviewDate: null,
           latestServiceType: null,
         };
       }
@@ -439,6 +446,7 @@ const getAssignedClients = asyncHandler(async (req, res) => {
         serviceType: job.serviceType,
         status: job.status,
         createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
       });
 
       clientsMap[clientId].jobCount++;
@@ -453,6 +461,13 @@ const getAssignedClients = asyncHandler(async (req, res) => {
       ) {
         clientsMap[clientId].latestJobDate = job.createdAt;
         clientsMap[clientId].latestServiceType = job.serviceType;
+      }
+
+      if (
+        !clientsMap[clientId].lastReviewDate ||
+        new Date(job.updatedAt) > new Date(clientsMap[clientId].lastReviewDate)
+      ) {
+        clientsMap[clientId].lastReviewDate = job.updatedAt;
       }
     });
 
@@ -543,89 +558,118 @@ const getAllClients = asyncHandler(async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
     const search = req.query.search || '';
     const status = req.query.status || '';
 
-    // Build search query
     let searchQuery = {};
     if (search) {
       searchQuery = {
         $or: [
           { name: { $regex: search, $options: 'i' } },
           { gmail: { $regex: search, $options: 'i' } },
-          { startingPoint: { $regex: search, $options: 'i' } }
+          { startingPoint: { $regex: search, $options: 'i' } },
+          { clientCode: { $regex: search, $options: 'i' } }
         ]
       };
     }
 
-    const totalClients = await Client.countDocuments(searchQuery);
-    const clients = await Client.find(searchQuery)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    if (status === 'edd') {
+      searchQuery.cddType = 'EDD';
+    }
 
-    const enhancedClients = await Promise.all(
-      clients.map(async (client) => {
-        const jobs = await Job.find({ clientId: client._id });
+    const [allMatchingClients, allJobs, allClients] = await Promise.all([
+      Client.find(searchQuery).sort({ createdAt: -1 }).lean(),
+      Job.find({}).lean(),
+      Client.find({}).lean()
+    ]);
 
-        const jobCount = jobs.length;
-        const activeJobCount = jobs.filter(
-          (job) => !["completed", "cancelled", "rejected"].includes(job.status)
-        ).length;
+    const jobsByClient = {};
+    let totalActiveJobs = 0;
+    allJobs.forEach(job => {
+      const clientId = job.clientId?.toString();
+      if (clientId) {
+        if (!jobsByClient[clientId]) jobsByClient[clientId] = [];
+        jobsByClient[clientId].push(job);
+      }
+      if (!["completed", "cancelled", "rejected"].includes(job.status)) {
+        totalActiveJobs++;
+      }
+    });
 
-        let latestJob = null;
-        let latestJobDate = null;
-        let latestServiceType = null;
+    let totalActive = 0, totalPending = 0, totalInactive = 0, totalEDD = 0;
+    allClients.forEach(client => {
+      const clientJobs = jobsByClient[client._id.toString()] || [];
+      const activeCount = clientJobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
 
-        if (jobs.length > 0) {
-          latestJob = jobs.reduce(
-            (latest, job) =>
-              new Date(job.createdAt) > new Date(latest.createdAt)
-                ? job
-                : latest,
-            jobs[0]
-          );
+      if (activeCount > 0) totalActive++;
+      else if (clientJobs.length > 0) totalInactive++;
+      else totalPending++;
 
-          latestJobDate = latestJob.createdAt;
-          latestServiceType = latestJob.serviceType;
-        }
+      if (client.cddType === 'EDD') totalEDD++;
+    });
 
-        let engagementLetter = null;
-        if (jobs.length > 0) {
-          const jobIds = jobs.map((job) => job._id);
-          const companyDetails = await CompanyDetails.findOne({
-            jobId: { $in: jobIds },
-            engagementLetters: { $exists: true, $ne: null },
-          });
+    const allEnhancedClients = allMatchingClients.map(client => {
+      const jobs = jobsByClient[client._id.toString()] || [];
+      const jobCount = jobs.length;
+      const activeJobCount = jobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
 
-          if (companyDetails) {
-            engagementLetter = companyDetails.engagementLetters;
-          }
-        }
+      let clientStatus = 'pending';
+      if (activeJobCount > 0) clientStatus = 'active';
+      else if (jobCount > 0) clientStatus = 'inactive';
 
-        return {
-          _id: client._id,
-          name: client.name,
-          gmail: client.gmail,
-          startingPoint: client.startingPoint,
-          riskLevel: client.riskLevel,
-          jobCount,
-          activeJobCount,
-          latestJobDate,
-          latestServiceType,
-          engagementLetter,
-        };
-      })
-    );
+      let latestJobDate = null, lastReviewDate = null, latestServiceType = null;
+      if (jobs.length > 0) {
+        const sorted = [...jobs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        latestJobDate = sorted[0].createdAt;
+        latestServiceType = sorted[0].serviceType;
+        const byUpdate = [...jobs].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        lastReviewDate = byUpdate[0].updatedAt;
+      }
+
+      return {
+        _id: client._id,
+        name: client.name,
+        gmail: client.gmail,
+        startingPoint: client.startingPoint,
+        riskLevel: client.riskLevel,
+        clientCode: client.clientCode || '',
+        crNo: client.crNo || '',
+        cddType: client.cddType || '',
+        phone: client.contactNumber || '',
+        address: client.address || '',
+        lastReviewDate: client.lastReviewDate || lastReviewDate,
+        jobCount,
+        activeJobCount,
+        clientStatus,
+        latestJobDate,
+        latestServiceType,
+      };
+    });
+
+    let filteredClients = allEnhancedClients;
+    if (status && status !== 'edd') {
+      filteredClients = allEnhancedClients.filter(c => c.clientStatus === status);
+    }
+
+    const totalFilteredClients = filteredClients.length;
+    const skip = (page - 1) * limit;
+    const paginatedClients = filteredClients.slice(skip, skip + limit);
 
     res.status(200).json({
-      clients: enhancedClients,
+      clients: paginatedClients,
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalClients / limit),
-        totalItems: totalClients,
+        totalPages: Math.ceil(totalFilteredClients / limit),
+        totalItems: totalFilteredClients,
         itemsPerPage: limit,
+      },
+      stats: {
+        totalClients: allMatchingClients.length,
+        totalActiveJobs,
+        totalActive,
+        totalPending,
+        totalInactive,
+        totalEDD,
       },
     });
   } catch (error) {
@@ -642,8 +686,8 @@ const updateClientRiskLevel = asyncHandler(async (req, res) => {
     const { gmail } = req.params;
     const { riskLevel } = req.body;
 
-    if (!['Low', 'Medium', 'High'].includes(riskLevel)) {
-      return res.status(400).json({ message: 'Invalid risk level. Must be Low, Medium, or High' });
+    if (!['Pending', 'Low', 'Medium', 'High'].includes(riskLevel)) {
+      return res.status(400).json({ message: 'Invalid risk level. Must be Pending, Low, Medium, or High' });
     }
 
     const client = await Client.findOneAndUpdate(
@@ -670,35 +714,689 @@ const updateClientRiskLevel = asyncHandler(async (req, res) => {
   }
 });
 
-const deleteClient = asyncHandler(async (req, res) => {
+const updateClientCddType = asyncHandler(async (req, res) => {
   try {
     const { gmail } = req.params;
+    const { cddType } = req.body;
 
-    const client = await Client.findOne({ gmail });
+    if (!['', 'SDD', 'RDD', 'EDD'].includes(cddType)) {
+      return res.status(400).json({ message: 'Invalid CDD type. Must be SDD, RDD, or EDD' });
+    }
+
+    const client = await Client.findOneAndUpdate(
+      { gmail },
+      { cddType },
+      { new: true }
+    );
+
     if (!client) {
       return res.status(404).json({ message: 'Client not found' });
     }
 
-    const jobs = await Job.find({ clientId: client._id });
-    if (jobs.length > 0) {
-      return res.status(400).json({
-        message: 'Cannot delete client with existing jobs. Please delete all jobs first.',
-        jobCount: jobs.length
-      });
-    }
-
-    await Client.deleteOne({ gmail });
-
     res.status(200).json({
-      message: 'Client deleted successfully',
-      deletedClient: {
+      message: 'CDD type updated successfully',
+      client: {
+        _id: client._id,
+        name: client.name,
         gmail: client.gmail,
-        name: client.name
+        cddType: client.cddType
       }
     });
   } catch (error) {
-    console.error('Error deleting client:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+const updateClientCrNo = asyncHandler(async (req, res) => {
+  try {
+    const { gmail } = req.params;
+    const { crNo } = req.body;
+
+    const client = await Client.findOneAndUpdate(
+      { gmail },
+      { crNo: crNo || '' },
+      { new: true }
+    );
+
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    res.status(200).json({
+      message: 'CR Number updated successfully',
+      client: {
+        _id: client._id,
+        name: client.name,
+        gmail: client.gmail,
+        crNo: client.crNo
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+const deleteClient = asyncHandler(async (req, res) => {
+  try {
+    const { gmail } = req.params;
+    console.log("=== DELETE CLIENT START ===");
+    console.log("Client email to delete:", gmail);
+
+    const client = await Client.findOne({ gmail });
+    if (!client) {
+      console.log("Client not found");
+      return res.status(404).json({ message: 'Client not found' });
+    }
+    console.log("Client found:", client.name);
+
+    const deletionTime = new Date().toLocaleString('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+
+    const jobs = await Job.find({ clientId: client._id });
+    const jobIds = jobs.map(job => job._id);
+    console.log("Jobs to delete:", jobIds.length);
+
+    console.log("Creating notification for all users...");
+    const notification = await notificationService.createNotification(
+      {
+        title: "Client Deleted",
+        description: `Client "${client.name}" (${gmail}) has been permanently deleted by ${req.user.name} on ${deletionTime}. ${jobs.length} job(s) and all related data were also removed.`,
+        type: "client",
+        subType: "deletion",
+        relatedTo: { model: "Client", id: null },
+      },
+      {}
+    );
+    console.log("Notification created:", notification?._id, "Recipients:", notification?.recipients?.length);
+
+    if (!notification || notification.recipients.length === 0) {
+      console.log("WARNING: No notification recipients found");
+      return res.status(500).json({
+        message: "Failed to send notification - no recipients found",
+      });
+    }
+
+    let deletedJobsData = {
+      jobCount: jobs.length,
+      companyDetails: 0,
+      personDetails: 0,
+      kycDocuments: 0,
+      braDocuments: 0,
+      otherDocuments: 0,
+      uboDetails: 0,
+      cddDetails: 0,
+    };
+
+    if (jobIds.length > 0) {
+      console.log("Deleting related data for jobs...");
+      const deleteResults = await Promise.all([
+        CompanyDetails.deleteMany({ jobId: { $in: jobIds } }),
+        PersonDetails.deleteMany({ jobId: { $in: jobIds } }),
+        KycDocument.deleteMany({ jobId: { $in: jobIds } }),
+        BraDocument.deleteMany({ jobId: { $in: jobIds } }),
+        OtherDocumentsDetails.deleteMany({ jobId: { $in: jobIds } }),
+        UboDetails.deleteMany({ jobId: { $in: jobIds } }),
+        CddDetails.deleteMany({ jobId: { $in: jobIds } }),
+        Job.deleteMany({ clientId: client._id }),
+      ]);
+
+      deletedJobsData = {
+        jobCount: deleteResults[7].deletedCount,
+        companyDetails: deleteResults[0].deletedCount,
+        personDetails: deleteResults[1].deletedCount,
+        kycDocuments: deleteResults[2].deletedCount,
+        braDocuments: deleteResults[3].deletedCount,
+        otherDocuments: deleteResults[4].deletedCount,
+        uboDetails: deleteResults[5].deletedCount,
+        cddDetails: deleteResults[6].deletedCount,
+      };
+    }
+
+    console.log("Deleting client...");
+    await Client.deleteOne({ gmail });
+
+    console.log(`Client ${client.name} (${gmail}) deleted with ${deletedJobsData.jobCount} jobs and related data`);
+    console.log("=== DELETE CLIENT SUCCESS ===");
+
+    res.status(200).json({
+      message: 'Client and all associated jobs deleted successfully',
+      deletedClient: {
+        gmail: client.gmail,
+        name: client.name
+      },
+      deletedJobsData
+    });
+  } catch (error) {
+    console.error("=== DELETE CLIENT ERROR ===");
+    console.error('Error deleting client:', error);
+    res.status(500).json({ message: 'Failed to delete client', error: error.message });
+  }
+});
+
+const getClientsByRole = asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const search = req.query.search || '';
+
+    console.log(`User ID: ${userId} - Fetching clients where user was selected`);
+
+    // Find jobs where user was selected as selectedServiceUser OR in selectedServiceUsers array
+    const jobQuery = {
+      $or: [
+        { selectedServiceUser: userId },
+        { selectedServiceUsers: userId }
+      ]
+    };
+
+    // Get unique client IDs from matching jobs
+    const matchingJobs = await Job.find(jobQuery).select('clientId');
+    const clientIds = [...new Set(matchingJobs.map(j => j.clientId.toString()))];
+
+    if (clientIds.length === 0) {
+      return res.status(200).json({
+        clients: [],
+        pagination: { page, limit, total: 0, totalPages: 0 }
+      });
+    }
+
+    // Build search query for clients
+    let clientQuery = { _id: { $in: clientIds } };
+    if (search) {
+      clientQuery.$and = [
+        { _id: { $in: clientIds } },
+        {
+          $or: [
+            { name: { $regex: search, $options: 'i' } },
+            { gmail: { $regex: search, $options: 'i' } },
+            { startingPoint: { $regex: search, $options: 'i' } }
+          ]
+        }
+      ];
+      delete clientQuery._id;
+    }
+
+    const totalClients = await Client.countDocuments(clientQuery);
+    const clients = await Client.find(clientQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Enhance clients with job info (ONLY jobs where user was selected)
+    const enhancedClients = await Promise.all(
+      clients.map(async (client) => {
+        // Only show jobs where user was selected
+        const clientJobQuery = {
+          clientId: client._id,
+          $or: [
+            { selectedServiceUser: userId },
+            { selectedServiceUsers: userId }
+          ]
+        };
+
+        const jobs = await Job.find(clientJobQuery).sort({ createdAt: -1 });
+
+        const jobCount = jobs.length;
+        const activeJobCount = jobs.filter(
+          (job) => !["completed", "cancelled", "rejected"].includes(job.status)
+        ).length;
+
+        let latestJob = null;
+        let latestJobDate = null;
+        let latestServiceType = null;
+
+        if (jobs.length > 0) {
+          latestJob = jobs[0];
+          latestJobDate = latestJob.createdAt;
+          latestServiceType = latestJob.serviceType;
+        }
+
+        return {
+          ...client.toObject(),
+          jobCount,
+          activeJobCount,
+          latestJobDate,
+          latestServiceType,
+          latestJobId: latestJob?._id,
+          latestJobNumber: latestJob?.jobNumber,
+          latestJobStatus: latestJob?.status,
+          // Include filtered jobs list
+          jobs: jobs.map(job => ({
+            _id: job._id,
+            jobNumber: job.jobNumber,
+            serviceType: job.serviceType,
+            status: job.status,
+            selectedServiceUser: job.selectedServiceUser,
+            createdAt: job.createdAt,
+            updatedAt: job.updatedAt,
+          })),
+        };
+      })
+    );
+
+    res.status(200).json({
+      clients: enhancedClients,
+      pagination: {
+        page,
+        limit,
+        total: totalClients,
+        totalPages: Math.ceil(totalClients / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching clients by role:", error);
+    res.status(500).json({
+      message: "Error retrieving clients",
+      error: error.message,
+    });
+  }
+});
+
+const exportComplianceClients = asyncHandler(async (req, res) => {
+  try {
+    const search = req.query.search || '';
+    const status = req.query.status || '';
+
+    let searchQuery = {};
+    if (search) {
+      searchQuery = {
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { gmail: { $regex: search, $options: 'i' } },
+          { startingPoint: { $regex: search, $options: 'i' } },
+          { clientCode: { $regex: search, $options: 'i' } }
+        ]
+      };
+    }
+
+    if (status === 'edd') {
+      searchQuery.cddType = 'EDD';
+    }
+
+    const allClients = await Client.find(searchQuery).sort({ createdAt: -1 }).lean();
+    const clientIds = allClients.map(c => c._id);
+
+    const [allJobs, allCompanyDetails, allPersonDetails, allKycDocs, allUboDetails] = await Promise.all([
+      Job.find({ clientId: { $in: clientIds } }).lean(),
+      CompanyDetails.find({}).lean(),
+      PersonDetails.find({}).lean(),
+      KycDocument.find({}).lean(),
+      UboDetails.find({}).lean()
+    ]);
+
+    const jobsByClient = {};
+    const jobIdToClient = {};
+    allJobs.forEach(job => {
+      const clientId = job.clientId.toString();
+      if (!jobsByClient[clientId]) jobsByClient[clientId] = [];
+      jobsByClient[clientId].push(job);
+      jobIdToClient[job._id.toString()] = clientId;
+    });
+
+    const companyDetailsByJob = {};
+    allCompanyDetails.forEach(cd => {
+      if (cd.jobId) companyDetailsByJob[cd.jobId.toString()] = cd;
+    });
+
+    const personDetailsByJob = {};
+    allPersonDetails.forEach(pd => {
+      if (pd.jobId) {
+        const jobId = pd.jobId.toString();
+        if (!personDetailsByJob[jobId]) personDetailsByJob[jobId] = [];
+        personDetailsByJob[jobId].push(pd);
+      }
+    });
+
+    const kycByJob = {};
+    allKycDocs.forEach(kyc => {
+      if (kyc.jobId) kycByJob[kyc.jobId.toString()] = kyc;
+    });
+
+    const uboByJob = {};
+    allUboDetails.forEach(ubo => {
+      if (ubo.jobId) uboByJob[ubo.jobId.toString()] = ubo;
+    });
+
+    const formatDate = (date) => {
+      if (!date) return '';
+      return new Date(date).toLocaleDateString('en-GB');
+    };
+
+    const getPersonNames = (persons) => {
+      const names = persons.map(p => p.name || '').filter(Boolean);
+      const uniqueNames = [...new Set(names)];
+      return uniqueNames.slice(0, 3).join(', ') || '';
+    };
+
+    const getPersonPassportQid = (persons) => {
+      const passportQids = persons.map(p => {
+        const passport = p.passportNo || '';
+        const qid = p.qidNo || '';
+        if (passport && qid) return `${passport} / ${qid}`;
+        return passport || qid || '';
+      }).filter(Boolean);
+      const uniquePassportQids = [...new Set(passportQids)];
+      return uniquePassportQids.slice(0, 3).join(', ') || '';
+    };
+
+    const getUboNames = (uboDetails) => {
+      if (!uboDetails || !uboDetails.ubos || !Array.isArray(uboDetails.ubos)) return '';
+      const names = uboDetails.ubos.map(u => u.name || '').filter(Boolean);
+      const uniqueNames = [...new Set(names)];
+      return uniqueNames.slice(0, 3).join(', ') || '';
+    };
+
+    const getUboPassportQid = (uboDetails) => {
+      if (!uboDetails || !uboDetails.ubos || !Array.isArray(uboDetails.ubos)) return '';
+      const passportQids = uboDetails.ubos.map(u => {
+        const passport = u.passportNo || '';
+        const qid = u.qidNo || '';
+        if (passport && qid) return `${passport} / ${qid}`;
+        return passport || qid || '';
+      }).filter(Boolean);
+      const uniquePassportQids = [...new Set(passportQids)];
+      return uniquePassportQids.slice(0, 3).join(', ') || '';
+    };
+
+    const getUboNationalities = (uboDetails) => {
+      if (!uboDetails || !uboDetails.ubos || !Array.isArray(uboDetails.ubos)) return '';
+      const nationalities = uboDetails.ubos.map(u => u.nationality || '').filter(Boolean);
+      const uniqueNationalities = [...new Set(nationalities)];
+      return uniqueNationalities.slice(0, 3).join(', ') || '';
+    };
+
+    const exportData = [];
+    let rowNumber = 1;
+
+    for (const client of allClients) {
+      const clientId = client._id.toString();
+      const jobs = jobsByClient[clientId] || [];
+
+      const jobCount = jobs.length;
+      const activeJobCount = jobs.filter(
+        (job) => !["completed", "cancelled", "rejected"].includes(job.status)
+      ).length;
+
+      if (status === 'active' && activeJobCount === 0) continue;
+      if (status === 'inactive' && (activeJobCount > 0 || jobCount === 0)) continue;
+      if (status === 'pending' && jobCount > 0) continue;
+
+      let companyDetails = null;
+      let directors = [];
+      let shareholders = [];
+      let secretaries = [];
+      let sefs = [];
+      let kycDetails = null;
+      let uboDetails = null;
+      let serviceTypes = [];
+      let jobAddress = '';
+
+      if (jobs.length > 0) {
+        const jobIds = jobs.map(job => job._id.toString());
+        serviceTypes = [...new Set(jobs.map(job => job.serviceType).filter(Boolean))];
+
+        const jobWithAddress = jobs.find(job => job.address);
+        if (jobWithAddress) {
+          jobAddress = jobWithAddress.address;
+        }
+
+        for (const jobId of jobIds) {
+          if (!companyDetails && companyDetailsByJob[jobId]) {
+            companyDetails = companyDetailsByJob[jobId];
+          }
+          if (!kycDetails && kycByJob[jobId]) {
+            kycDetails = kycByJob[jobId];
+          }
+          if (!uboDetails && uboByJob[jobId]) {
+            uboDetails = uboByJob[jobId];
+          }
+          const persons = personDetailsByJob[jobId] || [];
+          persons.forEach(p => {
+            if (p.personType === 'director') directors.push(p);
+            else if (p.personType === 'shareholder') shareholders.push(p);
+            else if (p.personType === 'secretary') secretaries.push(p);
+            else if (p.personType === 'sef') sefs.push(p);
+          });
+        }
+      }
+
+      exportData.push({
+        'No': rowNumber++,
+        'Client Code': client.clientCode || '',
+        'Client Name': client.name || '',
+        'Registration No': companyDetails?.qfcNo || '',
+        'Incorporation Date': companyDetails ? formatDate(companyDetails.incorporationDate) : '',
+        'Registered Authority': client.crNo || '',
+        'Registered Address': client.address || jobAddress || companyDetails?.registeredAddress || '',
+        'Offered Services (Service Type)': serviceTypes.join(', ') || '',
+        'Director': getPersonNames(directors),
+        'Director Passport/QID': getPersonPassportQid(directors),
+        'Shareholder': getPersonNames(shareholders),
+        'Shareholder Passport/QID': getPersonPassportQid(shareholders),
+        'SEF': getPersonNames(sefs),
+        'SEF Passport/QID': getPersonPassportQid(sefs),
+        'Secretary': getPersonNames(secretaries),
+        'Secretary Passport/QID': getPersonPassportQid(secretaries),
+        'UBO Name': getUboNames(uboDetails),
+        'UBO Passport/QID': getUboPassportQid(uboDetails),
+        'UBO Nationality (Country)': getUboNationalities(uboDetails),
+        'Active Status': kycDetails?.activeStatus === 'yes' ? 'Active' : kycDetails?.activeStatus === 'no' ? 'Inactive' : '',
+        'CDD Type': client.cddType || '',
+        'Risk Level': client.riskLevel || 'Pending',
+        'Key Contact Person': client.name || '',
+        'Key Contact Email': client.gmail || '',
+        'Key Contact Phone': client.contactNumber || ''
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: exportData,
+      totalRecords: exportData.length
+    });
+
+  } catch (error) {
+    console.error('Error exporting compliance clients:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export compliance clients',
+      error: error.message
+    });
+  }
+});
+
+const searchClientsWithDetails = asyncHandler(async (req, res) => {
+  try {
+    const { query, status } = req.query;
+
+    if (!query || query.trim().length < 2) {
+      return getAllClients(req, res);
+    }
+
+    const searchRegex = new RegExp(query.trim(), 'i');
+    const matchCounts = { client: 0, director: 0, shareholder: 0, secretary: 0, sef: 0, company: 0 };
+    const clientMatchDetails = {};
+
+    const [allJobs, allPersonDetails, allCompanyDetails, allClients] = await Promise.all([
+      Job.find({}).lean(),
+      PersonDetails.find({}).lean(),
+      CompanyDetails.find({}).lean(),
+      Client.find({}).lean()
+    ]);
+
+    const jobsByClient = {};
+    const jobIdToClientId = {};
+    allJobs.forEach(job => {
+      const clientId = job.clientId?.toString();
+      if (clientId) {
+        if (!jobsByClient[clientId]) jobsByClient[clientId] = [];
+        jobsByClient[clientId].push(job);
+        jobIdToClientId[job._id.toString()] = clientId;
+      }
+    });
+
+    const addMatch = (clientId, category, field, value) => {
+      if (!clientMatchDetails[clientId]) clientMatchDetails[clientId] = [];
+      const truncated = value.length > 25 ? value.substring(0, 25) + '...' : value;
+      clientMatchDetails[clientId].push({ category, field, value: truncated });
+    };
+
+    allClients.forEach(client => {
+      const clientId = client._id.toString();
+      const fields = ['name', 'gmail', 'startingPoint', 'clientCode', 'crNo', 'phone', 'contactNumber', 'address'];
+      fields.forEach(field => {
+        if (client[field] && typeof client[field] === 'string' && searchRegex.test(client[field])) {
+          matchCounts.client++;
+          addMatch(clientId, 'client', field, client[field]);
+        }
+      });
+    });
+
+    allPersonDetails.forEach(person => {
+      const jobId = person.jobId?.toString();
+      const clientId = jobIdToClientId[jobId];
+      if (!clientId) return;
+
+      const fields = ['name', 'nationality', 'qidNo', 'nationalAddress', 'passportNo', 'mobileNo', 'email'];
+      const personType = person.personType || 'director';
+
+      fields.forEach(field => {
+        if (person[field] && typeof person[field] === 'string' && searchRegex.test(person[field])) {
+          if (['director', 'shareholder', 'secretary', 'sef'].includes(personType)) {
+            matchCounts[personType]++;
+          }
+          addMatch(clientId, personType, field, person[field]);
+        }
+      });
+    });
+
+    allCompanyDetails.forEach(company => {
+      const jobId = company.jobId?.toString();
+      const clientId = jobIdToClientId[jobId];
+      if (!clientId) return;
+
+      const fields = ['companyName', 'qfcNo', 'registeredAddress', 'serviceType', 'mainPurpose'];
+      fields.forEach(field => {
+        if (company[field] && typeof company[field] === 'string' && searchRegex.test(company[field])) {
+          matchCounts.company++;
+          addMatch(clientId, 'company', field, company[field]);
+        }
+      });
+    });
+
+    const matchedClientIds = Object.keys(clientMatchDetails);
+
+    if (matchedClientIds.length === 0) {
+      return res.status(200).json({
+        clients: [],
+        pagination: { currentPage: 1, totalPages: 0, totalItems: 0, itemsPerPage: 10 },
+        stats: { totalClients: 0, totalActive: 0, totalPending: 0, totalInactive: 0, totalEDD: 0 },
+        searchInfo: { matchCounts, totalMatches: 0 }
+      });
+    }
+
+    let clients = allClients.filter(c => matchedClientIds.includes(c._id.toString()));
+    clients.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const enhancedClients = clients.map(client => {
+      const clientId = client._id.toString();
+      const jobs = jobsByClient[clientId] || [];
+      const jobCount = jobs.length;
+      const activeJobCount = jobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
+
+      let clientStatus = 'pending';
+      if (activeJobCount > 0) clientStatus = 'active';
+      else if (jobCount > 0) clientStatus = 'inactive';
+
+      let latestJobDate = null, lastReviewDate = null, latestServiceType = null;
+      if (jobs.length > 0) {
+        const sorted = [...jobs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        latestJobDate = sorted[0].createdAt;
+        latestServiceType = sorted[0].serviceType;
+        const byUpdate = [...jobs].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        lastReviewDate = byUpdate[0].updatedAt;
+      }
+
+      const uniqueMatches = [];
+      const seen = new Set();
+      (clientMatchDetails[clientId] || []).forEach(m => {
+        const key = `${m.category}-${m.field}-${m.value}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueMatches.push(m);
+        }
+      });
+
+      return {
+        _id: client._id,
+        name: client.name,
+        gmail: client.gmail,
+        startingPoint: client.startingPoint,
+        riskLevel: client.riskLevel,
+        clientCode: client.clientCode || '',
+        crNo: client.crNo || '',
+        cddType: client.cddType || '',
+        phone: client.contactNumber || '',
+        address: client.address || '',
+        lastReviewDate: client.lastReviewDate || lastReviewDate,
+        jobCount,
+        activeJobCount,
+        clientStatus,
+        latestJobDate,
+        latestServiceType,
+        searchMatches: uniqueMatches.slice(0, 5)
+      };
+    });
+
+    let filteredClients = enhancedClients;
+    if (status === 'active') filteredClients = enhancedClients.filter(c => c.clientStatus === 'active');
+    else if (status === 'inactive') filteredClients = enhancedClients.filter(c => c.clientStatus === 'inactive');
+    else if (status === 'pending') filteredClients = enhancedClients.filter(c => c.clientStatus === 'pending');
+    else if (status === 'edd') filteredClients = enhancedClients.filter(c => c.cddType === 'EDD');
+
+    let totalActive = 0, totalPending = 0, totalInactive = 0, totalEDD = 0;
+    allClients.forEach(client => {
+      const clientJobs = jobsByClient[client._id.toString()] || [];
+      const activeCount = clientJobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
+      if (activeCount > 0) totalActive++;
+      else if (clientJobs.length > 0) totalInactive++;
+      else totalPending++;
+      if (client.cddType === 'EDD') totalEDD++;
+    });
+
+    const totalMatches = Object.values(matchCounts).reduce((a, b) => a + b, 0);
+
+    res.status(200).json({
+      clients: filteredClients,
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        totalItems: filteredClients.length,
+        itemsPerPage: filteredClients.length
+      },
+      stats: {
+        totalClients: allClients.length,
+        totalActive,
+        totalPending,
+        totalInactive,
+        totalEDD
+      },
+      searchInfo: {
+        matchCounts,
+        totalMatches
+      }
+    });
+  } catch (error) {
+    console.error('Error searching clients:', error);
+    res.status(500).json({
+      message: 'Error searching clients',
+      error: error.message
+    });
   }
 });
 
@@ -712,5 +1410,10 @@ module.exports = {
   getAssignedClients,
   getAllClients,
   updateClientRiskLevel,
+  updateClientCddType,
+  updateClientCrNo,
   deleteClient,
+  getClientsByRole,
+  exportComplianceClients,
+  searchClientsWithDetails,
 };

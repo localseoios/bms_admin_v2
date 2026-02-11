@@ -5,6 +5,14 @@ const mongoose = require("mongoose");
 
 // Updated to include BRA notification style
 const getNotificationStyle = (type, subType = null) => {
+  if (subType === "deletion") {
+    return {
+      iconType: "TrashIcon",
+      iconColor: "text-red-600",
+      bgColor: "bg-red-50",
+    };
+  }
+
   switch (type) {
     case "job":
       if (subType === "assignment") {
@@ -14,6 +22,13 @@ const getNotificationStyle = (type, subType = null) => {
           bgColor: "bg-green-50",
         };
       }
+      if (subType === "removal") {
+        return {
+          iconType: "XCircleIcon",
+          iconColor: "text-red-600",
+          bgColor: "bg-red-50",
+        };
+      }
       if (subType === "kyc") {
         return {
           iconType: "ShieldCheckIcon",
@@ -21,7 +36,6 @@ const getNotificationStyle = (type, subType = null) => {
           bgColor: "bg-purple-50",
         };
       }
-      // New BRA notification style
       if (subType === "bra") {
         return {
           iconType: "ClipboardCheckIcon",
@@ -33,6 +47,12 @@ const getNotificationStyle = (type, subType = null) => {
         iconType: "BriefcaseIcon",
         iconColor: "text-blue-600",
         bgColor: "bg-blue-50",
+      };
+    case "client":
+      return {
+        iconType: "UserGroupIcon",
+        iconColor: "text-indigo-600",
+        bgColor: "bg-indigo-50",
       };
     case "status":
       return {
@@ -63,6 +83,33 @@ const getNotificationStyle = (type, subType = null) => {
         iconType: "ExclamationCircleIcon",
         iconColor: "text-orange-600",
         bgColor: "bg-orange-50",
+      };
+    case "expiry_alert":
+      if (subType === "expired") {
+        return {
+          iconType: "XCircleIcon",
+          iconColor: "text-red-600",
+          bgColor: "bg-red-50",
+        };
+      }
+      if (subType === "critical") {
+        return {
+          iconType: "ExclamationTriangleIcon",
+          iconColor: "text-red-600",
+          bgColor: "bg-red-50",
+        };
+      }
+      if (subType === "warning") {
+        return {
+          iconType: "ClockIcon",
+          iconColor: "text-orange-600",
+          bgColor: "bg-orange-50",
+        };
+      }
+      return {
+        iconType: "ExclamationCircleIcon",
+        iconColor: "text-yellow-600",
+        bgColor: "bg-yellow-50",
       };
     default:
       return {
@@ -136,46 +183,145 @@ const formatTimeAgo = (date) => {
 // Create a new notification - FIXED: Remove static time calculation
 const createNotification = async (notificationData, queryOrUserId) => {
   try {
-    // Get styling based on notification type
     const styling = getNotificationStyle(
       notificationData.type,
       notificationData.subType
     );
 
-    // Create the notification with styling - REMOVED static time field
     const notification = new Notification({
       ...notificationData,
       ...styling,
       recipients: [],
-      // Remove the static time field - it will be calculated dynamically
     });
 
-    // Find users to notify
     let users = [];
 
     if (typeof queryOrUserId === "string") {
-      // Single user ID provided
       users = await User.find({ _id: queryOrUserId });
-    } else {
-      // Query provided (e.g. { role.name: "admin" })
-      users = await User.find(queryOrUserId);
+    } else if (Array.isArray(queryOrUserId)) {
+      const validIds = queryOrUserId.filter(id => id != null);
+      if (validIds.length > 0) {
+        users = await User.find({ _id: { $in: validIds } });
+      }
+    } else if (queryOrUserId && typeof queryOrUserId === "object") {
+      const queryKeys = Object.keys(queryOrUserId);
+      const hasRolePermissionQuery = queryKeys.some(key => key.startsWith("role.permissions."));
+
+      if (hasRolePermissionQuery) {
+        const allUsers = await User.find({}).populate({
+          path: "role",
+          select: "name permissions",
+        });
+
+        users = allUsers.filter((user) => {
+          if (!user.role || !user.role.permissions) return false;
+
+          for (const key of queryKeys) {
+            if (key.startsWith("role.permissions.")) {
+              const permPath = key.replace("role.permissions.", "");
+              const parts = permPath.split(".");
+              let value = user.role.permissions;
+
+              for (const part of parts) {
+                if (value && typeof value === "object") {
+                  value = value[part];
+                } else {
+                  value = undefined;
+                  break;
+                }
+              }
+
+              if (value !== queryOrUserId[key]) return false;
+            }
+          }
+          return true;
+        });
+      } else {
+        users = await User.find(queryOrUserId).populate("role");
+      }
     }
 
-    // Add users to recipients array
     notification.recipients = users.map((user) => ({
       user: user._id,
       read: false,
     }));
 
-    // Only save if we have recipients
     if (notification.recipients.length > 0) {
       await notification.save();
+      console.log(`Notification created with ${notification.recipients.length} recipients`);
+    } else {
+      console.log("No recipients found for notification query:", queryOrUserId);
     }
 
     return notification;
   } catch (error) {
     console.error("Error creating notification:", error);
     throw error;
+  }
+};
+
+const getJobRecipients = (job, actionUserId = null) => {
+  const recipients = new Set();
+
+  if (job.createdBy) {
+    const id = job.createdBy._id || job.createdBy;
+    recipients.add(id.toString());
+  }
+
+  if (job.assignedPerson) {
+    const id = job.assignedPerson._id || job.assignedPerson;
+    recipients.add(id.toString());
+  }
+
+  if (job.selectedServiceUser) {
+    const id = job.selectedServiceUser._id || job.selectedServiceUser;
+    recipients.add(id.toString());
+  }
+
+  if (job.selectedServiceUsers && job.selectedServiceUsers.length > 0) {
+    job.selectedServiceUsers.forEach(user => {
+      const id = user._id || user;
+      recipients.add(id.toString());
+    });
+  }
+
+  if (actionUserId) {
+    const id = actionUserId._id || actionUserId;
+    recipients.add(id.toString());
+  }
+
+  return Array.from(recipients);
+};
+
+const Job = require("../models/Job");
+
+const createJobNotification = async (notificationData, job, actionUserId = null) => {
+  try {
+    let fullJob = job;
+
+    if (job._id && (!job.selectedServiceUsers || job.selectedServiceUsers.length === 0)) {
+      const fetchedJob = await Job.findById(job._id)
+        .select("createdBy assignedPerson selectedServiceUser selectedServiceUsers")
+        .lean();
+
+      if (fetchedJob) {
+        fullJob = {
+          ...job,
+          createdBy: job.createdBy || fetchedJob.createdBy,
+          assignedPerson: job.assignedPerson || fetchedJob.assignedPerson,
+          selectedServiceUser: job.selectedServiceUser || fetchedJob.selectedServiceUser,
+          selectedServiceUsers: fetchedJob.selectedServiceUsers || [],
+        };
+      }
+    }
+
+    const recipients = getJobRecipients(fullJob, actionUserId);
+    console.log(`Job notification recipients for job ${job._id}:`, recipients);
+    return createNotification(notificationData, recipients);
+  } catch (error) {
+    console.error("Error in createJobNotification:", error);
+    const recipients = getJobRecipients(job, actionUserId);
+    return createNotification(notificationData, recipients);
   }
 };
 
@@ -275,11 +421,54 @@ const markAsRead = async (userId, notificationIds = []) => {
   }
 };
 
+const clearAllNotifications = async (userId) => {
+  try {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    await Notification.updateMany(
+      { "recipients.user": userObjectId },
+      { $pull: { recipients: { user: userObjectId } } }
+    );
+
+    await Notification.deleteMany({ recipients: { $size: 0 } });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error clearing notifications:", error);
+    throw error;
+  }
+};
+
+const removeNotification = async (notificationId, userId) => {
+  try {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const notificationObjectId = new mongoose.Types.ObjectId(notificationId);
+
+    await Notification.updateOne(
+      { _id: notificationObjectId },
+      { $pull: { recipients: { user: userObjectId } } }
+    );
+
+    const notification = await Notification.findById(notificationObjectId);
+    if (notification && notification.recipients.length === 0) {
+      await Notification.deleteOne({ _id: notificationObjectId });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error removing notification:", error);
+    throw error;
+  }
+};
 
 module.exports = {
   createNotification,
+  createJobNotification,
+  getJobRecipients,
   getUserNotifications,
   markAsRead,
   getNotificationStyle,
   formatTimeAgo,
+  clearAllNotifications,
+  removeNotification,
 };

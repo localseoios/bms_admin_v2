@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   BellIcon,
   CheckCircleIcon,
@@ -12,15 +13,48 @@ import {
   CheckIcon,
   TrashIcon,
   EyeIcon,
+  UserGroupIcon,
+  XCircleIcon,
 } from "@heroicons/react/24/outline";
 import axios from "../../utils/axios";
 
 function Notifications() {
+  const navigate = useNavigate();
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showActions, setShowActions] = useState(null);
+
+  const getRouteForModel = (model, id) => {
+    if (!model || !id) return null;
+    const modelLower = model.toLowerCase();
+    switch (modelLower) {
+      case "job":
+        return `/job/${id}`;
+      case "client":
+        return `/clients/${id}`;
+      case "user":
+        return `/user-management`;
+      case "kyc":
+        return `/kyc-management`;
+      case "bra":
+        return `/bra-management`;
+      default:
+        return null;
+    }
+  };
+
+  const handleViewEntity = (notification) => {
+    if (!notification.relatedTo || !notification.relatedTo.id) return;
+    const route = getRouteForModel(notification.relatedTo.model, notification.relatedTo.id);
+    if (route) {
+      if (notification.status === "unread") {
+        markAsRead(notification._id);
+      }
+      navigate(route);
+    }
+  };
 
   // Icon mapping - maintaining exact component names
   const iconMap = {
@@ -141,15 +175,31 @@ function Notifications() {
   // Toggle between read and unread states
   const toggleReadStatus = async (notification) => {
     try {
-      // If it's already read, we don't have a direct API to mark as unread
-      // This could be added to the backend, but for now we'll only support marking as read
       if (notification.status === "unread") {
         await markAsRead(notification._id);
       }
-      // For completeness, we could add a markAsUnread API endpoint
       setShowActions(null);
     } catch (error) {
       console.error("Error toggling notification status:", error);
+    }
+  };
+
+  const clearAllNotifications = async () => {
+    try {
+      await axios.delete("/notifications");
+      fetchNotifications();
+    } catch (err) {
+      console.error("Error clearing notifications:", err);
+    }
+  };
+
+  const removeNotification = async (id) => {
+    try {
+      await axios.delete(`/notifications/${id}`);
+      fetchNotifications();
+      setShowActions(null);
+    } catch (err) {
+      console.error("Error removing notification:", err);
     }
   };
 
@@ -301,17 +351,18 @@ function Notifications() {
                     </div>
 
                     {/* Related entity link if available */}
-                    {notification.relatedTo && (
+                    {notification.relatedTo && notification.relatedTo.id && getRouteForModel(notification.relatedTo.model, notification.relatedTo.id) && (
                       <div className="mt-2">
-                        <a
-                          href={`/${notification.relatedTo.model.toLowerCase()}s/${
-                            notification.relatedTo.id
-                          }`}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewEntity(notification);
+                          }}
                           className="inline-flex items-center text-xs text-blue-600 hover:text-blue-500 bg-blue-50 px-2 py-1 rounded-md"
                         >
                           <EyeIcon className="h-3 w-3 mr-1" />
                           View {notification.relatedTo.model}
-                        </a>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -333,9 +384,7 @@ function Notifications() {
                       className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // This would require a new API endpoint
-                        console.log("Remove notification:", notification._id);
-                        setShowActions(null);
+                        removeNotification(notification._id);
                       }}
                     >
                       <TrashIcon className="h-4 w-4 mr-2 text-red-500" />
@@ -364,10 +413,7 @@ function Notifications() {
               </button>
               <button
                 className="text-sm text-gray-600 hover:text-gray-800 bg-white border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-                onClick={() => {
-                  // This would require a new API endpoint
-                  console.log("Clear all notifications");
-                }}
+                onClick={clearAllNotifications}
               >
                 Clear all
               </button>

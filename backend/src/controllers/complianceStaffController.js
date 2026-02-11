@@ -5,28 +5,32 @@ const notificationService = require("../services/complianceNotificationService")
 
 const getAllComplianceStaff = async (req, res) => {
   try {
-    // First, try to get existing ComplianceStaff records from database
-    let staffMembers = await ComplianceStaff.find();
-    
-    if (staffMembers.length === 0) {
-      // If no ComplianceStaff records exist, create them from User data
-      console.log("No ComplianceStaff records found, creating from User data...");
-      
-      const users = await User.find()
-        .populate("role", "name permissions")
-        .select("name email role lastLogin isOnline createdAt");
+    const users = await User.find()
+      .populate("role", "name permissions")
+      .select("name email role lastLogin isOnline createdAt");
 
-      // Create ComplianceStaff records for each user
-      const staffToCreate = users.map(user => {
-        // Use original role name from User Management
+    let staffMembers = await ComplianceStaff.find();
+
+    const existingUserIds = staffMembers.map(staff => staff.userId?.toString()).filter(Boolean);
+    const existingEmails = staffMembers.map(staff => staff.email?.toLowerCase());
+
+    const newUsers = users.filter(user => {
+      const userIdStr = user._id.toString();
+      const userEmail = user.email?.toLowerCase();
+      return !existingUserIds.includes(userIdStr) && !existingEmails.includes(userEmail);
+    });
+
+    if (newUsers.length > 0) {
+      console.log(`Found ${newUsers.length} new users to add to ComplianceStaff...`);
+
+      const staffToCreate = newUsers.map(user => {
         let staffRole = user.role ? user.role.name : "Staff Member";
         let department = "General Department";
         let level = "Mid-Level";
-        
+
         if (user.role) {
           const roleName = user.role.name.toLowerCase().trim();
-          
-          // Set department and level based on role
+
           if (roleName === "admin") {
             department = "Administration";
             level = "Senior";
@@ -42,10 +46,10 @@ const getAllComplianceStaff = async (req, res) => {
           } else if (roleName === "mlro") {
             department = "Risk & Compliance";
             level = "Senior";
-          } else if (roleName === " dmlro") {
+          } else if (roleName === "dmlro") {
             department = "Risk & Compliance";
             level = "Senior";
-          } else if (roleName === " ceo") {
+          } else if (roleName === "ceo") {
             department = "Executive";
             level = "Senior";
           } else if (roleName === "external parties") {
@@ -93,9 +97,9 @@ const getAllComplianceStaff = async (req, res) => {
         };
       });
 
-      // Save all ComplianceStaff records to database
-      staffMembers = await ComplianceStaff.insertMany(staffToCreate);
-      console.log(`Created ${staffMembers.length} ComplianceStaff records`);
+      const newStaffMembers = await ComplianceStaff.insertMany(staffToCreate);
+      console.log(`Created ${newStaffMembers.length} new ComplianceStaff records`);
+      staffMembers = [...staffMembers, ...newStaffMembers];
     }
 
     // Transform database records to frontend format
@@ -527,8 +531,8 @@ const addStaffSection = async (req, res) => {
 // Delete custom section from staff
 const deleteStaffSection = async (req, res) => {
   try {
-    const { staffId, sectionId } = req.body;
-    
+    const { staffId, sectionId, forceDelete } = req.body;
+
     if (!staffId || !sectionId) {
       return res.status(400).json({
         success: false,
@@ -566,12 +570,30 @@ const deleteStaffSection = async (req, res) => {
       });
     }
 
-    // Check if section has documents
-    if (section.documents && section.documents.length > 0) {
-      return res.status(400).json({
+    // If section has documents and forceDelete is not true, return document count for confirmation
+    if (section.documents && section.documents.length > 0 && !forceDelete) {
+      return res.status(200).json({
         success: false,
-        message: "Cannot delete section with documents. Please remove all documents first."
+        requiresConfirmation: true,
+        documentCount: section.documents.length,
+        message: `This folder contains ${section.documents.length} document(s). Are you sure you want to delete the folder and all its documents?`
       });
+    }
+
+    // Delete documents from Cloudinary if they exist
+    if (section.documents && section.documents.length > 0) {
+      const cloudinary = require("cloudinary").v2;
+      for (const doc of section.documents) {
+        if (doc.cloudinaryId) {
+          try {
+            await cloudinary.uploader.destroy(doc.cloudinaryId);
+            console.log(`Deleted Cloudinary file: ${doc.cloudinaryId}`);
+          } catch (cloudinaryError) {
+            console.error(`Error deleting Cloudinary file ${doc.cloudinaryId}:`, cloudinaryError);
+          }
+        }
+      }
+      console.log(`Deleted ${section.documents.length} documents from folder "${section.title}"`);
     }
 
     // Remove the section
@@ -580,7 +602,10 @@ const deleteStaffSection = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Section deleted successfully",
+      message: section.documents?.length > 0
+        ? `Section and ${section.documents.length} document(s) deleted successfully`
+        : "Section deleted successfully",
+      deletedDocuments: section.documents?.length || 0,
       data: staffMember
     });
   } catch (error) {
@@ -670,19 +695,23 @@ const uploadStaffDocument = async (req, res) => {
     }
 
     // Find the section and add the document
-    console.log(`Staff member sections:`, staffMember.sections.map(s => ({ id: s._id, title: s.title, mongoId: s.id })));
+    console.log(`Staff member sections:`, staffMember.sections.map(s => ({ _id: s._id, title: s.title, customId: s.id })));
     console.log(`Looking for sectionId: ${sectionId}`);
-    
-    const section = staffMember.sections.id(sectionId);
+
+    // Find section by either MongoDB _id or custom id field
+    let section = staffMember.sections.id(sectionId);
+    if (!section) {
+      section = staffMember.sections.find(s => s.id === sectionId);
+    }
     console.log(`Found section:`, section ? `${section.title} (${section._id})` : 'NOT FOUND');
-    
+
     if (!section) {
       return res.status(404).json({
         success: false,
         message: "Section not found",
-        debug: { 
-          sectionId, 
-          availableSections: staffMember.sections.map(s => ({ id: s._id, title: s.title, mongoId: s.id }))
+        debug: {
+          sectionId,
+          availableSections: staffMember.sections.map(s => ({ _id: s._id, title: s.title, customId: s.id }))
         }
       });
     }
@@ -826,8 +855,11 @@ const deleteStaffDocument = async (req, res) => {
       });
     }
 
-    // Find the section
-    const section = staffMember.sections.id(sectionId);
+    // Find the section by either MongoDB _id or custom id field
+    let section = staffMember.sections.id(sectionId);
+    if (!section) {
+      section = staffMember.sections.find(s => s.id === sectionId);
+    }
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -881,8 +913,11 @@ const updateStaffDocument = async (req, res) => {
       });
     }
 
-    // Find the section
-    const section = staffMember.sections.id(sectionId);
+    // Find the section by either MongoDB _id or custom id field
+    let section = staffMember.sections.id(sectionId);
+    if (!section) {
+      section = staffMember.sections.find(s => s.id === sectionId);
+    }
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -1034,8 +1069,11 @@ const replaceStaffDocument = async (req, res) => {
       });
     }
 
-    // Find the section
-    const section = staffMember.sections.id(sectionId);
+    // Find the section by either MongoDB _id or custom id field
+    let section = staffMember.sections.id(sectionId);
+    if (!section) {
+      section = staffMember.sections.find(s => s.id === sectionId);
+    }
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -1108,6 +1146,76 @@ const replaceStaffDocument = async (req, res) => {
   }
 };
 
+// Update/Edit section (rename folder)
+const updateStaffSection = async (req, res) => {
+  try {
+    const { staffId, sectionId, title, description } = req.body;
+
+    if (!staffId || !sectionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Staff ID and section ID are required"
+      });
+    }
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Section title is required"
+      });
+    }
+
+    const staffMember = await ComplianceStaff.findById(staffId);
+    if (!staffMember) {
+      return res.status(404).json({
+        success: false,
+        message: "Staff member not found"
+      });
+    }
+
+    const sectionIndex = staffMember.sections.findIndex(
+      section => section.id === sectionId
+    );
+
+    if (sectionIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Section not found"
+      });
+    }
+
+    const section = staffMember.sections[sectionIndex];
+    if (!section.isCustom) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot edit default sections"
+      });
+    }
+
+    staffMember.sections[sectionIndex].title = title.trim();
+    if (description !== undefined) {
+      staffMember.sections[sectionIndex].description = description.trim();
+    }
+
+    await staffMember.save();
+
+    console.log(`Section "${section.title}" renamed to "${title}" for ${staffMember.name}`);
+
+    res.status(200).json({
+      success: true,
+      message: "Section updated successfully",
+      data: staffMember.sections[sectionIndex]
+    });
+  } catch (error) {
+    console.error("Error updating staff section:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating staff section",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getAllComplianceStaff,
   getComplianceStaffById,
@@ -1119,6 +1227,7 @@ module.exports = {
   getRoleStatistics,
   addStaffSection,
   deleteStaffSection,
+  updateStaffSection,
   uploadStaffDocument,
   deleteStaffDocument,
   updateStaffDocument,

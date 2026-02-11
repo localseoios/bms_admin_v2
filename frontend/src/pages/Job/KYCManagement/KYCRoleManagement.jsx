@@ -41,7 +41,7 @@ function KYCRoleManagement({ role, onChange }) {
       </p>
 
       <div className="grid md:grid-cols-3 gap-4">
-        {/* LMRO Role */}
+        {/* MLRO Role */}
         <div className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors duration-200">
           <div className="flex items-center">
             <input
@@ -56,16 +56,16 @@ function KYCRoleManagement({ role, onChange }) {
               className="ml-2 font-medium text-gray-700 flex items-center"
             >
               <UserGroupIcon className="h-4 w-4 mr-1 text-blue-500" />
-              LMRO Role
+              MLRO Role
             </label>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            First level of KYC approval. LMRO (Local Money Laundering Reporting
+            First level of KYC approval. MLRO (Money Laundering Reporting
             Officer) is responsible for initial KYC verification.
           </p>
         </div>
 
-        {/* DLMRO Role */}
+        {/* DMLRO Role */}
         <div className="p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors duration-200">
           <div className="flex items-center">
             <input
@@ -80,16 +80,16 @@ function KYCRoleManagement({ role, onChange }) {
               className="ml-2 font-medium text-gray-700 flex items-center"
             >
               <ClipboardDocumentCheckIcon className="h-4 w-4 mr-1 text-purple-500" />
-              DLMRO Role
+              DMLRO Role
             </label>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Second level of KYC approval. DLMRO (Deputy Money Laundering
-            Reporting Officer) reviews after LMRO approval.
+            Second level of KYC approval. DMLRO (Deputy Money Laundering
+            Reporting Officer) reviews after MLRO approval.
           </p>
         </div>
 
-        {/* CEO Role */}
+        {/* SEF Role */}
         <div className="p-4 border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors duration-200">
           <div className="flex items-center">
             <input
@@ -104,12 +104,12 @@ function KYCRoleManagement({ role, onChange }) {
               className="ml-2 font-medium text-gray-700 flex items-center"
             >
               <LockClosedIcon className="h-4 w-4 mr-1 text-indigo-500" />
-              CEO Role
+              SEF Role
             </label>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Final level of KYC approval. CEO provides the final authorization
-            after LMRO and DLMRO approvals.
+            Final level of KYC approval. SEF provides the final authorization
+            after MLRO and DMLRO approvals.
           </p>
         </div>
       </div>
@@ -117,7 +117,7 @@ function KYCRoleManagement({ role, onChange }) {
       <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded-md">
         <p className="text-xs text-yellow-800">
           <strong>Note:</strong> The KYC process follows a specific sequence:
-          LMRO → DLMRO → CEO. Each role must approve in order, with
+          MLRO → DMLRO → SEF. Each role must approve in order, with
           notifications sent automatically to the next role.
         </p>
       </div>

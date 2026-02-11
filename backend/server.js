@@ -73,6 +73,7 @@ app.options("*", function (req, res) {
     "http://localhost:5173",
     "https://app.newoon.com",
     "https://testapp.newoon.com",
+    "https://testapi.newoon.com",
   ];
   const origin = req.headers.origin;
 
@@ -95,6 +96,7 @@ app.use(function (req, res, next) {
     "http://localhost:5173",
     "https://app.newoon.com",
     "https://testapp.newoon.com",
+    "https://testapi.newoon.com",
   ];
   const origin = req.headers.origin;
 
@@ -132,6 +134,7 @@ app.use(
         "http://localhost:5173",
         "https://testapp.newoon.com",
         "https://app.newoon.com",
+        "https://testapi.newoon.com",
       ];
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
@@ -184,6 +187,9 @@ app.get("/files/:filename", (req, res) => {
       ".doc": "application/msword",
       ".docx":
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       ".jpg": "image/jpeg",
       ".jpeg": "image/jpeg",
       ".png": "image/png",
@@ -244,6 +250,8 @@ app.use("/api/section-documents", require("./src/routes/sectionDocumentRoutes"))
 app.use("/api/compliance-culture", require("./src/routes/complianceCultureRoutes"));
 app.use("/api/compliance-staff", require("./src/routes/complianceStaffRoutes"));
 app.use("/api/compliance-notifications", require("./src/routes/complianceNotificationRoutes"));
+app.use("/api/archives", require("./src/routes/archiveRoutes"));
+app.use("/api/organizational-structure", require("./src/routes/organizationalStructureRoutes"));
 
 
 // Add a catch-all route AFTER all your API routes to debug 404s
@@ -324,3 +332,4 @@ mongoose
     server.timeout = 120000;
   })
   .catch((err) => console.log(err));
+

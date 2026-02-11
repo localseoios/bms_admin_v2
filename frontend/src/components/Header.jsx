@@ -7,6 +7,7 @@ import {
   UserCircleIcon,
   QuestionMarkCircleIcon,
   ArrowRightOnRectangleIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import NotificationBadge from "../pages/Notifications/NotificationBadge";
 import axiosInstance from "../utils/axios";
@@ -23,7 +24,7 @@ function Header() {
         const response = await axiosInstance.get("/users/me");
         setUser(response.data);
         localStorage.setItem("user", JSON.stringify(response.data));
-      } catch (error) {
+      } catch {
         setUser(null);
         localStorage.removeItem("user");
       } finally {
@@ -121,6 +122,16 @@ function Header() {
         {/* Right Section */}
         {user ? (
           <div className="flex items-center space-x-6">
+            {/* Mode Selection Button */}
+            <button
+              onClick={() => navigate("/mode-selection")}
+              className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-sm hover:shadow-md"
+              title="Mode Selection"
+            >
+              <Squares2X2Icon className="h-5 w-5" />
+              <span className="hidden md:inline text-sm font-medium">Modes</span>
+            </button>
+
             {/* Notification Badge Component */}
             <NotificationBadge />
 

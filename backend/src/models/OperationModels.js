@@ -69,6 +69,21 @@ const companyDetailsSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    documentHistory: [
+      {
+        action: { type: String, enum: ["upload", "update", "delete"], required: true },
+        documentType: { type: String, required: true },
+        fileName: { type: String },
+        fileUrl: { type: String },
+        description: { type: String },
+        performedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        performedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );
@@ -88,7 +103,7 @@ const personDetailsSchema = new mongoose.Schema(
       enum: ["director", "shareholder", "secretary", "sef"],
       required: true,
     },
-    name: { type: String, required: true },
+    name: { type: String, default: "" },
     nationality: { type: String },
     visaCopy: { type: String }, // URL to document
     qidNo: { type: String },
@@ -272,11 +287,69 @@ const otherDocumentsDetailsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const uboDetailsSchema = new mongoose.Schema(
+  {
+    jobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      required: true,
+    },
+    ubos: [
+      {
+        name: { type: String },
+        passportNo: { type: String },
+        qidNo: { type: String },
+        nationality: { type: String },
+        documents: [
+          {
+            fileUrl: { type: String, required: true },
+            fileName: { type: String },
+            title: { type: String },
+            description: { type: String },
+            uploadedAt: { type: Date, default: Date.now },
+          },
+        ],
+      },
+    ],
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  { timestamps: true }
+);
+
+const cddDetailsSchema = new mongoose.Schema(
+  {
+    jobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      required: true,
+    },
+    documents: [
+      {
+        fileUrl: { type: String, required: true },
+        fileName: { type: String },
+        title: { type: String },
+        description: { type: String },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  { timestamps: true }
+);
+
 const CompanyDetails = mongoose.model("CompanyDetails", companyDetailsSchema);
 const PersonDetails = mongoose.model("PersonDetails", personDetailsSchema);
 const KycDocument = mongoose.model("KycDocument", kycDocumentSchema);
 const BraDocument = mongoose.model("BraDocument", braDocumentSchema);
 const OtherDocumentsDetails = mongoose.model("OtherDocumentsDetails", otherDocumentsDetailsSchema);
+const UboDetails = mongoose.model("UboDetails", uboDetailsSchema);
+const CddDetails = mongoose.model("CddDetails", cddDetailsSchema);
 
 module.exports = {
   CompanyDetails,
@@ -284,4 +357,6 @@ module.exports = {
   KycDocument,
   BraDocument,
   OtherDocumentsDetails,
+  UboDetails,
+  CddDetails,
 };

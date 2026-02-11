@@ -12,12 +12,18 @@ const {
   changePassword,
   getOnlineUsers,
   getOperationManagers,
+  getUsersByServiceType,
+  getDashboardUsers,
+  getUsersWithSignaturePermissions,
+  uploadUserSignature,
+  deleteUserSignature,
 } = require("../controllers/userController");
 const {
   protect,
   adminOnly,
   checkPermission,
 } = require("../middleware/authMiddleware");
+const { upload } = require("../services/fileUploadService");
 
 // Self-management routes (accessible to any authenticated user)
 router.get("/me", protect, getCurrentUser); // View own profile
@@ -32,8 +38,22 @@ router
 
 router.get("/operation-managers", protect, getOperationManagers);
 
+// Route to get users by service type (users with roles assigned to the service)
+router.get("/by-service/:serviceName", protect, getUsersByServiceType);
+
 // Route to get online users
 router.get("/online", protect, getOnlineUsers);
+
+// Route for dashboard - accessible to all authenticated users
+router.get("/dashboard-users", protect, getDashboardUsers);
+
+// Route to get users with signature permissions (MUST be before /:id route)
+router.get(
+  "/with-signature-permissions",
+  protect,
+  checkPermission("userManagement"),
+  getUsersWithSignaturePermissions
+);
 
 router
   .route("/:id")
@@ -49,5 +69,19 @@ router.post(
   resetUserPassword
 );
 
+router.put(
+  "/:id/signature",
+  protect,
+  checkPermission("userManagement"),
+  upload.single("signature"),
+  uploadUserSignature
+);
+
+router.delete(
+  "/:id/signature",
+  protect,
+  checkPermission("userManagement"),
+  deleteUserSignature
+);
 
 module.exports = router;

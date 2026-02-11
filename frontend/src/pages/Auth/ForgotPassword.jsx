@@ -22,7 +22,7 @@ function ForgotPassword() {
     }
 
     try {
-      const response = await axiosInstance.post("auth/forgot-password", { email });
+      await axiosInstance.post("auth/forgot-password", { email });
       setMessage("Password reset code has been sent to your email");
 
       // Redirect to reset password page after 2 seconds

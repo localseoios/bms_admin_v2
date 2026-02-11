@@ -5,8 +5,8 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import AutoSuggestPersonInput from "../../../components/AutoSuggestPersonInput";
 import {
   ArrowLeftIcon,
@@ -33,8 +33,11 @@ import {
   ChevronUpIcon,
   ChevronDownIcon,
   PlusIcon,
-  DocumentArrowDownIcon, // Add this line
-  DocumentArrowUpIcon
+  DocumentArrowDownIcon,
+  DocumentArrowUpIcon,
+  EyeIcon,
+  TrashIcon,
+  XCircleIcon
 } from "@heroicons/react/24/outline";
 import axiosInstance from "../../../utils/axios";
 import {
@@ -50,6 +53,7 @@ import operationService from "../../../utils/operationService";
 function JobDetails() {
   const { jobId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Main state for the job
   const [job, setJob] = useState(null);
@@ -77,6 +81,9 @@ function JobDetails() {
   // Person details tabs
   const [activeTab, setActiveTab] = useState("company");
 
+  // State for highlighting expiring document field
+  const [highlightedField, setHighlightedField] = useState(null);
+
   // Edit mode state for company details
   const [editingCompanyDetails, setEditingCompanyDetails] = useState(false);
   const [originalCompanyDetails, setOriginalCompanyDetails] = useState(null);
@@ -87,6 +94,9 @@ function JobDetails() {
   const [companyMemoFiles, setCompanyMemoFiles] = useState([]);
 const [deletedCompanyMemoIds, setDeletedCompanyMemoIds] = useState([]); // ADD THIS
 
+  const [editingCrNo, setEditingCrNo] = useState(false);
+  const [crNoValue, setCrNoValue] = useState('');
+  const [savingCrNo, setSavingCrNo] = useState(false);
 
   const DIRECTOR_SUGGESTIONS = [
     {
@@ -451,10 +461,66 @@ const handleDeleteEngagementLetter = async (letterId, letterFileName) => {
   }
 };
 
+const handleReplaceEngagementLetter = async (letterId, letterFileName, file) => {
+  if (!file) return;
+
+  try {
+    setSubmitting(true);
+    setActionMessage({
+      type: "info",
+      message: "Replacing engagement letter...",
+    });
+
+    const formData = new FormData();
+    formData.append("engagementLetter", file);
+
+    const response = await axiosInstance.put(
+      `/operations/jobs/${jobId}/engagement-letter/${letterId}/replace`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+
+    setActionMessage({
+      type: "success",
+      message: `Engagement letter replaced successfully. Old document archived.`,
+    });
+
+    try {
+      const updatedResponse = await axiosInstance.get(
+        `/operations/jobs/${jobId}/company-details`
+      );
+      setCompanyDetails(updatedResponse.data);
+    } catch (refreshError) {
+      console.error("Error refreshing company details:", refreshError);
+    }
+
+    setTimeout(() => {
+      setActionMessage({ type: null, message: null });
+    }, 3000);
+
+  } catch (error) {
+    console.error("Error replacing engagement letter:", error);
+    setActionMessage({
+      type: "error",
+      message: error.response?.data?.message || "Failed to replace engagement letter",
+    });
+
+    setTimeout(() => {
+      setActionMessage({ type: null, message: null });
+    }, 5000);
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 const handleCompanyMemoFileChange = (files) => {
   const fileArray = Array.from(files);
-  // Limit to 5 files maximum
-  const limitedFiles = fileArray.slice(0, 5);
+  // Limit to 10 files maximum
+  const limitedFiles = fileArray.slice(0, 10);
   setCompanyMemoFiles(limitedFiles);
 };
 
@@ -623,7 +689,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
             <div className="space-y-1">
               <AutoSuggestInput
                 label="Name"
-                value={entry.name}
+                value={entry.name || ""}
                 onChange={(e) => {
                   // Fixed: Use createFocusPreservingHandler pattern
                   const inputValue = e.target.value;
@@ -843,7 +909,15 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
             </div> */}
 
             {/* QID Details Section */}
-            <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            <div
+              id={`expiry-field-${section}-qid-${index}`}
+              data-person-name={entry.name || ''}
+              className={`col-span-2 p-4 rounded-lg border transition-all duration-500 ${
+                highlightedField === `expiry-field-${section}-qid-${index}`
+                  ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse border-yellow-400'
+                  : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-indigo-100/50'
+              }`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <UserIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 QID Details
@@ -949,16 +1023,32 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                               </span>
                             )}
                         </div>
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-1">
                           {typeof entry.qidDoc === "string" && (
                             <a
                               href={entry.qidDoc}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                              className="px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                             >
                               View
                             </a>
+                          )}
+                          {entry._id && typeof entry.qidDoc === "string" && (
+                            <label className="cursor-pointer">
+                              <span className="p-0.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                                <ArrowPathIcon className="h-3 w-3" />
+                              </span>
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleReplacePersonDocument(section, entry._id, 'qidDoc', e.target.files[0]);
+                                  }
+                                }}
+                              />
+                            </label>
                           )}
                           <button
                             onClick={() => {
@@ -972,7 +1062,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
                               submitting ? "opacity-50 cursor-not-allowed" : ""
                             }`}
-                            title="Delete document permanently"
+                            title="Delete permanently"
                           >
                             <XMarkIcon className="h-3 w-3" />
                           </button>
@@ -1004,7 +1094,15 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
             </div>
 
             {/* National Address Section */}
-            <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            <div
+              id={`expiry-field-${section}-nationalAddress-${index}`}
+              data-person-name={entry.name || ''}
+              className={`col-span-2 p-4 rounded-lg border transition-all duration-500 ${
+                highlightedField === `expiry-field-${section}-nationalAddress-${index}`
+                  ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse border-yellow-400'
+                  : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-indigo-100/50'
+              }`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <MapPinIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 National Address
@@ -1092,16 +1190,32 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center ml-4">
+                        <div className="flex items-center gap-1 ml-4">
                           {typeof entry.nationalAddressDoc === "string" && (
                             <a
                               href={entry.nationalAddressDoc}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                              className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                             >
                               View Document
                             </a>
+                          )}
+                          {entry._id && typeof entry.nationalAddressDoc === "string" && (
+                            <label className="cursor-pointer">
+                              <span className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                                <ArrowPathIcon className="h-4 w-4" />
+                              </span>
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleReplacePersonDocument(section, entry._id, 'nationalAddressDoc', e.target.files[0]);
+                                  }
+                                }}
+                              />
+                            </label>
                           )}
                           <button
                             onClick={() => {
@@ -1198,7 +1312,15 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
             </div>
 
             {/* Passport Details Section */}
-            <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            <div
+              id={`expiry-field-${section}-passport-${index}`}
+              data-person-name={entry.name || ''}
+              className={`col-span-2 p-4 rounded-lg border transition-all duration-500 ${
+                highlightedField === `expiry-field-${section}-passport-${index}`
+                  ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse border-yellow-400'
+                  : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-indigo-100/50'
+              }`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <DocumentDuplicateIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 Passport Details
@@ -1333,16 +1455,32 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                               </span>
                             )}
                         </div>
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-1">
                           {typeof entry.passportDoc === "string" && (
                             <a
                               href={entry.passportDoc}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                              className="px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                             >
                               View
                             </a>
+                          )}
+                          {entry._id && typeof entry.passportDoc === "string" && (
+                            <label className="cursor-pointer">
+                              <span className="p-0.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                                <ArrowPathIcon className="h-3 w-3" />
+                              </span>
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleReplacePersonDocument(section, entry._id, 'passportDoc', e.target.files[0]);
+                                  }
+                                }}
+                              />
+                            </label>
                           )}
                           <button
                             onClick={() => {
@@ -1509,16 +1647,32 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center ml-4">
+                    <div className="flex items-center gap-1 ml-4">
                       {typeof entry.cv === "string" && (
                         <a
                           href={entry.cv}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                          className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                         >
                           View Document
                         </a>
+                      )}
+                      {entry._id && typeof entry.cv === "string" && (
+                        <label className="cursor-pointer">
+                          <span className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                            <ArrowPathIcon className="h-4 w-4" />
+                          </span>
+                          <input
+                            type="file"
+                            className="sr-only"
+                            onChange={(e) => {
+                              if (e.target.files[0]) {
+                                handleReplacePersonDocument(section, entry._id, 'cv', e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
                       )}
                       <button
                         onClick={() => {
@@ -1532,7 +1686,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         className={`p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
                           submitting ? "opacity-50 cursor-not-allowed" : ""
                         }`}
-                        title="Delete document permanently"
+                        title="Delete permanently"
                       >
                         <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                       </button>
@@ -2142,6 +2296,65 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
     }
   };
 
+  // Replace person document function (archives old to Library)
+  const handleReplacePersonDocument = async (personType, personId, documentType, file) => {
+    if (!file) return;
+
+    const documentName = documentType.replace(/([A-Z])/g, ' $1').trim();
+
+    try {
+      setSubmitting(true);
+      setActionMessage({
+        type: "info",
+        message: `Replacing ${documentName}...`,
+      });
+
+      const formData = new FormData();
+      formData.append("document", file);
+
+      const response = await axiosInstance.put(
+        `/operations/jobs/${jobId}/person-document/${personType}/${personId}/${documentType}/replace`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      if (response.data.success) {
+        const updateState = {
+          director: setDirectorDetails,
+          shareholder: setShareholderDetails,
+          secretary: setSecretaryDetails,
+          sef: setSefDetails,
+        }[personType];
+
+        await fetchPersonDetails(personType, updateState);
+
+        setActionMessage({
+          type: "success",
+          message: `${documentName} replaced successfully (old document archived to Library)`,
+        });
+
+        setTimeout(() => {
+          setActionMessage({ type: null, message: null });
+        }, 3000);
+      }
+    } catch (error) {
+      console.error("Error replacing document:", error);
+      setActionMessage({
+        type: "error",
+        message: error.response?.data?.message || "Failed to replace document",
+      });
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Delete KYC signed document function
   const handleDeleteKycDocument = async (documentIndex) => {
     if (!window.confirm("Are you sure you want to delete this KYC document? This action cannot be undone.")) {
@@ -2163,8 +2376,7 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       );
 
       if (response.data.success) {
-        // Update local state with the returned KYC documents
-        setKycDocuments(response.data.kycDocument.documents || []);
+        // KYC documents state update removed - handled via fetchKycDetails
         
         setActionMessage({
           type: "success",
@@ -2450,6 +2662,124 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
       fetchTimeline();
     }
   }, [jobId]);
+
+  useEffect(() => {
+    if (!loading && job) {
+      const expiryType = searchParams.get('expiryType');
+      if (expiryType) {
+        let targetTab = 'company';
+        let targetFieldId = null;
+
+        // Helper function to extract person name from expiryType
+        // Format: "director QID (Tevfik Ergun)" -> "Tevfik Ergun"
+        const extractPersonName = (type) => {
+          const match = type.match(/\(([^)]+)\)/);
+          return match ? match[1].trim() : null;
+        };
+
+        // Helper function to find person index by name
+        const findPersonIndex = (details, name) => {
+          if (!name || !details || details.length === 0) return 0;
+          const index = details.findIndex(
+            (person) => person.name && person.name.toLowerCase().includes(name.toLowerCase())
+          );
+          return index >= 0 ? index : 0;
+        };
+
+        // Determine target tab and field based on expiryType
+        if (expiryType.includes('Trade License') || expiryType.includes('Main Document')) {
+          targetTab = 'company';
+          targetFieldId = 'expiry-field-tradeLicense';
+        } else if (expiryType.includes('Company Computer Card')) {
+          targetTab = 'company';
+          targetFieldId = 'expiry-field-companyComputerCard';
+        } else if (expiryType.includes('Tax Card')) {
+          targetTab = 'company';
+          targetFieldId = 'expiry-field-taxCard';
+        } else if (expiryType.includes('CR Extract')) {
+          targetTab = 'company';
+          targetFieldId = 'expiry-field-crExtract';
+        } else if (expiryType.includes('Scope of License')) {
+          targetTab = 'company';
+          targetFieldId = 'expiry-field-scopeOfLicense';
+        } else if (expiryType.toLowerCase().includes('director')) {
+          targetTab = 'director';
+          const personName = extractPersonName(expiryType);
+          const personIndex = findPersonIndex(directorDetails, personName);
+          if (expiryType.toLowerCase().includes('qid')) {
+            targetFieldId = `expiry-field-director-qid-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('passport')) {
+            targetFieldId = `expiry-field-director-passport-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('national address')) {
+            targetFieldId = `expiry-field-director-nationalAddress-${personIndex}`;
+          }
+        } else if (expiryType.toLowerCase().includes('shareholder')) {
+          targetTab = 'shareholder';
+          const personName = extractPersonName(expiryType);
+          const personIndex = findPersonIndex(shareholderDetails, personName);
+          if (expiryType.toLowerCase().includes('qid')) {
+            targetFieldId = `expiry-field-shareholder-qid-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('passport')) {
+            targetFieldId = `expiry-field-shareholder-passport-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('national address')) {
+            targetFieldId = `expiry-field-shareholder-nationalAddress-${personIndex}`;
+          }
+        } else if (expiryType.toLowerCase().includes('secretary')) {
+          targetTab = 'secretary';
+          const personName = extractPersonName(expiryType);
+          const personIndex = findPersonIndex(secretaryDetails, personName);
+          if (expiryType.toLowerCase().includes('qid')) {
+            targetFieldId = `expiry-field-secretary-qid-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('passport')) {
+            targetFieldId = `expiry-field-secretary-passport-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('national address')) {
+            targetFieldId = `expiry-field-secretary-nationalAddress-${personIndex}`;
+          }
+        } else if (expiryType.toLowerCase().includes('sef')) {
+          targetTab = 'sef';
+          const personName = extractPersonName(expiryType);
+          const personIndex = findPersonIndex(sefDetails, personName);
+          if (expiryType.toLowerCase().includes('qid')) {
+            targetFieldId = `expiry-field-sef-qid-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('passport')) {
+            targetFieldId = `expiry-field-sef-passport-${personIndex}`;
+          } else if (expiryType.toLowerCase().includes('national address')) {
+            targetFieldId = `expiry-field-sef-nationalAddress-${personIndex}`;
+          }
+        }
+
+        setActiveTab(targetTab);
+
+        // Scroll to specific field and highlight it
+        setTimeout(() => {
+          if (targetFieldId) {
+            const targetElement = document.getElementById(targetFieldId);
+            if (targetElement) {
+              targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              setHighlightedField(targetFieldId);
+
+              // Clear highlight after 5 seconds
+              setTimeout(() => {
+                setHighlightedField(null);
+              }, 5000);
+            } else {
+              // Fallback to tab section if specific field not found
+              const tabSection = document.getElementById(`tab-section-${targetTab}`);
+              if (tabSection) {
+                tabSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }
+          } else {
+            // Fallback to tab section
+            const tabSection = document.getElementById(`tab-section-${targetTab}`);
+            if (tabSection) {
+              tabSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }
+        }, 500);
+      }
+    }
+  }, [loading, job, searchParams, directorDetails, shareholderDetails, secretaryDetails, sefDetails]);
 
   // Add this utility function to JobDetails.jsx
 // Replace the existing formatDateForInput function in JobDetails.jsx with this:
@@ -3192,6 +3522,43 @@ const handleSaveCompanyDetails = async () => {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSaveCrNo = async () => {
+    if (!job?.gmail) return;
+
+    try {
+      setSavingCrNo(true);
+      await axiosInstance.put(`/clients/${encodeURIComponent(job.gmail)}/cr-no`, {
+        crNo: crNoValue
+      });
+
+      setJob(prev => ({
+        ...prev,
+        clientId: {
+          ...prev.clientId,
+          crNo: crNoValue
+        }
+      }));
+
+      setEditingCrNo(false);
+      setActionMessage({
+        type: "success",
+        message: "CR Number updated successfully",
+      });
+
+      setTimeout(() => {
+        setActionMessage({ type: null, message: null });
+      }, 3000);
+    } catch (err) {
+      console.error("Error updating CR Number:", err);
+      setActionMessage({
+        type: "error",
+        message: err.response?.data?.message || "Failed to update CR Number",
+      });
+    } finally {
+      setSavingCrNo(false);
     }
   };
 
@@ -4142,7 +4509,7 @@ const handleSaveCompanyDetails = async () => {
                 personId={entry._id}
                 personType={section}
                 jobId={jobId}
-                value={entry.name}
+                value={entry.name || ""}
                 onChange={(e) => {
                   const newDetails = [...details];
                   newDetails[index].name = e.target.value;
@@ -4326,7 +4693,16 @@ const handleSaveCompanyDetails = async () => {
               </div>
             </div> */}
 
-            <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            {/* QID Details Section */}
+            <div
+              id={`expiry-field-${section}-qid-${index}`}
+              data-person-name={entry.name || ''}
+              className={`col-span-2 p-4 rounded-lg border transition-all duration-500 ${
+                highlightedField === `expiry-field-${section}-qid-${index}`
+                  ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse border-yellow-400'
+                  : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-indigo-100/50'
+              }`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <UserIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 QID Details
@@ -4352,7 +4728,7 @@ const handleSaveCompanyDetails = async () => {
                     personId={entry._id}
                     personType={section}
                     jobId={jobId}
-                    value={entry.qidNo}
+                    value={entry.qidNo || ""}
                     onChange={(e) => {
                       const newDetails = [...details];
                       newDetails[index] = {
@@ -4385,7 +4761,7 @@ const handleSaveCompanyDetails = async () => {
                       personId={entry._id}
                       personType={section}
                       jobId={jobId}
-                      value={entry.qidExpiry}
+                      value={entry.qidExpiry || ""}
                       onChange={(e) => {
                         const newDetails = [...details];
                         newDetails[index] = {
@@ -4449,16 +4825,32 @@ const handleSaveCompanyDetails = async () => {
                               </span>
                             )}
                         </div>
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-1">
                           {typeof entry.qidDoc === "string" && (
                             <a
                               href={entry.qidDoc}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                              className="px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                             >
                               View
                             </a>
+                          )}
+                          {entry._id && typeof entry.qidDoc === "string" && (
+                            <label className="cursor-pointer">
+                              <span className="p-0.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                                <ArrowPathIcon className="h-3 w-3" />
+                              </span>
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleReplacePersonDocument(section, entry._id, 'qidDoc', e.target.files[0]);
+                                  }
+                                }}
+                              />
+                            </label>
                           )}
                           <button
                             onClick={() => {
@@ -4472,7 +4864,7 @@ const handleSaveCompanyDetails = async () => {
                             className={`p-0.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
                               submitting ? "opacity-50 cursor-not-allowed" : ""
                             }`}
-                            title="Delete document permanently"
+                            title="Delete permanently"
                           >
                             <XMarkIcon className="h-3 w-3" />
                           </button>
@@ -4503,7 +4895,16 @@ const handleSaveCompanyDetails = async () => {
               </div>
             </div>
 
-            <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            {/* National Address Section */}
+            <div
+              id={`expiry-field-${section}-nationalAddress-${index}`}
+              data-person-name={entry.name || ''}
+              className={`col-span-2 p-4 rounded-lg border transition-all duration-500 ${
+                highlightedField === `expiry-field-${section}-nationalAddress-${index}`
+                  ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse border-yellow-400'
+                  : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-indigo-100/50'
+              }`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <MapPinIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 National Address
@@ -4565,16 +4966,32 @@ const handleSaveCompanyDetails = async () => {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center ml-4">
+                        <div className="flex items-center gap-1 ml-4">
                           {typeof entry.nationalAddressDoc === "string" && (
                             <a
                               href={entry.nationalAddressDoc}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                              className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                             >
                               View Document
                             </a>
+                          )}
+                          {entry._id && typeof entry.nationalAddressDoc === "string" && (
+                            <label className="cursor-pointer">
+                              <span className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                                <ArrowPathIcon className="h-4 w-4" />
+                              </span>
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleReplacePersonDocument(section, entry._id, 'nationalAddressDoc', e.target.files[0]);
+                                  }
+                                }}
+                              />
+                            </label>
                           )}
                           <button
                             onClick={() => {
@@ -4630,7 +5047,7 @@ const handleSaveCompanyDetails = async () => {
                     <div className="flex items-center space-x-2">
                       <input
                         type="date"
-                        value={entry.nationalAddressExpiry}
+                        value={entry.nationalAddressExpiry || ""}
                         onChange={(e) => {
                           const newDetails = [...details];
                           newDetails[index] = {
@@ -4671,7 +5088,15 @@ const handleSaveCompanyDetails = async () => {
             </div>
 
             {/* Passport Document - Compact Beautiful Card */}
-            <div className="col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 rounded-lg border border-indigo-100/50">
+            <div
+              id={`expiry-field-${section}-passport-${index}`}
+              data-person-name={entry.name || ''}
+              className={`col-span-2 p-4 rounded-lg border transition-all duration-500 ${
+                highlightedField === `expiry-field-${section}-passport-${index}`
+                  ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse border-yellow-400'
+                  : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-indigo-100/50'
+              }`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <DocumentDuplicateIcon className="h-4 w-4 mr-1 text-indigo-500" />
                 Passport Details
@@ -4697,7 +5122,7 @@ const handleSaveCompanyDetails = async () => {
                     personId={entry._id}
                     personType={section}
                     jobId={jobId}
-                    value={entry.passportNo}
+                    value={entry.passportNo || ""}
                     onChange={(e) => {
                       const newDetails = [...details];
                       newDetails[index].passportNo = e.target.value;
@@ -4727,7 +5152,7 @@ const handleSaveCompanyDetails = async () => {
                       personId={entry._id}
                       personType={section}
                       jobId={jobId}
-                      value={entry.passportExpiry}
+                      value={entry.passportExpiry || ""}
                       onChange={(e) => {
                         const newDetails = [...details];
                         newDetails[index] = {
@@ -4791,16 +5216,32 @@ const handleSaveCompanyDetails = async () => {
                               </span>
                             )}
                         </div>
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-1">
                           {typeof entry.passportDoc === "string" && (
                             <a
                               href={entry.passportDoc}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mr-2 px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                              className="px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                             >
                               View
                             </a>
+                          )}
+                          {entry._id && typeof entry.passportDoc === "string" && (
+                            <label className="cursor-pointer">
+                              <span className="p-0.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                                <ArrowPathIcon className="h-3 w-3" />
+                              </span>
+                              <input
+                                type="file"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleReplacePersonDocument(section, entry._id, 'passportDoc', e.target.files[0]);
+                                  }
+                                }}
+                              />
+                            </label>
                           )}
                           <button
                             onClick={() => {
@@ -4865,7 +5306,7 @@ const handleSaveCompanyDetails = async () => {
                 personId={entry._id}
                 personType={section}
                 jobId={jobId}
-                value={entry.mobileNo}
+                value={entry.mobileNo || ""}
                 onChange={(e) => {
                   const newDetails = [...details];
                   newDetails[index].mobileNo = e.target.value;
@@ -4903,7 +5344,7 @@ const handleSaveCompanyDetails = async () => {
               </label>
               <input
                 type="email"
-                value={entry.email}
+                value={entry.email || ""}
                 onChange={(e) => {
                   const newDetails = [...details];
                   newDetails[index].email = e.target.value;
@@ -4980,16 +5421,32 @@ const handleSaveCompanyDetails = async () => {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center ml-4">
+                    <div className="flex items-center gap-1 ml-4">
                       {typeof entry.cv === "string" && (
                         <a
                           href={entry.cv}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="mr-2 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
+                          className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
                         >
                           View Document
                         </a>
+                      )}
+                      {entry._id && typeof entry.cv === "string" && (
+                        <label className="cursor-pointer">
+                          <span className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-lg hover:shadow-md transition-all duration-200 inline-flex" title="Replace (archive old to Library)">
+                            <ArrowPathIcon className="h-4 w-4" />
+                          </span>
+                          <input
+                            type="file"
+                            className="sr-only"
+                            onChange={(e) => {
+                              if (e.target.files[0]) {
+                                handleReplacePersonDocument(section, entry._id, 'cv', e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
                       )}
                       <button
                         onClick={() => {
@@ -5003,7 +5460,7 @@ const handleSaveCompanyDetails = async () => {
                         className={`p-1.5 text-red-400 hover:text-white hover:bg-red-500 rounded-lg hover:shadow-md transition-all duration-200 ${
                           submitting ? "opacity-50 cursor-not-allowed" : ""
                         }`}
-                        title="Delete document permanently"
+                        title="Delete permanently"
                       >
                         <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                       </button>
@@ -5296,17 +5753,25 @@ const renderCompanyDetailsSection = () => {
     return "border-green-500 bg-green-50"; // Valid
   };
 
-  // Enhanced renderDocumentSection with fixed positioning
-  const renderDocumentSection = (documentField, expiryField, label, fieldName) => {
+  // Enhanced renderDocumentSection with fixed positioning and highlight support
+  const renderDocumentSection = (documentField, expiryField, label, fieldName, sectionId) => {
     const hasDocument = companyDetails[documentField];
     const expiryDate = companyDetails[expiryField];
     const isExpired = isDocumentExpired(expiryDate);
     const expiryStyle = getExpiryStatusStyle(expiryDate);
+    const isHighlighted = highlightedField === sectionId;
 
     return (
-      <div className={`grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start p-3 sm:p-4 rounded-lg shadow-sm border-2 ${
-        isExpired ? 'border-red-300 bg-red-50' : 'bg-yellow-50 border-yellow-200'
-      }`}>
+      <div
+        id={sectionId}
+        className={`grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start p-3 sm:p-4 rounded-lg shadow-sm border-2 transition-all duration-500 ${
+          isHighlighted
+            ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse'
+            : isExpired
+            ? 'border-red-300 bg-red-50'
+            : 'bg-yellow-50 border-yellow-200'
+        }`}
+      >
         
         {/* Document Upload Section - Takes 3 columns on large screens */}
         <div className="lg:col-span-3">
@@ -5793,9 +6258,16 @@ const renderCompanyDetailsSection = () => {
           />
         </div>
 
-        <div className="space-y-1">
+        <div
+          id="expiry-field-tradeLicense"
+          className={`space-y-1 p-2 rounded-lg transition-all duration-500 ${
+            highlightedField === 'expiry-field-tradeLicense'
+              ? 'bg-yellow-100 ring-2 ring-yellow-400 shadow-lg animate-pulse'
+              : ''
+          }`}
+        >
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Expiry Date
+            Trade License Expiry Date
           </label>
           <div className="flex items-center space-x-2">
             <input
@@ -5839,21 +6311,30 @@ const renderCompanyDetailsSection = () => {
         {/* Company Computer Card */}
         {renderDocumentSection(
           "companyComputerCard",
-          "companyComputerCardExpiry", 
+          "companyComputerCardExpiry",
           "Company Computer Card",
-          "companyComputerCard"
+          "companyComputerCard",
+          "expiry-field-companyComputerCard"
         )}
 
         {/* Tax Card */}
         {renderDocumentSection(
           "taxCard",
           "taxCardExpiry",
-          "Tax Card", 
-          "taxCard"
+          "Tax Card",
+          "taxCard",
+          "expiry-field-taxCard"
         )}
 
         {/* CR Extract - Special handling for multiple files */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
+        <div
+          id="expiry-field-crExtract"
+          className={`grid grid-cols-1 lg:grid-cols-5 gap-4 items-start p-4 rounded-lg shadow-sm border transition-all duration-500 ${
+            highlightedField === 'expiry-field-crExtract'
+              ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-xl animate-pulse border-yellow-400'
+              : 'bg-yellow-50 border-yellow-200'
+          }`}
+        >
           <div className="lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               CR Extract
@@ -6071,7 +6552,8 @@ const renderCompanyDetailsSection = () => {
           "scopeOfLicense",
           "scopeOfLicenseExpiry",
           "Scope of License",
-          "scopeOfLicense"
+          "scopeOfLicense",
+          "expiry-field-scopeOfLicense"
         )}
 
         {/* Article of Associate */}
@@ -6282,11 +6764,11 @@ const renderCompanyDetailsSection = () => {
           </div>
         </div>
 
-        {/* Company Memo - Multiple files support */}
+        {/* Other Documents - Multiple files support */}
 <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-200">
   <div className="lg:col-span-5">
     <label className="block text-sm font-medium text-gray-700 mb-2">
-      Company Memo (Max 5 files)
+      Other Documents (Max 10 files)
     </label>
     <div
       className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
@@ -6305,7 +6787,7 @@ const renderCompanyDetailsSection = () => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
-        const files = Array.from(e.dataTransfer.files).slice(0, 5);
+        const files = Array.from(e.dataTransfer.files).slice(0, 10);
         if (files.length > 0) {
           setCompanyMemoFiles(files);
         }
@@ -6323,7 +6805,7 @@ const renderCompanyDetailsSection = () => {
                 <div className="flex items-center flex-1 min-w-0">
                   <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2 flex-shrink-0" />
                   <span className="text-xs text-gray-900 font-medium truncate">
-                    {doc.fileName || `Company Memo ${index + 1}`}
+                    {doc.fileName || `Document ${index + 1}`}
                   </span>
                   {doc.uploadedAt && (
                     <span className="text-xs text-gray-400 ml-2">
@@ -6372,7 +6854,7 @@ const renderCompanyDetailsSection = () => {
                     accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                     onChange={(e) => {
                       const newFiles = Array.from(e.target.files);
-                      const filesToAdd = newFiles.slice(0, 5);
+                      const filesToAdd = newFiles.slice(0, 10);
                       setCompanyMemoFiles(filesToAdd);
                       // Clear existing files when replacing all
                       const allExistingIds = companyDetails.companyMemo.map(doc => doc._id);
@@ -6421,12 +6903,12 @@ const renderCompanyDetailsSection = () => {
       )}
 
       {/* Upload area */}
-      {editingCompanyDetails && companyMemoFiles.length < 5 && (
+      {editingCompanyDetails && companyMemoFiles.length < 10 && (
         <div className="text-center py-3">
           <span className="text-xs text-gray-500 block mb-2">
             {companyMemoFiles.length === 0
-              ? "(Upload 1-5 documents)"
-              : `(Upload ${5 - companyMemoFiles.length} more document${5 - companyMemoFiles.length !== 1 ? 's' : ''})`}
+              ? "(Upload 1-10 documents)"
+              : `(Upload ${10 - companyMemoFiles.length} more document${10 - companyMemoFiles.length !== 1 ? 's' : ''})`}
           </span>
           <label className="cursor-pointer block text-xs font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
             Upload{" "}
@@ -6440,7 +6922,7 @@ const renderCompanyDetailsSection = () => {
               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               onChange={(e) => {
                 const newFiles = Array.from(e.target.files);
-                const remainingSlots = 5 - companyMemoFiles.length;
+                const remainingSlots = 10 - companyMemoFiles.length;
                 const filesToAdd = newFiles.slice(0, remainingSlots);
                 setCompanyMemoFiles((prev) => [...prev, ...filesToAdd]);
               }}
@@ -6523,6 +7005,8 @@ const renderCompanyDetailsSection = () => {
         return "bg-red-50 text-red-700 ring-red-600/20";
       case "pending":
         return "bg-yellow-50 text-yellow-700 ring-yellow-600/20";
+      case "fully_completed_bra":
+        return "bg-blue-50 text-blue-700 ring-blue-600/20";
       case "corrected":
         return "bg-purple-50 text-purple-700 ring-purple-600/20";
       case "cancelled":
@@ -6540,6 +7024,8 @@ const renderCompanyDetailsSection = () => {
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
       case "rejected":
         return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
+      case "fully_completed_bra":
+        return <ClockIcon className="h-5 w-5 text-blue-500" />;
       case "pending":
       case "in-progress":
         return <ClockIcon className="h-5 w-5 text-yellow-500" />;
@@ -6550,44 +7036,127 @@ const renderCompanyDetailsSection = () => {
 
   // Timeline utility functions
   const getTimelineStatusIcon = (status) => {
-    switch (status?.toLowerCase()) {
+    const s = status?.toLowerCase();
+    switch (s) {
       case "created":
-      case "pending":
-        return <ClockIcon className="h-4 w-4 text-blue-500" />;
-      case "approved":
-      case "completed":
+        return <DocumentTextIcon className="h-4 w-4 text-white" />;
       case "screening_done":
-        return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
+      case "om_completed":
+      case "kyc_lmro_approved":
+      case "kyc_dlmro_approved":
+      case "kyc_ceo_approved":
+      case "bra_lmro_approved":
+      case "bra_dlmro_approved":
+      case "bra_ceo_approved":
+      case "completed":
+      case "approved":
+        return <CheckCircleIcon className="h-4 w-4 text-white" />;
       case "rejected":
-        return <ExclamationTriangleIcon className="h-4 w-4 text-red-500" />;
+      case "cancelled":
+      case "kyc_rejected":
+      case "bra_rejected":
+        return <XCircleIcon className="h-4 w-4 text-white" />;
       case "corrected":
       case "updated":
-        return <PencilIcon className="h-4 w-4 text-yellow-500" />;
+        return <PencilIcon className="h-4 w-4 text-white" />;
+      case "assigned":
+        return <UserGroupIcon className="h-4 w-4 text-white" />;
+      case "fully_completed_bra":
+      case "kyc_pending":
+      case "bra_pending":
+      case "pending":
+        return <ClockIcon className="h-4 w-4 text-white" />;
       default:
-        return <ClockIcon className="h-4 w-4 text-gray-400" />;
+        if (s && (s.includes("_updated") || s.includes("_uploaded"))) {
+          return <PencilIcon className="h-4 w-4 text-white" />;
+        }
+        if (s && s.includes("_deleted")) {
+          return <TrashIcon className="h-4 w-4 text-white" />;
+        }
+        return <ClockIcon className="h-4 w-4 text-white" />;
     }
   };
 
+  const getTimelineStatusClass = (status) => {
+    const s = status?.toLowerCase();
+    if (s === "rejected" || s === "cancelled" || s?.includes("_rejected") || s?.includes("_deleted")) {
+      return "bg-red-500";
+    }
+    if (s === "created" || s === "pending" || s?.includes("_pending") || s === "fully_completed_bra") {
+      return "bg-blue-500";
+    }
+    if (s?.includes("_approved") || s?.includes("_completed") || s === "approved" || s === "completed" || s === "screening_done" || s === "om_completed") {
+      return "bg-green-500";
+    }
+    if (s === "corrected" || s === "updated" || s?.includes("_updated") || s?.includes("_uploaded")) {
+      return "bg-yellow-500";
+    }
+    return "bg-gray-400";
+  };
+
   const getTimelineTitle = (status) => {
-    switch (status?.toLowerCase()) {
+    const s = status?.toLowerCase();
+    switch (s) {
       case "created":
-        return "Service Created";
+        return "Job Created";
       case "pending":
         return "Pending Review";
       case "approved":
-        return "Approved";
-      case "completed":
-        return "Service Completed";
+        return "Job Approved";
+      case "assigned":
+        return "Job Assigned";
       case "screening_done":
         return "Screening Completed";
       case "rejected":
-        return "Service Rejected";
+        return "Job Rejected";
       case "corrected":
-        return "Service Corrected";
+        return "Job Resubmitted";
+      case "cancelled":
+        return "Job Cancelled";
       case "updated":
-        return "Details Updated";
+        return "Job Updated";
+      case "om_completed":
+        return "Operation Management Completed";
+      case "kyc_pending":
+        return "KYC Process Started";
+      case "kyc_lmro_approved":
+        return "KYC LMRO Approved";
+      case "kyc_dlmro_approved":
+        return "KYC DLMRO Approved";
+      case "kyc_ceo_approved":
+        return "KYC CEO Approved";
+      case "kyc_rejected":
+        return "KYC Rejected";
+      case "bra_pending":
+        return "BRA Process Started";
+      case "bra_lmro_approved":
+        return "BRA LMRO Approved";
+      case "bra_dlmro_approved":
+        return "BRA DLMRO Approved";
+      case "bra_ceo_approved":
+        return "BRA CEO Approved";
+      case "bra_rejected":
+        return "BRA Rejected";
+      case "completed":
+        return "Service Completed";
+      case "fully_completed_bra":
+        return "Processing";
       default:
-        return status?.charAt(0)?.toUpperCase() + status?.slice(1) || "Unknown";
+        if (s && s.includes("director")) return "Director Details Updated";
+        if (s && s.includes("shareholder")) return "Shareholder Details Updated";
+        if (s && s.includes("secretary")) return "Secretary Details Updated";
+        if (s && s.includes("sef")) return "SEF Details Updated";
+        if (s && s.includes("company")) return "Company Details Updated";
+        if (s && s.includes("engagement")) return "Engagement Letter Updated";
+        if (s && s.includes("ubo")) return "UBO Document Updated";
+        if (s && s.includes("cdd")) return "CDD Document Updated";
+        if (s && s.includes("_updated")) {
+          return s.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+        }
+        if (s && s.includes("_deleted")) {
+          return s.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+        }
+        return s ? s.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()) : "Processing";
     }
   };
 
@@ -6769,7 +7338,7 @@ const renderCompanyDetailsSection = () => {
               )} shadow-sm`}
             >
               {getStatusIcon(job.status)}
-              <span className="ml-2 capitalize">{job.status}</span>
+              <span className="ml-2 capitalize">{job.status === "fully_completed_bra" ? "Processing" : job.status}</span>
             </span>
             {/* Add Export Button */}
             <button
@@ -6862,6 +7431,60 @@ const renderCompanyDetailsSection = () => {
                         <p className="text-sm font-bold text-gray-900 capitalize">
                           {job.status}
                         </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3 p-3 rounded-xl bg-purple-50/50 border border-purple-100">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <DocumentTextIcon className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-500">
+                          CR Number
+                        </p>
+                        {editingCrNo ? (
+                          <div className="flex items-center space-x-2 mt-1">
+                            <input
+                              type="text"
+                              value={crNoValue}
+                              onChange={(e) => setCrNoValue(e.target.value)}
+                              className="flex-1 text-sm border border-purple-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              placeholder="Enter CR Number"
+                              autoFocus
+                            />
+                            <button
+                              onClick={handleSaveCrNo}
+                              disabled={savingCrNo}
+                              className="p-1 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
+                            >
+                              <CheckIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingCrNo(false);
+                                setCrNoValue(job.clientId?.crNo || '');
+                              }}
+                              className="p-1 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <p className="text-sm font-bold text-gray-900">
+                              {job.clientId?.crNo || '-'}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setCrNoValue(job.clientId?.crNo || '');
+                                setEditingCrNo(true);
+                              }}
+                              className="p-1 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
+                              title="Edit CR Number"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -6961,13 +7584,14 @@ const renderCompanyDetailsSection = () => {
             {/* Person Details Form */}
             {!["cancelled"].includes(job.status) && (
               <motion.div
+                id="tab-section-container"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
                 className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300"
               >
                 <div className="px-6 py-8">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100">
+                  <h2 id="tab-section-company" className="text-2xl font-bold text-gray-900 mb-6 pb-3 border-b border-gray-100">
                     Person Details
                   </h2>
 
@@ -7334,26 +7958,39 @@ const renderCompanyDetailsSection = () => {
                   )}
 
                   {/* Person Details Content */}
-                  {activeTab === "director" &&
-                    renderPersonDetailsWithAutoSuggest(
-                      "director",
-                      directorDetails,
-                      setDirectorDetails
-                    )}
-                  {activeTab === "shareholder" &&
-                    renderPersonDetails(
-                      "shareholder",
-                      shareholderDetails,
-                      setShareholderDetails
-                    )}
-                  {activeTab === "secretary" &&
-                    renderPersonDetails(
-                      "secretary",
-                      secretaryDetails,
-                      setSecretaryDetails
-                    )}
-                  {activeTab === "sef" &&
-                    renderPersonDetails("sef", sefDetails, setSefDetails)}
+                  {activeTab === "director" && (
+                    <div id="tab-section-director">
+                      {renderPersonDetailsWithAutoSuggest(
+                        "director",
+                        directorDetails,
+                        setDirectorDetails
+                      )}
+                    </div>
+                  )}
+                  {activeTab === "shareholder" && (
+                    <div id="tab-section-shareholder">
+                      {renderPersonDetails(
+                        "shareholder",
+                        shareholderDetails,
+                        setShareholderDetails
+                      )}
+                    </div>
+                  )}
+                  {activeTab === "secretary" && (
+                    <div id="tab-section-secretary">
+                      {renderPersonDetails(
+                        "secretary",
+                        secretaryDetails,
+                        setSecretaryDetails
+                      )}
+                    </div>
+                  )}
+                  {activeTab === "sef" && (
+                    <div id="tab-section-sef">
+                      {renderPersonDetails("sef", sefDetails, setSefDetails)}
+                    </div>
+                  )}
+
                 </div>
               </motion.div>
             )}
@@ -7522,66 +8159,85 @@ companyDetails.engagementLetters.length > 0 ? (
     </div>
 
     {companyDetails.engagementLetters.map((letter, index) => {
-      console.log('Engagement Letter Data:', letter);
-      console.log('Available fields:', Object.keys(letter));
-      console.log('fileName:', letter.fileName);
-      console.log('filename:', letter.filename);  
-      console.log('fileUrl:', letter.fileUrl);
       return (
       <div
         key={letter._id || index}
-        className="flex items-center justify-between p-3 sm:p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow gap-3"
+        className="p-3 sm:p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
       >
-        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-          <DocumentTextIcon className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600 flex-shrink-0" />
-          <div className="min-w-0 flex-1">
-            <span className="text-sm font-bold text-gray-900 block truncate">
-              {letter.fileName || 
-               letter.filename || 
+        <div className="flex items-start space-x-3">
+          <DocumentTextIcon className="h-5 w-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-gray-900 break-words">
+              {letter.fileName ||
+               letter.filename ||
                letter.originalname ||
                letter.name ||
                (letter.fileUrl && letter.fileUrl.split('/').pop()) ||
                `Engagement Letter ${index + 1}`}
-            </span>
+            </p>
             {letter.description && (
-              <p className="text-xs text-gray-500 truncate">
+              <p className="text-xs text-gray-500 mt-0.5">
                 {letter.description}
               </p>
             )}
             {letter.uploadedAt && (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 mt-0.5">
                 {new Date(letter.uploadedAt).toLocaleString()}
               </p>
             )}
-          </div>
-        </div>
 
-        <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
-          <a
-            href={letter.fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 rounded-lg shadow-sm border border-indigo-200 hover:shadow-md transition-all duration-200"
-          >
-            <span className="hidden sm:inline">View Document</span>
-            <span className="sm:hidden">View</span>
-          </a>
-          
-          {/* Delete Button */}
-          <button
-            onClick={() => handleDeleteEngagementLetter(letter._id, letter.fileName)}
-            disabled={submitting}
-            className={`px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium text-red-600 hover:text-white hover:bg-red-600 bg-red-50 rounded-lg shadow-sm border border-red-200 hover:shadow-md transition-all duration-200 ${
-              submitting ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-            title="Delete engagement letter"
-          >
-            {submitting ? (
-              <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></span>
-            ) : (
-              <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-            )}
-          </button>
+            <div className="flex items-center flex-wrap gap-2 mt-3">
+              <a
+                href={letter.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 rounded-lg border border-indigo-200 hover:shadow-md transition-all duration-200"
+              >
+                <EyeIcon className="h-3.5 w-3.5 mr-1" />
+                View
+              </a>
+
+              <label
+                className={`inline-flex items-center px-3 py-1.5 text-xs font-medium text-amber-600 hover:text-white hover:bg-amber-600 bg-amber-50 rounded-lg border border-amber-200 hover:shadow-md transition-all duration-200 cursor-pointer ${
+                  submitting ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                title="Replace (old version will be archived)"
+              >
+                <ArrowPathIcon className="h-3.5 w-3.5 mr-1" />
+                Replace
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept=".pdf,.doc,.docx"
+                  disabled={submitting}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleReplaceEngagementLetter(letter._id, letter.fileName, e.target.files[0]);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+
+              <button
+                onClick={() => handleDeleteEngagementLetter(letter._id, letter.fileName)}
+                disabled={submitting}
+                className={`inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-600 hover:text-white hover:bg-red-600 bg-red-50 rounded-lg border border-red-200 hover:shadow-md transition-all duration-200 ${
+                  submitting ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                title="Delete permanently"
+              >
+                {submitting ? (
+                  <span className="inline-block animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-red-600"></span>
+                ) : (
+                  <>
+                    <XMarkIcon className="h-3.5 w-3.5 mr-1" />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       );
@@ -7833,7 +8489,7 @@ companyDetails.engagementLetters.length > 0 ? (
                       {[...Array(3)].map((_, index) => (
                         <div key={index} className="animate-pulse">
                           <div className="flex items-start space-x-3">
-                            <div className="h-8 w-8 bg-gray-200 rounded-full"></div>
+                            <div className="h-10 w-10 bg-gray-200 rounded-full"></div>
                             <div className="flex-1 space-y-2">
                               <div className="h-4 bg-gray-200 rounded w-3/4"></div>
                               <div className="h-3 bg-gray-200 rounded w-1/2"></div>
@@ -7843,48 +8499,58 @@ companyDetails.engagementLetters.length > 0 ? (
                       ))}
                     </div>
                   ) : timeline.length > 0 ? (
-                    <div className="flow-root">
-                      <ul className="-mb-8">
-                        {timeline.map((event, index) => (
-                          <li key={index}>
-                            <div className="relative pb-8">
-                              {index !== timeline.length - 1 ? (
-                                <span
-                                  className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200"
-                                  aria-hidden="true"
-                                />
-                              ) : null}
-                              <div className="relative flex items-start space-x-3">
-                                <div className="relative">
-                                  <div className="h-8 w-8 bg-gray-50 rounded-full border-2 border-gray-200 flex items-center justify-center">
-                                    {getTimelineStatusIcon(event.status)}
-                                  </div>
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {getTimelineTitle(event.status)}
-                                    </p>
-                                    {event.description && (
-                                      <p className="text-sm text-gray-500 mt-1">
-                                        {event.description}
-                                      </p>
-                                    )}
-                                    <p className="text-xs text-gray-400 mt-1">
-                                      {new Date(event.timestamp).toLocaleString()}
-                                      {event.updatedBy?.name && (
-                                        <span className="ml-2">
-                                          by {event.updatedBy.name}
-                                        </span>
-                                      )}
-                                    </p>
-                                  </div>
-                                </div>
+                    <div className="space-y-4">
+                      {timeline.map((event, index) => (
+                        <div
+                          key={index}
+                          className="relative bg-gradient-to-r from-gray-50 to-white rounded-xl p-4 border border-gray-100 hover:shadow-md transition-all duration-200"
+                        >
+                          <div className="flex items-start space-x-4">
+                            <div className={`flex-shrink-0 h-10 w-10 rounded-full ${getTimelineStatusClass(event.status)} flex items-center justify-center shadow-lg`}>
+                              {getTimelineStatusIcon(event.status)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {event.description ? event.description : getTimelineTitle(event.status)}
+                                </p>
+                                <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
+                                  {new Date(event.timestamp).toLocaleDateString(undefined, {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </span>
+                              </div>
+                              {event.description && (
+                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                  {event.updatedBy?.name ? `by ${event.updatedBy.name}` : event.updatedBy?.email ? `by ${event.updatedBy.email}` : ""}
+                                </p>
+                              )}
+                              <div className="flex items-center mt-2 text-xs text-gray-500">
+                                <ClockIcon className="h-3.5 w-3.5 mr-1" />
+                                <span>
+                                  {new Date(event.timestamp).toLocaleTimeString(undefined, {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    timeZoneName: "short",
+                                  })}
+                                </span>
+                                {event.updatedBy?.name && (
+                                  <>
+                                    <span className="mx-2">•</span>
+                                    <UserIcon className="h-3.5 w-3.5 mr-1" />
+                                    <span>{event.updatedBy.name}</span>
+                                  </>
+                                )}
                               </div>
                             </div>
-                          </li>
-                        ))}
-                      </ul>
+                          </div>
+                          {index !== timeline.length - 1 && (
+                            <div className="absolute left-9 top-14 bottom-0 w-0.5 bg-gradient-to-b from-gray-200 to-transparent h-4" />
+                          )}
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <div className="text-center py-8">
@@ -8097,6 +8763,7 @@ companyDetails.engagementLetters.length > 0 ? (
           </div>
         </div>
       </div>
+
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // COMPLETE FIXED: ViewAllExpiringJobsModal.jsx - Shows ALL expired documents per job
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment } from "react";
 import {
@@ -20,6 +21,8 @@ import {
 import axiosInstance from "../utils/axios";
 
 const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
+  const navigate = useNavigate();
+
   // Ensure all state values are always arrays
   const [expiringJobs, setExpiringJobs] = useState(
     Array.isArray(initialJobs) ? initialJobs : []
@@ -314,31 +317,46 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
       om_completed: "bg-purple-100 text-purple-800",
       kyc_pending: "bg-indigo-100 text-indigo-800",
       bra_pending: "bg-pink-100 text-pink-800",
-      fully_completed_bra: "bg-green-100 text-green-800",
+      fully_completed_bra: "bg-blue-100 text-blue-800",
     };
     return statusColors[status] || "bg-gray-100 text-gray-800";
   };
 
+  const getStatusLabel = (status) => {
+    if (status === "fully_completed_bra") return "PROCESSING";
+    return (status || "unknown").replace("_", " ").toUpperCase();
+  };
+
   const exportToExcel = async () => {
     try {
-      const response = await axiosInstance.get(
-        "/operations/dashboard/expiring-jobs/export",
-        {
-          responseType: "blob",
-        }
-      );
+      const params = new URLSearchParams();
+      if (urgencyFilter !== "all") {
+        params.append("urgency", urgencyFilter);
+      }
+      if (searchTerm) {
+        params.append("search", searchTerm);
+      }
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const queryString = params.toString();
+      const url = `/operations/dashboard/expiring-jobs/export${queryString ? `?${queryString}` : ""}`;
+
+      const response = await axiosInstance.get(url, {
+        responseType: "blob",
+      });
+
+      const downloadUrl = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement("a");
-      link.href = url;
+      link.href = downloadUrl;
+
+      const filterSuffix = urgencyFilter !== "all" ? `-${urgencyFilter}` : "";
       link.setAttribute(
         "download",
-        `all-expiring-documents-${new Date().toISOString().split("T")[0]}.xlsx`
+        `expiring-documents${filterSuffix}-${new Date().toISOString().split("T")[0]}.xlsx`
       );
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error("Error exporting data:", error);
       alert("Failed to export data. Please try again.");
@@ -382,6 +400,11 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
         sub: `Expires on ${new Date(job.expiryDate).toLocaleDateString()}`,
       };
     }
+  };
+
+  const handleNavigateToJob = (jobId, expiryType) => {
+    onClose();
+    navigate(`/job/${jobId}?expiryType=${encodeURIComponent(expiryType || '')}`);
   };
 
   // FIXED: Calculate urgency counts with unique jobs tracking
@@ -495,7 +518,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
                   {/* ADDED: Additional stats row */}
                   <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-200">
                     <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                      <div className="w-3 h-3 bg-rose-800 rounded-full"></div>
                       <span className="text-sm font-medium text-gray-700">
                         Unique Jobs: {urgencyCounts.uniqueJobs}
                       </span>
@@ -594,8 +617,9 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
 
                         return (
                           <div
-                            key={`${job.jobId}-${job.expiryType}-${index}`} // Better key for multiple docs per job
-                            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all duration-200 hover:border-blue-300"
+                            key={`${job.jobId}-${job.expiryType}-${index}`}
+                            onClick={() => handleNavigateToJob(job.jobId, job.expiryType)}
+                            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all duration-200 hover:border-blue-300 cursor-pointer"
                           >
                             <div className="flex items-start justify-between">
                               {/* Job Info */}
@@ -652,7 +676,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
 
                                     {/* ENHANCED: Display document type prominently */}
                                     <div className="mt-2 flex items-center space-x-4">
-                                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-rose-100 text-rose-800 rounded-full">
                                         📄 {job.expiryType || "Unknown"}
                                       </span>
                                       {job.companyName &&
@@ -680,9 +704,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
                                     job.status || "unknown"
                                   )}`}
                                 >
-                                  {(job.status || "unknown")
-                                    .replace("_", " ")
-                                    .toUpperCase()}
+                                  {getStatusLabel(job.status)}
                                 </span>
                                 <div
                                   className={`text-right ${urgencyConfig.textColor}`}

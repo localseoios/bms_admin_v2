@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import {
   MagnifyingGlassIcon,
   DocumentTextIcon,
@@ -11,7 +11,11 @@ import {
   UserIcon,
   EnvelopeIcon,
   BuildingOfficeIcon,
+  TrashIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
+import { Dialog, Transition } from "@headlessui/react";
+import { Fragment } from "react";
 import axiosInstance from "../../../utils/axios";
 
 function AllClients() {
@@ -28,7 +32,15 @@ function AllClients() {
     totalItems: 0,
     itemsPerPage: 10,
   });
+  const [stats, setStats] = useState({
+    totalClients: 0,
+    totalActiveJobs: 0,
+    totalEngagementLetters: 0,
+  });
   const [sortBy, setSortBy] = useState("latest"); // Sort options: latest, name, jobCount
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Debounce search query to avoid too many API calls
   useEffect(() => {
@@ -70,10 +82,15 @@ function AllClients() {
 
       console.log("API Response:", response.data);
       setClients(response.data.clients || []);
-      
+
       // Only update pagination if we're not searching (to maintain normal pagination)
       if (!debouncedSearchQuery) {
         setPagination(response.data.pagination || pagination);
+      }
+
+      // Update stats from backend
+      if (response.data.stats) {
+        setStats(response.data.stats);
       }
       
       setError(null);
@@ -491,6 +508,35 @@ const exportAllJobsQFC = async () => {
     }
   };
 
+  // Handle delete client
+  const handleDeleteClient = (client) => {
+    setSelectedClient(client);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteClient = async () => {
+    if (!selectedClient) return;
+
+    setIsDeleting(true);
+    try {
+      await axiosInstance.delete(`/clients/${selectedClient.gmail}`);
+
+      setClients((prevClients) =>
+        prevClients.filter((client) => client._id !== selectedClient._id)
+      );
+
+      setIsDeleteModalOpen(false);
+      setSelectedClient(null);
+
+      fetchClients();
+    } catch (err) {
+      console.error("Error deleting client:", err);
+      setError(err.response?.data?.message || "Failed to delete client");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Handle client selection
   const handleViewClient = (gmail) => {
     navigate(`/clients/${gmail}`);
@@ -605,7 +651,7 @@ const exportAllJobsQFC = async () => {
                   {debouncedSearchQuery ? "Found Clients" : "Total Clients"}
                 </p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {debouncedSearchQuery ? filteredAndSortedClients.length : (pagination.totalItems || clients.length)}
+                  {debouncedSearchQuery ? filteredAndSortedClients.length : stats.totalClients}
                 </p>
               </div>
             </div>
@@ -619,10 +665,7 @@ const exportAllJobsQFC = async () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Active Jobs</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {(debouncedSearchQuery ? filteredAndSortedClients : clients).reduce(
-                    (sum, client) => sum + (client.activeJobCount || 0),
-                    0
-                  )}
+                  {stats.totalActiveJobs}
                 </p>
               </div>
             </div>
@@ -638,10 +681,7 @@ const exportAllJobsQFC = async () => {
                   Engagement Letters
                 </p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {(debouncedSearchQuery ? filteredAndSortedClients : clients).filter((client) => 
-                    client.engagementLetter && 
-                    (Array.isArray(client.engagementLetter) ? client.engagementLetter.length > 0 : client.engagementLetter)
-                  ).length}
+                  {stats.totalEngagementLetters}
                 </p>
               </div>
             </div>
@@ -865,6 +905,18 @@ const exportAllJobsQFC = async () => {
                             >
                               <EyeIcon className="h-5 w-5" />
                             </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClient(client);
+                              }}
+                              className="text-red-600 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors duration-200"
+                              title="Delete Client"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </motion.button>
                           </div>
                         </td>
                       </motion.tr>
@@ -1039,6 +1091,110 @@ const exportAllJobsQFC = async () => {
             </div>
           )}
         </motion.div>
+
+        {/* Delete Confirmation Modal */}
+        <Transition appear show={isDeleteModalOpen} as={Fragment}>
+          <Dialog
+            as="div"
+            className="fixed inset-0 z-50 overflow-y-auto"
+            onClose={() => setIsDeleteModalOpen(false)}
+          >
+            <div className="min-h-screen px-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0"
+                enterTo="opacity-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100"
+                leaveTo="opacity-0"
+              >
+                <Dialog.Overlay className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
+              </Transition.Child>
+
+              <span
+                className="inline-block h-screen align-middle"
+                aria-hidden="true"
+              >
+                &#8203;
+              </span>
+
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl">
+                  <div className="flex items-center space-x-3 text-red-600">
+                    <ExclamationTriangleIcon className="h-6 w-6" />
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6"
+                    >
+                      Delete Client
+                    </Dialog.Title>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-sm text-gray-500">
+                      Are you sure you want to delete{" "}
+                      <span className="font-semibold text-gray-700">
+                        {selectedClient?.name}
+                      </span>
+                      ? This action cannot be undone.
+                    </p>
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-700 font-medium">
+                        Warning: This will also permanently delete:
+                      </p>
+                      <ul className="mt-2 text-sm text-red-600 list-disc list-inside">
+                        <li>All jobs associated with this client ({selectedClient?.jobCount || 0} jobs)</li>
+                        <li>All documents and related data</li>
+                        <li>All KYC/BRA records</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="button"
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                      onClick={() => setIsDeleteModalOpen(false)}
+                      disabled={isDeleting}
+                    >
+                      Cancel
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="button"
+                      className={`px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200 flex items-center ${
+                        isDeleting ? "opacity-70 cursor-not-allowed" : ""
+                      }`}
+                      onClick={confirmDeleteClient}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? (
+                        <>
+                          <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        "Delete Client"
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+              </Transition.Child>
+            </div>
+          </Dialog>
+        </Transition>
       </div>
     </div>
   );

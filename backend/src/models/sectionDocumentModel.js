@@ -56,9 +56,8 @@ const sectionDocumentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for efficient queries
+// Indexes for efficient queries (documentId already indexed via unique: true)
 sectionDocumentSchema.index({ sectionId: 1, clientId: 1, createdAt: -1 });
-sectionDocumentSchema.index({ documentId: 1 });
 sectionDocumentSchema.index({ clientId: 1 });
 
 module.exports = mongoose.model('SectionDocument', sectionDocumentSchema);

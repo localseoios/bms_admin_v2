@@ -59,6 +59,15 @@ const userSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    signatureImage: {
+      fileUrl: { type: String, default: null },
+      cloudinaryId: { type: String, default: null },
+      uploadedAt: { type: Date },
+      uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    },
   },
   { timestamps: true }
 );

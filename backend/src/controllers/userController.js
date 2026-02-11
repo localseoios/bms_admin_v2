@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { sendPasswordResetEmail, send2FAEmail } = require("../services/emailService");
+const { uploadToCloudinary, deleteFromCloudinary } = require("../services/fileUploadService");
+const fs = require("fs");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "1d" });
@@ -75,28 +77,13 @@ const loginUser = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email });
   
   if (!user) {
-    console.log("User not found in database");
     res.status(400);
     throw new Error("User not found, please signup");
   }
-  
-  // Log user details and password hash for debugging
-  console.log("User found:", {
-    id: user._id,
-    email: user.email,
-    roleId: user.role,
-    // Show password hash length and format for diagnostic purposes
-    passwordHashLength: user.password.length,
-    passwordHashStart: user.password.substring(0, 10) + '...'
-  });
 
-  // Populate the role
   await user.populate("role");
-  console.log("Role populated:", user.role ? user.role.name : "Role not found");
 
-  // Standard password verification
   const passwordIsCorrect = await bcrypt.compare(password, user.password);
-  console.log("Password verification:", passwordIsCorrect ? "Successful" : "Failed");
 
   if (passwordIsCorrect) {
     // Generate 2FA code
@@ -109,21 +96,27 @@ const loginUser = asyncHandler(async (req, res) => {
     user.isLoginPending = true;
     await user.save();
 
-    // Send 2FA email (with fallback for development)
-    const emailResult = await send2FAEmail(user.email, twoFACode, user.name);
-
-    if (emailResult.success) {
-      res.status(200).json({
-        success: true,
-        requiresTwoFA: true,
-        message: "Verification code sent to your email",
-        email: user.email,
-        userId: user._id
+    // Send 2FA email in background (non-blocking for faster response)
+    send2FAEmail(user.email, twoFACode, user.name)
+      .then(result => {
+        if (result.success) {
+          console.log(`2FA email sent successfully to ${user.email}`);
+        } else {
+          console.error(`Failed to send 2FA email to ${user.email}:`, result.error);
+        }
+      })
+      .catch(err => {
+        console.error(`2FA email error for ${user.email}:`, err.message);
       });
-    } else {
-      res.status(500);
-      throw new Error("Failed to send verification email. Please try again.");
-    }
+
+    // Respond immediately without waiting for email
+    res.status(200).json({
+      success: true,
+      requiresTwoFA: true,
+      message: "Verification code sent to your email",
+      email: user.email,
+      userId: user._id
+    });
   } else {
     res.status(400);
     throw new Error("Invalid email or password");
@@ -254,13 +247,19 @@ const updateUser = asyncHandler(async (req, res) => {
 
 // Delete a user
 const deleteUser = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const user = await User.findById(req.params.id).populate("role");
   if (!user) {
     res.status(404);
     throw new Error("User not found");
   }
-  await user.remove();
-  res.status(200).json({ message: "User deleted" });
+
+  if (user.role && user.role.name && user.role.name.toLowerCase() === "admin") {
+    res.status(403);
+    throw new Error("Cannot delete admin users");
+  }
+
+  await User.findByIdAndDelete(req.params.id);
+  res.status(200).json({ message: "User deleted successfully" });
 });
 
 // Reset user password (admin only)
@@ -288,9 +287,7 @@ const resetUserPassword = asyncHandler(async (req, res) => {
   
   // Save the user (this will trigger the pre-save hook to hash the password correctly)
   await user.save();
-  
-  console.log(`Password reset successful for user: ${user.email}`);
-  
+
   res.status(200).json({ 
     message: "Password reset successful",
     user: {
@@ -571,6 +568,145 @@ const verify2FA = asyncHandler(async (req, res) => {
   res.status(200).json(response);
 });
 
+const getUsersByServiceType = asyncHandler(async (req, res) => {
+  const { serviceName } = req.params;
+  const Service = require("../models/serviceModel");
+
+  const service = await Service.findOne({ name: serviceName, status: "active" }).populate("roles");
+
+  if (!service) {
+    return res.status(404).json({ message: "Service not found" });
+  }
+
+  if (!service.roles || service.roles.length === 0) {
+    return res.status(200).json([]);
+  }
+
+  const roleIds = service.roles.map((role) => role._id);
+
+  const users = await User.find({ role: { $in: roleIds } })
+    .populate("role", "name")
+    .select("_id name email role status")
+    .sort({ name: 1 });
+
+  res.status(200).json(users);
+});
+
+const getDashboardUsers = asyncHandler(async (req, res) => {
+  const users = await User.find({})
+    .populate("role", "name")
+    .select("_id name email role status createdAt")
+    .sort({ name: 1 });
+
+  res.status(200).json(users);
+});
+
+const getUsersWithSignaturePermissions = asyncHandler(async (req, res) => {
+  const users = await User.find({})
+    .populate({
+      path: "role",
+      select: "name permissions",
+    })
+    .select("_id name email role signatureImage");
+
+  const usersWithSignaturePerms = users.filter((user) => {
+    if (!user.role || !user.role.permissions) return false;
+    const kycPerms = user.role.permissions.kycManagement;
+    return kycPerms && (kycPerms.dlmro === true || kycPerms.lmro === true || kycPerms.ceo === true);
+  });
+
+  res.status(200).json(usersWithSignaturePerms);
+});
+
+const uploadUserSignature = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await User.findById(id).populate("role");
+  if (!user) {
+    res.status(404);
+    throw new Error("User not found");
+  }
+
+  const kycPerms = user.role?.permissions?.kycManagement;
+  if (!kycPerms || !(kycPerms.dlmro || kycPerms.lmro || kycPerms.ceo)) {
+    res.status(400);
+    throw new Error("User does not have KYC signing permissions (DLMRO, LMRO, or CEO)");
+  }
+
+  if (!req.file) {
+    res.status(400);
+    throw new Error("Please upload a signature image");
+  }
+
+  try {
+    if (user.signatureImage?.cloudinaryId) {
+      await deleteFromCloudinary(user.signatureImage.cloudinaryId);
+    }
+
+    const uploadResult = await uploadToCloudinary(req.file.path, {
+      folder: "signatures",
+    });
+
+    if (req.file.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    if (!uploadResult.success) {
+      res.status(500);
+      throw new Error("Failed to upload signature to cloud storage");
+    }
+
+    user.signatureImage = {
+      fileUrl: uploadResult.url,
+      cloudinaryId: uploadResult.publicId,
+      uploadedAt: new Date(),
+      uploadedBy: req.user._id,
+    };
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Signature uploaded successfully",
+      signatureImage: user.signatureImage,
+    });
+  } catch (error) {
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    throw error;
+  }
+});
+
+const deleteUserSignature = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await User.findById(id);
+  if (!user) {
+    res.status(404);
+    throw new Error("User not found");
+  }
+
+  if (!user.signatureImage?.cloudinaryId) {
+    res.status(400);
+    throw new Error("User does not have a signature uploaded");
+  }
+
+  await deleteFromCloudinary(user.signatureImage.cloudinaryId);
+
+  user.signatureImage = {
+    fileUrl: null,
+    cloudinaryId: null,
+    uploadedAt: null,
+    uploadedBy: null,
+  };
+
+  await user.save();
+
+  res.status(200).json({
+    message: "Signature deleted successfully",
+  });
+});
+
 module.exports = {
   registerUser,
   loginUser,
@@ -589,4 +725,9 @@ module.exports = {
   requestPasswordReset,
   resetPasswordWithCode,
   verify2FA,
+  getUsersByServiceType,
+  getDashboardUsers,
+  getUsersWithSignaturePermissions,
+  uploadUserSignature,
+  deleteUserSignature,
 };

@@ -12,9 +12,11 @@ const {
   deletePersonDetails,
   getKycDocuments,
   updateKycDocuments,
+  replaceKycDocument,
   getBraDocuments,
   updateBraDocuments,
   deleteBraDocument,
+  replaceBraDocument,
   uploadEngagementLetter,
   completeOperation,
   createPreApprovedJob,
@@ -28,15 +30,31 @@ const {
   getExpiringJobsStats,
   updateJobExpiryDate,
   deleteEngagementLetter,
+  replaceEngagementLetter,
   getJobDataByEmail,
   deleteCompanyDocument,
   deletePersonDocument,
+  replacePersonDocument,
   deleteKycSignedDocument,
   fixCorruptedCrExtract,
   getOtherDocumentsDetails,
   addOtherDocumentsDetails,
   updateOtherDocumentsDetails,
   deleteOtherDocumentsDetails,
+  getUboDetails,
+  addUboDocument,
+  updateUboDocument,
+  deleteUboDocument,
+  addUboPerson,
+  updateUboPerson,
+  deleteUboPerson,
+  addUboPersonDocument,
+  replaceUboPersonDocument,
+  deleteUboPersonDocument,
+  getCddDetails,
+  addCddDocument,
+  updateCddDocument,
+  deleteCddDocument,
 } = require("../controllers/operationController");
 
 
@@ -74,14 +92,15 @@ const fileFilter = (req, file, cb) => {
     file.mimetype === "image/png" ||
     file.mimetype === "application/pdf" ||
     file.mimetype === "application/msword" ||
-    file.mimetype ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.mimetype === "application/vnd.ms-excel" ||
+    file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   ) {
     cb(null, true);
   } else {
     cb(
       new Error(
-        "Unsupported file format. Only JPEG, PNG, PDF, DOC and DOCX are allowed."
+        "Unsupported file format. Only JPEG, PNG, PDF, DOC, DOCX, XLS and XLSX are allowed."
       ),
       false
     );
@@ -208,7 +227,7 @@ router.put(
     { name: "scopeOfLicense", maxCount: 1 },
     { name: "articleOfAssociate", maxCount: 1 },
     { name: "certificateOfIncorporate", maxCount: 1 },
-    { name: "companyMemo", maxCount: 5 }, // ADD THIS LINE - supports up to 5 files
+    { name: "companyMemo", maxCount: 10 }, // Supports up to 10 files for Other Documents
   ]),
   updateCompanyDetails
 );
@@ -268,6 +287,14 @@ router.put(
   updateKycDocuments
 );
 
+router.put(
+  "/jobs/:jobId/kyc-documents/:documentIndex/replace",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("kycDocument"),
+  replaceKycDocument
+);
+
 router.get(
   "/jobs/:jobId/bra-documents",
   protect,
@@ -288,6 +315,14 @@ router.delete(
   protect,
   checkPermission("operationManagement"),
   deleteBraDocument
+);
+
+router.put(
+  "/jobs/:jobId/bra-documents/:documentIndex/replace",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("braDocument"),
+  replaceBraDocument
 );
 
 // Engagement Letter Route
@@ -313,6 +348,15 @@ router.delete(
   protect,
   checkPermission("operationManagement"),
   deletePersonDocument
+);
+
+// Replace person document (archives old one to Library)
+router.put(
+  "/jobs/:jobId/person-document/:personType/:personId/:documentType/replace",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  replacePersonDocument
 );
 
 // Delete KYC signed document
@@ -357,7 +401,7 @@ router.post(
       { name: "scopeOfLicense", maxCount: 1 },
       { name: "articleOfAssociate", maxCount: 1 },
       { name: "certificateOfIncorporate", maxCount: 1 },
-      { name: "companyMemo", maxCount: 5 },
+      { name: "companyMemo", maxCount: 10 },
 
       // KYC and BRA documents
       { name: "kycDocuments", maxCount: 10 },
@@ -456,6 +500,14 @@ router.delete(
   deleteEngagementLetter
 );
 
+router.put(
+  "/jobs/:jobId/engagement-letter/:letterId/replace",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("engagementLetter"),
+  replaceEngagementLetter
+);
+
 router.post(
   "/jobs/:jobId/fix-crextract",
   protect,
@@ -492,6 +544,116 @@ router.delete(
   protect,
   checkPermission("operationManagement"),
   deleteOtherDocumentsDetails
+);
+
+// ============== UBO DETAILS ROUTES ==============
+
+router.get(
+  "/jobs/:jobId/ubo-details",
+  protect,
+  checkPermission("operationManagement"),
+  getUboDetails
+);
+
+router.post(
+  "/jobs/:jobId/ubo-documents",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  addUboDocument
+);
+
+router.put(
+  "/jobs/:jobId/ubo-documents/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  updateUboDocument
+);
+
+router.delete(
+  "/jobs/:jobId/ubo-documents/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  deleteUboDocument
+);
+
+router.post(
+  "/jobs/:jobId/ubo-persons",
+  protect,
+  checkPermission("operationManagement"),
+  upload.any(),
+  addUboPerson
+);
+
+router.put(
+  "/jobs/:jobId/ubo-persons/:uboId",
+  protect,
+  checkPermission("operationManagement"),
+  upload.any(),
+  updateUboPerson
+);
+
+router.delete(
+  "/jobs/:jobId/ubo-persons/:uboId",
+  protect,
+  checkPermission("operationManagement"),
+  deleteUboPerson
+);
+
+router.post(
+  "/jobs/:jobId/ubo-persons/:uboId/documents",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  addUboPersonDocument
+);
+
+router.put(
+  "/jobs/:jobId/ubo-persons/:uboId/documents/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  replaceUboPersonDocument
+);
+
+router.delete(
+  "/jobs/:jobId/ubo-persons/:uboId/documents/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  deleteUboPersonDocument
+);
+
+// ============== CDD DETAILS ROUTES ==============
+
+router.get(
+  "/jobs/:jobId/cdd-details",
+  protect,
+  checkPermission("operationManagement"),
+  getCddDetails
+);
+
+router.post(
+  "/jobs/:jobId/cdd-documents",
+  protect,
+  checkPermission("operationManagement"),
+  upload.array("documents", 20),
+  addCddDocument
+);
+
+router.put(
+  "/jobs/:jobId/cdd-documents/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  upload.single("document"),
+  updateCddDocument
+);
+
+router.delete(
+  "/jobs/:jobId/cdd-documents/:documentId",
+  protect,
+  checkPermission("operationManagement"),
+  deleteCddDocument
 );
 
 console.log("✅ operationRoutes.js loaded, routes registered");

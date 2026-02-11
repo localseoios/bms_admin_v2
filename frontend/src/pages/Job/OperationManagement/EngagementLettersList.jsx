@@ -1,7 +1,7 @@
 // This is a new component that displays multiple engagement letters
 // Add this to your components directory
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   DocumentTextIcon,
   ArrowDownTrayIcon,

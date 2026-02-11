@@ -4,16 +4,22 @@ const fs = require("fs");
 const path = require("path");
 const asyncHandler = require("express-async-handler");
 const notificationService = require("../services/notificationService");
+const emailService = require("../services/emailService");
 const Client = require("../models/Client");
+const User = require("../models/userModel");
 
-// ADD THESE MISSING IMPORTS
-const { PersonDetails, CompanyDetails } = require("../models/OperationModels");
+const { PersonDetails, CompanyDetails, KycDocument, BraDocument, OtherDocumentsDetails, UboDetails, CddDetails } = require("../models/OperationModels");
 
 // Helper function to safely upload to Cloudinary with fallback
 const safeCloudinaryUpload = async (filePath, options = {}) => {
   try {
+    const ext = path.extname(filePath).toLowerCase();
+    const rawExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'];
+    const resourceType = rawExtensions.includes(ext) ? 'raw' : 'auto';
+
     const result = await cloudinary.uploader.upload(filePath, {
       timeout: 60000,
+      resource_type: resourceType,
       ...options,
     });
     return { success: true, url: result.secure_url };
@@ -227,11 +233,16 @@ const createJob = async (req, res) => {
       jobNumber,
       serviceType,
       assignedPerson,
+      selectedServiceUser,
+      selectedServiceUsers,
       jobDetails,
       specialDescription,
       clientName,
       gmail,
       startingPoint,
+      crNo,
+      contactNumber,
+      address,
       // NEW: Handle existing document parameters
       existingDocumentPassport,
       existingDocumentID,
@@ -257,7 +268,6 @@ const createJob = async (req, res) => {
     if (
       !jobNumber ||
       !serviceType ||
-      !assignedPerson ||
       !jobDetails ||
       !clientName ||
       !gmail ||
@@ -294,8 +304,26 @@ const createJob = async (req, res) => {
     const clientExists = !!client;
 
     if (!client) {
-      client = new Client({ name: clientName, gmail, startingPoint });
+      const nextClientCode = await Client.getNextClientCode();
+      client = new Client({
+        name: clientName,
+        gmail,
+        startingPoint,
+        clientCode: nextClientCode,
+        crNo: crNo || '',
+        contactNumber: contactNumber || '',
+        address: address || ''
+      });
       await client.save();
+    } else {
+      // Update existing client with crNo, contactNumber and address if provided
+      if (crNo !== undefined || contactNumber !== undefined || address !== undefined) {
+        const updateFields = {};
+        if (crNo !== undefined) updateFields.crNo = crNo;
+        if (contactNumber !== undefined) updateFields.contactNumber = contactNumber;
+        if (address !== undefined) updateFields.address = address;
+        await Client.findByIdAndUpdate(client._id, updateFields);
+      }
     }
 
     // FIXED: Handle document URLs - prioritize existing documents, then uploaded files
@@ -361,6 +389,18 @@ const createJob = async (req, res) => {
     // Set initial status based on whether client exists
     const initialStatus = clientExists ? "approved" : "pending";
 
+    // Parse selectedServiceUsers if it's a JSON string
+    let parsedServiceUsers = [];
+    if (selectedServiceUsers) {
+      try {
+        parsedServiceUsers = typeof selectedServiceUsers === 'string'
+          ? JSON.parse(selectedServiceUsers)
+          : selectedServiceUsers;
+      } catch (e) {
+        console.log("Error parsing selectedServiceUsers:", e);
+      }
+    }
+
     const job = new Job({
       jobNumber,
       clientId: client._id,
@@ -368,7 +408,9 @@ const createJob = async (req, res) => {
       documentPassport: documentPassportUrl,
       documentID: documentIDUrl,
       otherDocuments: otherDocumentsUrls,
-      assignedPerson,
+      assignedPerson: assignedPerson || null,
+      selectedServiceUser: selectedServiceUser || null,
+      selectedServiceUsers: parsedServiceUsers,
       jobDetails,
       specialDescription,
       clientName,
@@ -433,63 +475,20 @@ const createJob = async (req, res) => {
       });
     }
 
-    // Standard notifications for all jobs
-    await notificationService.createNotification(
+    // Notify job creator and assigned person
+    await notificationService.createJobNotification(
       {
         title: "New Job Created",
         description: `A new ${serviceType} job (${jobNumber}) has been created for ${clientName}.`,
         type: "job",
         relatedTo: { model: "Job", id: savedJob._id },
       },
-      { "role.permissions.complianceManagement": true }
-    );
-
-    await notificationService.createNotification(
-      {
-        title: "New Job Created by Admin",
-        description: `Admin ${req.user.name} created a new ${serviceType} job (${jobNumber}) for ${clientName}.`,
-        type: "job",
-        relatedTo: { model: "Job", id: savedJob._id },
-      },
-      { "role.name": "admin" }
-    );
-
-    await notificationService.createNotification(
-      {
-        title: "Job Created Successfully",
-        description: `You have successfully created a ${serviceType} job (${jobNumber}) for ${clientName}.`,
-        type: "job",
-        relatedTo: { model: "Job", id: savedJob._id },
-      },
-      { _id: req.user._id }
-    );
-
-    // Notification to the assigned person
-    await notificationService.createNotification(
-      {
-        title: "New Job Assigned",
-        description: `You have been assigned to a new ${serviceType} job (${jobNumber}) for ${clientName}.`,
-        type: "job",
-        subType: "assignment",
-        relatedTo: { model: "Job", id: savedJob._id },
-      },
-      assignedPerson
+      savedJob,
+      req.user._id
     );
 
     // Additional notifications for auto-approved jobs
-    if (clientExists) {
-      // Notify compliance team about auto-approval
-      await notificationService.createNotification(
-        {
-          title: "Job Auto-Approved",
-          description: `The ${serviceType} job (${jobNumber}) for ${clientName} was automatically approved (existing client).`,
-          type: "job",
-          relatedTo: { model: "Job", id: savedJob._id },
-        },
-        { "role.permissions.complianceManagement": true }
-      );
-
-      // Notify the assigned person about the approved status
+    if (clientExists && assignedPerson) {
       await notificationService.createNotification(
         {
           title: "Job Ready for Processing",
@@ -543,7 +542,7 @@ const checkJobNumber = asyncHandler(async (req, res) => {
 const getJobDetails = asyncHandler(async (req, res) => {
   try {
     const job = await Job.findById(req.params.id)
-      .populate("clientId", "name gmail startingPoint")
+      .populate("clientId", "name gmail startingPoint crNo contactNumber address")
       .populate("assignedPerson", "name email")
       .populate("createdBy", "name email")
       .populate("timeline.updatedBy", "name");
@@ -607,17 +606,33 @@ const getAllJobs = asyncHandler(async (req, res) => {
   }
 });
 
-// Update the getAllJobsAdmin function
 const getAllJobsAdmin = asyncHandler(async (req, res) => {
   try {
+    console.log("=== getAllJobsAdmin START ===");
+    console.log("Time:", new Date().toISOString());
+
+    const startTime = Date.now();
+
+    const jobCount = await Job.countDocuments();
+    console.log("Total jobs in DB:", jobCount);
+
     const jobs = await Job.find()
-      .populate("clientId", "name gmail startingPoint")
+      .select("-timeline -otherDocuments")
+      .populate("clientId", "name gmail startingPoint crNo contactNumber address")
       .populate("assignedPerson", "name email")
-      .populate("createdBy", "name email")
-      .sort({ createdAt: -1 });
+      .populate("selectedServiceUsers", "name email role")
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
+
+    const endTime = Date.now();
+    console.log(`Query took ${endTime - startTime}ms, returned ${jobs.length} jobs`);
+    console.log("=== getAllJobsAdmin END ===");
 
     res.status(200).json(jobs);
   } catch (error) {
+    console.error("=== getAllJobsAdmin ERROR ===");
+    console.error("Error in getAllJobsAdmin:", error);
     res.status(500).json({
       message: "Internal server error",
       error: error.message,
@@ -670,35 +685,16 @@ const approveJob = asyncHandler(async (req, res) => {
 
   // Create notification for job approval
   try {
-    await notificationService.createNotification(
-      {
-        title: "Job Approved",
-        description: `The ${job.serviceType} job for ${job.clientName} has been approved.`,
-        type: "job",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { _id: req.user._id }
-    );
-
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: "Job Approved",
         description: `The ${job.serviceType} job for ${job.clientName} has been approved by ${req.user.name}.`,
         type: "job",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "admin" }
-    );
-
-    await notificationService.createNotification(
-      {
-        title: "Job Ready for Processing",
-        description: `A ${job.serviceType} job for ${job.clientName} has been approved and is ready for processing.`,
-        type: "job",
         subType: "approval",
         relatedTo: { model: "Job", id: job._id },
       },
-      job.assignedPerson
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
@@ -750,24 +746,16 @@ const rejectJob = asyncHandler(async (req, res) => {
 
   // Create notification for job rejection
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: "Job Rejected",
-        description: `The ${job.serviceType} job for ${job.clientName} has been rejected: ${rejectionReason}`,
+        description: `The ${job.serviceType} job for ${job.clientName} has been rejected by ${req.user.name}: ${rejectionReason}`,
         type: "job",
+        subType: "rejection",
         relatedTo: { model: "Job", id: job._id },
       },
-      { _id: req.user._id }
-    );
-
-    await notificationService.createNotification(
-      {
-        title: "Job Rejected",
-        description: `The ${job.serviceType} job for ${job.clientName} has been rejected by ${req.user.name}.`,
-        type: "job",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "admin" }
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
@@ -804,34 +792,16 @@ const cancelJob = asyncHandler(async (req, res) => {
 
   // Create notification for job cancellation
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: "Job Cancelled",
-        description: `The ${job.serviceType} job for ${job.clientName} has been cancelled: ${cancellationReason}`,
+        description: `The ${job.serviceType} job for ${job.clientName} has been cancelled by ${req.user.name}. Reason: ${cancellationReason}`,
         type: "job",
+        subType: "cancellation",
         relatedTo: { model: "Job", id: job._id },
       },
-      { _id: req.user._id }
-    );
-
-    await notificationService.createNotification(
-      {
-        title: "Job Cancelled",
-        description: `The ${job.serviceType} job for ${job.clientName} has been cancelled by ${req.user.name}.`,
-        type: "job",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "admin" }
-    );
-
-    await notificationService.createNotification(
-      {
-        title: "Job Cancelled",
-        description: `The ${job.serviceType} job for ${job.clientName} has been cancelled. Reason: ${cancellationReason}`,
-        type: "job",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.permissions.complianceManagement": true }
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
@@ -885,9 +855,11 @@ const resubmitJob = asyncHandler(async (req, res) => {
   if (req.files && req.files["newOtherDocuments"]) {
     const uploadPromises = req.files["newOtherDocuments"].map((file) =>
       safeCloudinaryUpload(file.path).then((result) => {
-        fs.unlink(file.path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
+        if (result.success) {
+          fs.unlink(file.path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+        }
         return result.url;
       })
     );
@@ -912,47 +884,20 @@ const resubmitJob = asyncHandler(async (req, res) => {
 
   // Create notification for job resubmission
   try {
-    await notificationService.createNotification(
+    const resubmitDescription = resubmitNotes
+      ? `The ${job.serviceType} job for ${job.clientName} has been resubmitted by ${req.user.name}. Notes: ${resubmitNotes}`
+      : `The ${job.serviceType} job for ${job.clientName} has been resubmitted by ${req.user.name} with corrections.`;
+
+    await notificationService.createJobNotification(
       {
         title: "Job Resubmitted",
-        description: `The ${job.serviceType} job for ${job.clientName} has been resubmitted with corrections.`,
+        description: resubmitDescription,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
-      { "role.permissions.complianceManagement": true }
+      job,
+      req.user._id
     );
-
-    await notificationService.createNotification(
-      {
-        title: "Job Resubmitted",
-        description: `The ${job.serviceType} job for ${job.clientName} has been resubmitted by ${req.user.name} with corrections.`,
-        type: "job",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "admin" }
-    );
-
-    await notificationService.createNotification(
-      {
-        title: "Job Resubmission Successful",
-        description: `You have successfully resubmitted the ${job.serviceType} job for ${job.clientName} with corrections.`,
-        type: "job",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { _id: req.user._id }
-    );
-
-    if (resubmitNotes) {
-      await notificationService.createNotification(
-        {
-          title: "Job Resubmission Details",
-          description: `Resubmission notes for ${job.clientName}'s ${job.serviceType} job: ${resubmitNotes}`,
-          type: "job",
-          relatedTo: { model: "Job", id: job._id },
-        },
-        { "role.permissions.complianceManagement": true }
-      );
-    }
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
   }
@@ -962,7 +907,8 @@ const resubmitJob = asyncHandler(async (req, res) => {
 
 // New function to get job timeline
 const getJobTimeline = asyncHandler(async (req, res) => {
-  const job = await Job.findById(req.params.id);
+  const job = await Job.findById(req.params.id)
+    .populate("timeline.updatedBy", "name email");
   if (!job) {
     res.status(404);
     throw new Error("Job not found");
@@ -1018,11 +964,13 @@ const updateJob = asyncHandler(async (req, res) => {
     console.log('Job ID:', req.params.id);
     console.log('Request body:', req.body);
 
-    const job = await Job.findById(req.params.id);
+    const job = await Job.findById(req.params.id).populate('selectedServiceUsers', 'name email');
     if (!job) {
       res.status(404);
       throw new Error("Job not found");
     }
+
+    const oldServiceUsers = (job.selectedServiceUsers || []).map(u => u._id.toString());
 
     console.log('Found job:', job._id, 'current gmail:', job.gmail, 'current startingPoint:', job.startingPoint);
 
@@ -1035,6 +983,10 @@ const updateJob = asyncHandler(async (req, res) => {
       clientName,
       gmail,
       startingPoint,
+      crNo,
+      contactNumber,
+      address,
+      selectedServiceUsers,
     } = req.body;
 
     console.log('Extracted from body - gmail:', gmail, 'startingPoint:', startingPoint, 'clientName:', clientName);
@@ -1097,9 +1049,11 @@ const updateJob = asyncHandler(async (req, res) => {
     if (req.files && req.files["otherDocuments"]) {
       const uploadPromises = req.files["otherDocuments"].map(async (file) => {
         const result = await safeCloudinaryUpload(file.path);
-        fs.unlink(file.path, (err) => {
-          if (err) console.error("Error deleting temp file:", err);
-        });
+        if (result.success) {
+          fs.unlink(file.path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+        }
         return result.url;
       });
 
@@ -1115,6 +1069,19 @@ const updateJob = asyncHandler(async (req, res) => {
       }
     }
 
+    // Parse selectedServiceUsers if it's a JSON string
+    let parsedServiceUsers = undefined;
+    if (selectedServiceUsers !== undefined) {
+      try {
+        parsedServiceUsers = typeof selectedServiceUsers === 'string'
+          ? JSON.parse(selectedServiceUsers)
+          : selectedServiceUsers;
+      } catch (e) {
+        console.log("Error parsing selectedServiceUsers in update:", e);
+        parsedServiceUsers = [];
+      }
+    }
+
     const updateFields = {
       ...(jobNumber && { jobNumber }),
       ...(serviceType && { serviceType }),
@@ -1124,14 +1091,18 @@ const updateJob = asyncHandler(async (req, res) => {
       ...(clientName && { clientName }),
       ...(gmail && { gmail }),
       ...(startingPoint && { startingPoint }),
+      ...(parsedServiceUsers !== undefined && { selectedServiceUsers: parsedServiceUsers }),
       ...updatedDocuments,
     };
 
     const clientGmail = gmail || job.gmail;
-    if (clientGmail && (startingPoint || clientName)) {
+    if (clientGmail && (startingPoint || clientName || crNo !== undefined || contactNumber !== undefined || address !== undefined)) {
       const clientUpdateFields = {};
       if (startingPoint) clientUpdateFields.startingPoint = startingPoint;
       if (clientName) clientUpdateFields.name = clientName;
+      if (crNo !== undefined) clientUpdateFields.crNo = crNo;
+      if (contactNumber !== undefined) clientUpdateFields.contactNumber = contactNumber;
+      if (address !== undefined) clientUpdateFields.address = address;
 
       console.log('Updating client with gmail:', clientGmail, 'Fields:', clientUpdateFields);
 
@@ -1149,9 +1120,10 @@ const updateJob = asyncHandler(async (req, res) => {
       updateFields,
       { new: true, runValidators: true }
     )
-      .populate("clientId", "name gmail startingPoint")
+      .populate("clientId", "name gmail startingPoint crNo contactNumber address")
       .populate("assignedPerson", "name email")
-      .populate("createdBy", "name email");
+      .populate("createdBy", "name email")
+      .populate("selectedServiceUsers", "name email role");
 
     updatedJob.timeline.push({
       status: "updated",
@@ -1160,31 +1132,51 @@ const updateJob = asyncHandler(async (req, res) => {
       updatedBy: req.user._id,
     });
 
+    const newServiceUsers = parsedServiceUsers !== undefined
+      ? (parsedServiceUsers || []).map(u => typeof u === 'string' ? u : u.toString())
+      : oldServiceUsers;
+
+    const addedUsers = newServiceUsers.filter(u => !oldServiceUsers.includes(u));
+    const removedUsers = oldServiceUsers.filter(u => !newServiceUsers.includes(u));
+
+    if (addedUsers.length > 0) {
+      const addedUserDetails = await User.find({ _id: { $in: addedUsers } }).select('name');
+      const addedNames = addedUserDetails.map(u => u.name).join(', ');
+      updatedJob.timeline.push({
+        status: "user_assigned",
+        description: `Users assigned to job: ${addedNames}`,
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+      });
+    }
+
+    if (removedUsers.length > 0) {
+      const removedUserDetails = await User.find({ _id: { $in: removedUsers } }).select('name');
+      const removedNames = removedUserDetails.map(u => u.name).join(', ');
+      updatedJob.timeline.push({
+        status: "user_removed",
+        description: `Users removed from job: ${removedNames}`,
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+      });
+    }
+
     await updatedJob.save();
 
     // Create notifications for job update
     try {
-      await notificationService.createNotification(
-        {
-          title: "Job Updated Successfully",
-          description: `You have successfully updated the ${updatedJob.serviceType} job (${updatedJob.jobNumber}) for ${updatedJob.clientName}.`,
-          type: "job",
-          relatedTo: { model: "Job", id: updatedJob._id },
-        },
-        { _id: req.user._id }
-      );
-
-      await notificationService.createNotification(
+      await notificationService.createJobNotification(
         {
           title: "Job Updated",
           description: `The ${updatedJob.serviceType} job (${updatedJob.jobNumber}) for ${updatedJob.clientName} has been updated by ${req.user.name}.`,
           type: "job",
           relatedTo: { model: "Job", id: updatedJob._id },
         },
-        { "role.name": "admin" }
+        updatedJob,
+        req.user._id
       );
 
-      if (assignedPerson && assignedPerson !== job.assignedPerson.toString()) {
+      if (assignedPerson && assignedPerson !== job.assignedPerson?.toString()) {
         await notificationService.createNotification(
           {
             title: "Job Assignment Updated",
@@ -1195,6 +1187,60 @@ const updateJob = asyncHandler(async (req, res) => {
           },
           assignedPerson
         );
+      }
+
+      if (addedUsers.length > 0) {
+        const addedUserDetails = await User.find({ _id: { $in: addedUsers } }).select('name email');
+        for (const user of addedUserDetails) {
+          await notificationService.createNotification(
+            {
+              title: "Job Assignment",
+              description: `You have been assigned to job ${updatedJob.jobNumber} for ${updatedJob.clientName}.`,
+              type: "job",
+              subType: "assignment",
+              relatedTo: { model: "Job", id: updatedJob._id },
+            },
+            user._id.toString()
+          );
+
+          if (user.email) {
+            emailService.sendJobAssignmentEmail(
+              user.email,
+              user.name,
+              updatedJob.clientName,
+              updatedJob.jobNumber,
+              updatedJob.serviceType,
+              req.user.name
+            ).catch(err => console.error('Error sending assignment email:', err));
+          }
+        }
+      }
+
+      if (removedUsers.length > 0) {
+        const removedUserDetails = await User.find({ _id: { $in: removedUsers } }).select('name email');
+        for (const user of removedUserDetails) {
+          await notificationService.createNotification(
+            {
+              title: "Job Removal",
+              description: `You have been removed from job ${updatedJob.jobNumber} for ${updatedJob.clientName}.`,
+              type: "job",
+              subType: "removal",
+              relatedTo: { model: "Job", id: updatedJob._id },
+            },
+            user._id.toString()
+          );
+
+          if (user.email) {
+            emailService.sendJobRemovalEmail(
+              user.email,
+              user.name,
+              updatedJob.clientName,
+              updatedJob.jobNumber,
+              updatedJob.serviceType,
+              req.user.name
+            ).catch(err => console.error('Error sending removal email:', err));
+          }
+        }
       }
     } catch (notificationError) {
       console.error("Error creating notification:", notificationError);
@@ -1371,6 +1417,123 @@ const replaceOtherDocument = asyncHandler(async (req, res) => {
   }
 });
 
+const getDashboardStats = asyncHandler(async (req, res) => {
+  try {
+    const jobs = await Job.find({})
+      .select("jobNumber clientId clientName serviceType status createdAt assignedPerson")
+      .populate("clientId", "name gmail")
+      .populate("assignedPerson", "name")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const totalJobs = jobs.length;
+    const approvedJobs = jobs.filter(j => j.status === "approved").length;
+    const cancelledJobs = jobs.filter(j => j.status === "cancelled").length;
+    const completedJobs = jobs.filter(j => ["completed", "fully_completed_bra"].includes(j.status)).length;
+
+    const statusCounts = {};
+    jobs.forEach(job => {
+      statusCounts[job.status] = (statusCounts[job.status] || 0) + 1;
+    });
+
+    const recentJobs = jobs.slice(0, 10);
+
+    res.status(200).json({
+      totalJobs,
+      approvedJobs,
+      cancelledJobs,
+      completedJobs,
+      statusCounts,
+      recentJobs,
+      jobs,
+    });
+  } catch (error) {
+    console.error("Error fetching dashboard stats:", error);
+    res.status(500).json({ message: "Error fetching dashboard stats", error: error.message });
+  }
+});
+
+const deleteJob = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log("=== DELETE JOB START ===");
+    console.log("Job ID to delete:", id);
+
+    const job = await Job.findById(id);
+    if (!job) {
+      console.log("Job not found");
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    const deletedData = {
+      jobId: job._id,
+      jobNumber: job.jobNumber,
+      clientName: job.clientName,
+      serviceType: job.serviceType,
+    };
+    console.log("Job found:", deletedData);
+
+    const deletionTime = new Date().toLocaleString('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+
+    console.log("Creating notification for job parties...");
+    const notification = await notificationService.createJobNotification(
+      {
+        title: "Job Deleted",
+        description: `Job "${deletedData.jobNumber || id}" for client "${deletedData.clientName}" (${deletedData.serviceType}) has been permanently deleted by ${req.user.name} on ${deletionTime}.`,
+        type: "job",
+        subType: "deletion",
+        relatedTo: { model: "Job", id: null },
+      },
+      job,
+      req.user._id
+    );
+    console.log("Notification created:", notification?._id, "Recipients:", notification?.recipients?.length);
+
+    console.log("Deleting related data...");
+    const deleteResults = await Promise.all([
+      CompanyDetails.deleteMany({ jobId: id }),
+      PersonDetails.deleteMany({ jobId: id }),
+      KycDocument.deleteMany({ jobId: id }),
+      BraDocument.deleteMany({ jobId: id }),
+      OtherDocumentsDetails.deleteMany({ jobId: id }),
+      UboDetails.deleteMany({ jobId: id }),
+      CddDetails.deleteMany({ jobId: id }),
+    ]);
+
+    console.log("Deleting job...");
+    await Job.findByIdAndDelete(id);
+
+    const totalDeleted = {
+      companyDetails: deleteResults[0].deletedCount,
+      personDetails: deleteResults[1].deletedCount,
+      kycDocuments: deleteResults[2].deletedCount,
+      braDocuments: deleteResults[3].deletedCount,
+      otherDocuments: deleteResults[4].deletedCount,
+      uboDetails: deleteResults[5].deletedCount,
+      cddDetails: deleteResults[6].deletedCount,
+    };
+
+    console.log(`Job ${deletedData.jobNumber || id} deleted with related data:`, totalDeleted);
+    console.log("=== DELETE JOB SUCCESS ===");
+
+    res.status(200).json({
+      message: "Job and all related data deleted successfully",
+      deletedJob: deletedData,
+      deletedRelatedData: totalDeleted,
+    });
+  } catch (error) {
+    console.error("=== DELETE JOB ERROR ===");
+    console.error("Error deleting job:", error);
+    res.status(500).json({
+      message: "Failed to delete job",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = {
   createJob,
   checkJobNumber,
@@ -1388,4 +1551,6 @@ module.exports = {
   addOtherDocument,
   deleteOtherDocument,
   replaceOtherDocument,
+  getDashboardStats,
+  deleteJob,
 };

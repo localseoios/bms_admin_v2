@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import {
   MagnifyingGlassIcon,
   DocumentTextIcon,
@@ -202,6 +202,8 @@ function OperationManagement() {
         return "bg-purple-50 text-purple-700 ring-purple-600/20";
       case "cancelled":
         return "bg-gray-50 text-gray-700 ring-gray-600/20";
+      case "fully_completed_bra":
+        return "bg-blue-50 text-blue-700 ring-blue-600/20";
       default:
         return "bg-gray-50 text-gray-700 ring-gray-600/20";
     }
@@ -231,9 +233,16 @@ function OperationManagement() {
         return <ClockIcon className="h-5 w-5 text-yellow-500" />;
       case "rejected":
         return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
+      case "fully_completed_bra":
+        return <ClockIcon className="h-5 w-5 text-blue-500" />;
       default:
         return <ClockIcon className="h-5 w-5 text-gray-500" />;
     }
+  };
+
+  const getStatusLabel = (status) => {
+    if (status === "fully_completed_bra") return "Processing";
+    return status || "pending";
   };
 
   const getDaysUntilDeadline = (deadline) => {
@@ -544,7 +553,7 @@ function OperationManagement() {
                             )}`}
                           >
                             {getStatusIcon(job.status)}
-                            <span className="ml-1.5">{job.status}</span>
+                            <span className="ml-1.5">{getStatusLabel(job.status)}</span>
                           </motion.span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -911,7 +920,7 @@ function OperationManagement() {
                             >
                               {getStatusIcon(selectedJob.status)}
                               <span className="ml-1.5">
-                                {selectedJob.status}
+                                {getStatusLabel(selectedJob.status)}
                               </span>
                             </motion.span>
                           </div>

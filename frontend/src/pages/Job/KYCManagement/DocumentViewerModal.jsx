@@ -1,6 +1,6 @@
 // DocumentViewerModal.jsx
 import React from "react";
-import { motion } from "framer-motion";
+import { motion } from "framer-motion"; // eslint-disable-line no-unused-vars
 import { XMarkIcon, DocumentTextIcon, CalendarIcon, UserIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 
 function DocumentViewerModal({ document, onClose }) {

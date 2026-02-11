@@ -130,11 +130,11 @@ const checkKycPermission = asyncHandler(async (req, res, next) => {
     return next();
   }
 
-  // Check for any KYC management permission
   const kycPermissions = user.role.permissions?.kycManagement;
   const hasKycPermission =
     kycPermissions &&
-    (kycPermissions.lmro === true ||
+    (kycPermissions.amlSupervisor === true ||
+      kycPermissions.lmro === true ||
       kycPermissions.dlmro === true ||
       kycPermissions.ceo === true);
 

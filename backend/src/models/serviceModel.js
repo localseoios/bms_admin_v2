@@ -27,6 +27,10 @@ const serviceSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    roles: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Role",
+    }],
   },
   {
     timestamps: true,

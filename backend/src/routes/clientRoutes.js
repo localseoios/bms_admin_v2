@@ -11,7 +11,12 @@ const {
   getAssignedClients,
   getAllClients,
   updateClientRiskLevel,
+  updateClientCddType,
+  updateClientCrNo,
   deleteClient,
+  getClientsByRole,
+  exportComplianceClients,
+  searchClientsWithDetails,
 } = require("../controllers/clientController");
 const { protect, checkPermission } = require("../middleware/authMiddleware");
 
@@ -27,12 +32,25 @@ router.get(
 router.get(
   "/all",
   protect,
-  checkPermission("operationManagement"), // Adjust permission as needed
+  checkPermission("operationManagement"),
   getAllClients
+);
+
+// Route to get clients by user's role (service-based filtering)
+router.get(
+  "/my-role-clients",
+  protect,
+  getClientsByRole
 );
 
 // Route to get all clients for compliance (no auth needed for now)
 router.get("/compliance/all", getAllClients);
+
+// Route to search clients with person and company details
+router.get("/compliance/search", searchClientsWithDetails);
+
+// Route to export compliance clients to Excel format
+router.get("/compliance/export", exportComplianceClients);
 
 // Route to get client details by email (encoded in URL)
 // Note: We keep the :gmail parameter name for backward compatibility
@@ -80,6 +98,22 @@ router.put(
   protect,
   checkPermission("complianceManagement"),
   updateClientRiskLevel
+);
+
+// Route to update client CDD type
+router.put(
+  "/:gmail/cdd-type",
+  protect,
+  checkPermission("complianceManagement"),
+  updateClientCddType
+);
+
+// Route to update client CR Number
+router.put(
+  "/:gmail/cr-no",
+  protect,
+  checkPermission("operationManagement"),
+  updateClientCrNo
 );
 
 router.delete(

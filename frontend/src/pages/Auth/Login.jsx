@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import axiosInstance from "../../utils/axios"; // Ensure this is set up to point to your backend
+import axiosInstance from "../../utils/axios";
+import { useAuth } from "../../context/AuthContext";
 
 function Login() {
+  const { refreshUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -27,7 +29,6 @@ function Login() {
     }
 
     try {
-      console.log("Sending login request with:", { email, password });
       const response = await axiosInstance.post("auth/login", {
         email,
         password,
@@ -76,6 +77,10 @@ function Login() {
       if (rememberMe) {
         localStorage.setItem("user", JSON.stringify(user));
       }
+
+      // Refresh user data in AuthContext after successful login
+      await refreshUser();
+
       navigate("/mode-selection");
     } catch (err) {
       setError(err.response?.data?.message || "Invalid verification code");

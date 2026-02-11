@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -15,7 +15,7 @@ import EnhancedMonthlyPaymentHistory from "../MonthlyPaymentForm/EnhancedMonthly
 
 
 // This component displays Accounting-specific information in the client profile
-const AccountManagementSection = ({ client, jobs }) => {
+const AccountManagementSection = ({ jobs }) => {
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -50,7 +50,7 @@ const AccountManagementSection = ({ client, jobs }) => {
               payments: response.data,
               hasPayments: response.data && response.data.length > 0,
             };
-          } catch (err) {
+          } catch {
             console.log(`No payment data for job ${job._id}`);
             return { jobId: job._id, payments: [], hasPayments: false };
           }
@@ -96,7 +96,7 @@ const AccountManagementSection = ({ client, jobs }) => {
             payments: response.data,
             hasPayments: response.data && response.data.length > 0,
           };
-        } catch (err) {
+        } catch {
           return { jobId: job._id, payments: [], hasPayments: false };
         }
       });

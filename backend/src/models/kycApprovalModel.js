@@ -56,14 +56,18 @@ const kycApprovalSchema = new mongoose.Schema(
     },
     currentApprovalStage: {
       type: String,
-      enum: ["lmro", "dlmro", "ceo", "completed", "rejected"],
-      default: "lmro",
+      enum: ["amlSupervisor", "dlmro", "lmro", "ceo", "completed", "rejected"],
+      default: "amlSupervisor",
     },
-    lmroApproval: {
+    amlSupervisorApproval: {
       type: approvalSchema,
       default: () => ({}),
     },
     dlmroApproval: {
+      type: approvalSchema,
+      default: () => ({}),
+    },
+    lmroApproval: {
       type: approvalSchema,
       default: () => ({}),
     },

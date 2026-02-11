@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import axios from "../../utils/axios";
 import { useAuth } from "../../../context/AuthContext";
 import {
@@ -290,9 +290,9 @@ function KYCJobDetail({ jobId }) {
           {/* Progress Bar */}
           <div className="mb-3">
             <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-              <span>LMRO</span>
-              <span>DLMRO</span>
-              <span>CEO</span>
+              <span>MLRO</span>
+              <span>DMLRO</span>
+              <span>SEF</span>
             </div>
             <div className="flex items-center gap-1">
               {/* LMRO */}
@@ -332,7 +332,7 @@ function KYCJobDetail({ jobId }) {
           >
             <div className="flex items-center">
               <UserGroupIcon className="h-5 w-5 text-blue-500 mr-2" />
-              <h4 className="text-sm font-medium">LMRO Approval</h4>
+              <h4 className="text-sm font-medium">MLRO Approval</h4>
               {kycApproval.lmroApproval.approved && (
                 <CheckIcon className="h-4 w-4 text-green-500 ml-2" />
               )}
@@ -370,7 +370,7 @@ function KYCJobDetail({ jobId }) {
           >
             <div className="flex items-center">
               <ClipboardDocumentCheckIcon className="h-5 w-5 text-purple-500 mr-2" />
-              <h4 className="text-sm font-medium">DLMRO Approval</h4>
+              <h4 className="text-sm font-medium">DMLRO Approval</h4>
               {kycApproval.dlmroApproval.approved && (
                 <CheckIcon className="h-4 w-4 text-green-500 ml-2" />
               )}
@@ -396,13 +396,13 @@ function KYCJobDetail({ jobId }) {
                 {kycApproval.currentApprovalStage === "dlmro"
                   ? "Pending approval"
                   : kycApproval.currentApprovalStage === "lmro"
-                  ? "Awaiting LMRO approval"
+                  ? "Awaiting MLRO approval"
                   : "Complete"}
               </p>
             )}
           </div>
 
-          {/* CEO Status */}
+          {/* SEF Status */}
           <div
             className={`p-3 rounded ${
               kycApproval.ceoApproval.approved ? "bg-green-50" : "bg-gray-50"
@@ -410,7 +410,7 @@ function KYCJobDetail({ jobId }) {
           >
             <div className="flex items-center">
               <LockClosedIcon className="h-5 w-5 text-indigo-500 mr-2" />
-              <h4 className="text-sm font-medium">CEO Approval</h4>
+              <h4 className="text-sm font-medium">SEF Approval</h4>
               {kycApproval.ceoApproval.approved && (
                 <CheckIcon className="h-4 w-4 text-green-500 ml-2" />
               )}

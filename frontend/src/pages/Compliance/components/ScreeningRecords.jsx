@@ -17,7 +17,7 @@ import {
   EyeIcon,
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
-import { motion } from 'framer-motion';
+import { motion } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import axios from '../../../utils/axios';
 
 const ScreeningRecords = ({ client }) => {
@@ -105,7 +105,7 @@ const ScreeningRecords = ({ client }) => {
       if (response.data.success) {
         // Add new document to local state
         const newRecord = {
-          id: response.data.document.id || Date.now().toString(),
+          id: response.data.screeningId || response.data.document.id || Date.now().toString(),
           type: uploadData.screeningType,
           date: new Date().toISOString().split('T')[0],
           result: 'pending',
@@ -261,12 +261,26 @@ const ScreeningRecords = ({ client }) => {
   const handleDownload = async (record) => {
     if (record.document && record.document.fileUrl) {
       try {
+        // Get the original filename with extension
+        let fileName = record.document.name || 'document';
+
+        // If filename doesn't have extension, try to get it from the URL
+        if (!fileName.includes('.')) {
+          const urlParts = record.document.fileUrl.split('/');
+          const lastPart = urlParts[urlParts.length - 1];
+          const urlFileName = lastPart.split('?')[0]; // Remove query params
+          const extension = urlFileName.split('.').pop();
+          if (extension && extension.length <= 5) {
+            fileName = `${fileName}.${extension}`;
+          }
+        }
+
         const response = await fetch(record.document.fileUrl);
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = record.document.name || 'document';
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -499,27 +513,6 @@ const ScreeningRecords = ({ client }) => {
           ))}
         </div>
 
-        <div className="mt-8 bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Screening Summary</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="text-center">
-              <p className="text-3xl font-bold text-purple-600">{summary.total}</p>
-              <p className="text-sm text-gray-600">Total Screenings</p>
-            </div>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-green-600">{summary.clear}</p>
-              <p className="text-sm text-gray-600">Clear Results</p>
-            </div>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-yellow-600">{summary.review}</p>
-              <p className="text-sm text-gray-600">Under Review</p>
-            </div>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-red-600">{summary.alert}</p>
-              <p className="text-sm text-gray-600">Alerts</p>
-            </div>
-          </div>
-        </div>
       </motion.div>
 
       {/* Upload Modal */}
@@ -562,10 +555,10 @@ const ScreeningRecords = ({ client }) => {
                   type="file"
                   onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Supported: PDF, DOC, DOCX, JPEG, PNG (Max 50MB)
+                  Supported: PDF, DOC, DOCX, XLS, XLSX, JPEG, PNG (Max 50MB)
                 </p>
               </div>
             </div>
@@ -633,10 +626,10 @@ const ScreeningRecords = ({ client }) => {
                   type="file"
                   onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave empty to keep current file. Supported: PDF, DOC, DOCX, JPEG, PNG (Max 50MB)
+                  Leave empty to keep current file. Supported: PDF, DOC, DOCX, XLS, XLSX, JPEG, PNG (Max 50MB)
                 </p>
               </div>
             </div>

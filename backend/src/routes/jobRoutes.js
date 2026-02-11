@@ -23,6 +23,8 @@ const {
   addOtherDocument,
   deleteOtherDocument,
   replaceOtherDocument,
+  getDashboardStats,
+  deleteJob,
 } = require("../controllers/jobController");
 const multer = require("multer");
 const path = require("path");
@@ -56,14 +58,15 @@ const fileFilter = (req, file, cb) => {
     file.mimetype === "image/png" ||
     file.mimetype === "application/pdf" ||
     file.mimetype === "application/msword" ||
-    file.mimetype ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.mimetype === "application/vnd.ms-excel" ||
+    file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   ) {
     cb(null, true);
   } else {
     cb(
       new Error(
-        "Unsupported file format. Only JPEG, PNG, PDF, DOC and DOCX are allowed."
+        "Unsupported file format. Only JPEG, PNG, PDF, DOC, DOCX, XLS and XLSX are allowed."
       ),
       false
     );
@@ -86,6 +89,9 @@ router.use((req, res, next) => {
 });
 
 // ===== SPECIFIC ROUTES FIRST =====
+
+// Dashboard stats route - accessible to all authenticated users
+router.get("/dashboard-stats", protect, getDashboardStats);
 
 // Check job number availability route - MUST come before parameterized routes
 router.get("/check-job-number/:jobNumber", protect, adminOnly, checkJobNumber);
@@ -227,6 +233,9 @@ router.put(
 );
 
 // ===== GENERAL PARAMETERIZED ROUTES (LAST) =====
+
+// Delete job and all related data
+router.delete("/:id", protect, adminOnly, deleteJob);
 
 // Get specific job details - MUST BE LAST among parameterized routes
 router.get(

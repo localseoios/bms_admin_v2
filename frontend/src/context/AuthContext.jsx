@@ -16,20 +16,26 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        // Update this path to match your backend API structure
-        const response = await axiosInstance.get("/users/me");
-        setUser(response.data);
-      } catch (error) {
-        console.error("Error fetching user:", error);
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchUser = async () => {
+    try {
+      const response = await axiosInstance.get("/users/me");
+      setUser(response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      setUser(null);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  const refreshUser = async () => {
+    setLoading(true);
+    return await fetchUser();
+  };
+
+  useEffect(() => {
     fetchUser();
   }, []);
 
@@ -60,7 +66,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, checkPermission }}>
+    <AuthContext.Provider value={{ user, loading, checkPermission, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

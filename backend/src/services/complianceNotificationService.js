@@ -3,6 +3,7 @@ const User = require("../models/userModel");
 const ComplianceStaff = require("../models/complianceStaffModel");
 
 // Create compliance notification
+
 const createComplianceNotification = async (notificationData) => {
   try {
     const notification = new ComplianceNotification(notificationData);

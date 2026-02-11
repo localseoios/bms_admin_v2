@@ -9,6 +9,8 @@ const {
   KycDocument,
   BraDocument,
   OtherDocumentsDetails,
+  UboDetails,
+  CddDetails,
 } = require("../models/OperationModels");
 const Job = require("../models/Job");
 const notificationService = require("../services/notificationService");
@@ -19,12 +21,59 @@ const { findPersonDetailsByGmail } = require("../utils/clientUtils"); // Import 
 const BraApproval = require("../models/braApprovalModel");
 const KycApproval = require("../models/kycApprovalModel");
 const ExcelJS = require('exceljs'); // You'll need to install this: npm install exceljs
+const Archive = require("../models/archiveModel");
+
+// Helper function to archive a document before replacing
+const archiveDocument = async ({
+  clientId,
+  jobId,
+  documentType,
+  sourceType,
+  personName,
+  personId,
+  fileUrl,
+  fileName,
+  archivedBy,
+  reason = "replaced",
+  originalUploadedAt,
+  metadata,
+}) => {
+  try {
+    if (!fileUrl) return null;
+
+    const archive = await Archive.create({
+      clientId,
+      jobId,
+      documentType,
+      sourceType,
+      personName,
+      personId,
+      fileUrl,
+      fileName,
+      archivedBy,
+      reason,
+      originalUploadedAt,
+      metadata,
+    });
+
+    console.log(`Document archived: ${documentType} - ${fileUrl}`);
+    return archive;
+  } catch (error) {
+    console.error("Error archiving document:", error);
+    return null;
+  }
+};
 
 // Helper function to safely upload to Cloudinary with fallback (reused from jobController)
 const safeCloudinaryUpload = async (filePath, options = {}) => {
   try {
+    const ext = path.extname(filePath).toLowerCase();
+    const rawExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'];
+    const resourceType = rawExtensions.includes(ext) ? 'raw' : 'auto';
+
     const result = await cloudinary.uploader.upload(filePath, {
       timeout: 60000,
+      resource_type: resourceType,
       ...options,
     });
     return { success: true, url: result.secure_url };
@@ -153,7 +202,12 @@ const getCompanyDetails = asyncHandler(async (req, res) => {
   }
 
   // Get company details
-  let companyDetails = await CompanyDetails.findOne({ jobId });
+  let companyDetails = await CompanyDetails.findOne({ jobId })
+    .populate("updatedBy", "name email")
+    .populate("documentHistory.performedBy", "name email")
+    .populate("engagementLetters.uploadedBy", "name email")
+    .populate("crExtract.uploadedBy", "name email")
+    .populate("companyMemo.uploadedBy", "name email");
 
   // If company details don't exist, create them
   if (!companyDetails) {
@@ -301,6 +355,9 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
     console.log(`Updating existing company details for job ID: ${jobId}`);
   }
 
+  // Track which documents were changed for timeline description
+  const changedDocuments = [];
+
   // Update text fields with proper validation
   if (companyName !== undefined) companyDetails.companyName = companyName;
   if (qfcNo !== undefined) companyDetails.qfcNo = qfcNo;
@@ -324,50 +381,123 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
 
   // Handle document uploads
   if (req.files) {
-    // Engagement Letters
+    // Engagement Letters - Archive old before replacing
     if (req.files["engagementLetters"]) {
+      if (companyDetails.engagementLetters) {
+        await archiveDocument({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "engagement_letter",
+          sourceType: "company",
+          fileUrl: companyDetails.engagementLetters,
+          fileName: "Engagement Letter",
+          archivedBy: req.user._id,
+          reason: "replaced",
+        });
+      }
       const uploadResult = await safeCloudinaryUpload(
         req.files["engagementLetters"][0].path
       );
       companyDetails.engagementLetters = uploadResult.url;
-      // Clean up temporary file after successful upload
+      changedDocuments.push("Engagement Letter");
       fs.unlink(req.files["engagementLetters"][0].path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     }
 
-    // Company Computer Card
+    // Company Computer Card - Archive old before replacing
     if (req.files["companyComputerCard"]) {
+      if (companyDetails.companyComputerCard) {
+        await archiveDocument({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "other_document",
+          sourceType: "company",
+          fileUrl: companyDetails.companyComputerCard,
+          fileName: "Company Computer Card",
+          archivedBy: req.user._id,
+          reason: "replaced",
+        });
+      }
       const uploadResult = await safeCloudinaryUpload(
         req.files["companyComputerCard"][0].path
       );
       companyDetails.companyComputerCard = uploadResult.url;
+      changedDocuments.push("Company Computer Card");
+
+      if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+      companyDetails.documentHistory.push({
+        action: companyDetails.companyComputerCard ? "update" : "upload",
+        documentType: "Company Computer Card",
+        fileName: req.files["companyComputerCard"][0].originalname || "Company Computer Card",
+        fileUrl: uploadResult.url,
+        performedBy: req.user._id,
+        performedAt: new Date(),
+      });
+
       fs.unlink(req.files["companyComputerCard"][0].path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     }
 
-    // Tax Card
+    // Tax Card - Archive old before replacing
     if (req.files["taxCard"]) {
+      if (companyDetails.taxCard) {
+        await archiveDocument({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "other_document",
+          sourceType: "company",
+          fileUrl: companyDetails.taxCard,
+          fileName: "Tax Card",
+          archivedBy: req.user._id,
+          reason: "replaced",
+        });
+      }
       const uploadResult = await safeCloudinaryUpload(
         req.files["taxCard"][0].path
       );
       companyDetails.taxCard = uploadResult.url;
+      changedDocuments.push("Tax Card");
+
+      if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+      companyDetails.documentHistory.push({
+        action: companyDetails.taxCard ? "update" : "upload",
+        documentType: "Tax Card",
+        fileName: req.files["taxCard"][0].originalname || "Tax Card",
+        fileUrl: uploadResult.url,
+        performedBy: req.user._id,
+        performedAt: new Date(),
+      });
+
       fs.unlink(req.files["taxCard"][0].path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     }
 
-    // Handle multiple CR Extract files - REPLACE existing files
+    // Handle multiple CR Extract files - Archive old and REPLACE
     if (req.files["crExtract"]) {
       console.log(`🔄 CR Extract replacement: Found ${req.files["crExtract"].length} new files`);
-      console.log(`📂 Existing CR Extract files before replacement: ${Array.isArray(companyDetails.crExtract) ? companyDetails.crExtract.length : 0}`);
-      
-      // REPLACE existing array instead of adding to it
-      companyDetails.crExtract = [];
-      console.log("🗑️ Cleared existing CR Extract files");
 
-      // Process each uploaded CR Extract file
+      // Archive existing CR Extract files before replacing
+      if (Array.isArray(companyDetails.crExtract) && companyDetails.crExtract.length > 0) {
+        for (const doc of companyDetails.crExtract) {
+          await archiveDocument({
+            clientId: job.clientId,
+            jobId: job._id,
+            documentType: "cr_extract",
+            sourceType: "company",
+            fileUrl: doc.fileUrl,
+            fileName: doc.fileName || "CR Extract Document",
+            archivedBy: req.user._id,
+            reason: "replaced",
+            originalUploadedAt: doc.uploadedAt,
+          });
+        }
+      }
+
+      companyDetails.crExtract = [];
+
       for (const file of req.files["crExtract"]) {
         const uploadResult = await safeCloudinaryUpload(file.path);
 
@@ -381,42 +511,124 @@ const updateCompanyDetails = asyncHandler(async (req, res) => {
 
         companyDetails.crExtract.push(crExtractDocument);
 
-        // Clean up temporary file
+        if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+        companyDetails.documentHistory.push({
+          action: "upload",
+          documentType: "CR Extract",
+          fileName: file.originalname || "CR Extract Document",
+          fileUrl: uploadResult.url,
+          performedBy: req.user._id,
+          performedAt: new Date(),
+        });
+
         fs.unlink(file.path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       }
+      changedDocuments.push("CR Extract");
       console.log(`✅ CR Extract replacement completed: Now has ${companyDetails.crExtract.length} files`);
     }
 
-    // Scope of License
+    // Scope of License - Archive old before replacing
     if (req.files["scopeOfLicense"]) {
+      if (companyDetails.scopeOfLicense) {
+        await archiveDocument({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "other_document",
+          sourceType: "company",
+          fileUrl: companyDetails.scopeOfLicense,
+          fileName: "Scope of License",
+          archivedBy: req.user._id,
+          reason: "replaced",
+        });
+      }
       const uploadResult = await safeCloudinaryUpload(
         req.files["scopeOfLicense"][0].path
       );
       companyDetails.scopeOfLicense = uploadResult.url;
+      changedDocuments.push("Scope of License");
+
+      if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+      companyDetails.documentHistory.push({
+        action: companyDetails.scopeOfLicense ? "update" : "upload",
+        documentType: "Scope of License",
+        fileName: req.files["scopeOfLicense"][0].originalname || "Scope of License",
+        fileUrl: uploadResult.url,
+        performedBy: req.user._id,
+        performedAt: new Date(),
+      });
+
       fs.unlink(req.files["scopeOfLicense"][0].path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     }
 
-    // Article of Associate
+    // Article of Associate - Archive old before replacing
     if (req.files["articleOfAssociate"]) {
+      if (companyDetails.articleOfAssociate) {
+        await archiveDocument({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "other_document",
+          sourceType: "company",
+          fileUrl: companyDetails.articleOfAssociate,
+          fileName: "Article of Associate",
+          archivedBy: req.user._id,
+          reason: "replaced",
+        });
+      }
       const uploadResult = await safeCloudinaryUpload(
         req.files["articleOfAssociate"][0].path
       );
       companyDetails.articleOfAssociate = uploadResult.url;
+      changedDocuments.push("Article of Associate");
+
+      if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+      companyDetails.documentHistory.push({
+        action: companyDetails.articleOfAssociate ? "update" : "upload",
+        documentType: "Article of Associate",
+        fileName: req.files["articleOfAssociate"][0].originalname || "Article of Associate",
+        fileUrl: uploadResult.url,
+        performedBy: req.user._id,
+        performedAt: new Date(),
+      });
+
       fs.unlink(req.files["articleOfAssociate"][0].path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
     }
 
-// Certificate of Incorporate
+    // Certificate of Incorporate - Archive old before replacing
     if (req.files["certificateOfIncorporate"]) {
+      if (companyDetails.certificateOfIncorporate) {
+        await archiveDocument({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "other_document",
+          sourceType: "company",
+          fileUrl: companyDetails.certificateOfIncorporate,
+          fileName: "Certificate of Incorporate",
+          archivedBy: req.user._id,
+          reason: "replaced",
+        });
+      }
       const uploadResult = await safeCloudinaryUpload(
         req.files["certificateOfIncorporate"][0].path
       );
       companyDetails.certificateOfIncorporate = uploadResult.url;
+      changedDocuments.push("Certificate of Incorporate");
+
+      if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+      companyDetails.documentHistory.push({
+        action: companyDetails.certificateOfIncorporate ? "update" : "upload",
+        documentType: "Certificate of Incorporate",
+        fileName: req.files["certificateOfIncorporate"][0].originalname || "Certificate of Incorporate",
+        fileUrl: uploadResult.url,
+        performedBy: req.user._id,
+        performedAt: new Date(),
+      });
+
       fs.unlink(req.files["certificateOfIncorporate"][0].path, (err) => {
         if (err) console.error("Error deleting temp file:", err);
       });
@@ -446,11 +658,22 @@ if (!Array.isArray(companyDetails.companyMemo)) {
 
         companyDetails.companyMemo.push(companyMemoDocument);
 
+        if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+        companyDetails.documentHistory.push({
+          action: "upload",
+          documentType: "Company Memo",
+          fileName: file.originalname || "Company Memo Document",
+          fileUrl: uploadResult.url,
+          performedBy: req.user._id,
+          performedAt: new Date(),
+        });
+
         // Clean up temporary file
         fs.unlink(file.path, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       }
+      changedDocuments.push("Company Memo");
     }
 
   }
@@ -460,10 +683,24 @@ if (!Array.isArray(companyDetails.companyMemo)) {
     try {
       const deletedIds = JSON.parse(deletedCompanyMemoIds);
       if (Array.isArray(deletedIds) && deletedIds.length > 0) {
-        // Remove deleted documents from the array
+        if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+        const deletedMemos = companyDetails.companyMemo.filter(
+          memo => deletedIds.includes(memo._id.toString())
+        );
+        for (const memo of deletedMemos) {
+          companyDetails.documentHistory.push({
+            action: "delete",
+            documentType: "Company Memo",
+            fileName: memo.fileName,
+            fileUrl: memo.fileUrl,
+            performedBy: req.user._id,
+            performedAt: new Date(),
+          });
+        }
         companyDetails.companyMemo = companyDetails.companyMemo.filter(
           memo => !deletedIds.includes(memo._id.toString())
         );
+        changedDocuments.push("Company Memo (deleted)");
         console.log(`Deleted ${deletedIds.length} Company Memo documents`);
       }
     } catch (parseError) {
@@ -515,9 +752,12 @@ if (!Array.isArray(companyDetails.companyMemo)) {
   }
 
   // Add a timeline entry for the job
+  const timelineDescription = changedDocuments.length > 0
+    ? `Company document${changedDocuments.length > 1 ? 's' : ''} updated: ${changedDocuments.join(", ")}`
+    : "Company details updated";
   job.timeline.push({
     status: job.status,
-    description: "Company details updated",
+    description: timelineDescription,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -544,18 +784,19 @@ if (!Array.isArray(companyDetails.companyMemo)) {
 
   // Create notification for company details update
   try {
-    const notificationText = syncResult && syncResult.success && syncResult.updatedRecords > 0 
+    const notificationText = syncResult && syncResult.success && syncResult.updatedRecords > 0
       ? `Company details updated for ${job.clientName}'s ${job.serviceType} job and synchronized across ${syncResult.updatedRecords} other job(s).`
       : `Company details updated for ${job.clientName}'s ${job.serviceType} job.`;
-      
-    await notificationService.createNotification(
+
+    await notificationService.createJobNotification(
       {
         title: "Company Details Updated",
         description: notificationText,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
-      { "role.permissions.complianceManagement": true }
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
@@ -736,6 +977,9 @@ const addPersonDetails = asyncHandler(async (req, res) => {
   }
 
   // Create new person details
+  console.log(`📝 Creating new ${personType} for job ${jobId}`);
+  console.log(`   Name: ${name}, Files: ${req.files?.length || 0}`);
+
   const newPerson = new PersonDetails({
     jobId,
     personType,
@@ -856,7 +1100,7 @@ const addPersonDetails = asyncHandler(async (req, res) => {
 
   // Create notification for person details add
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: `${
           personType.charAt(0).toUpperCase() + personType.slice(1)
@@ -867,7 +1111,8 @@ const addPersonDetails = asyncHandler(async (req, res) => {
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
-      { "role.permissions.complianceManagement": true }
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
@@ -941,6 +1186,9 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
     throw new Error("Person details not found");
   }
 
+  // Track which documents were changed for timeline description
+  const changedDocuments = [];
+
   // Store original values of all fields before updating
   const originalValues = {
     name: personDetails.name,
@@ -983,34 +1231,109 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
     for (const file of req.files) {
       const { fieldname, path: filePath, originalname } = file;
 
-      // Handle standard document fields
+      // Handle standard document fields - Archive old document before replacing
       if (fieldname === "visaCopy") {
+        if (originalValues.visaCopy) {
+          await archiveDocument({
+            clientId: job.clientId,
+            jobId: job._id,
+            documentType: "passport",
+            sourceType: personType,
+            personName: personDetails.name,
+            personId: personDetails._id,
+            fileUrl: originalValues.visaCopy,
+            fileName: "Visa Copy",
+            archivedBy: req.user._id,
+            reason: "replaced",
+          });
+        }
         const uploadResult = await safeCloudinaryUpload(filePath);
         personDetails.visaCopy = uploadResult.url;
+        changedDocuments.push("Visa Copy");
         fs.unlink(filePath, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       } else if (fieldname === "qidDoc") {
+        if (originalValues.qidDoc) {
+          await archiveDocument({
+            clientId: job.clientId,
+            jobId: job._id,
+            documentType: "qid",
+            sourceType: personType,
+            personName: personDetails.name,
+            personId: personDetails._id,
+            fileUrl: originalValues.qidDoc,
+            fileName: "QID Document",
+            archivedBy: req.user._id,
+            reason: "replaced",
+          });
+        }
         const uploadResult = await safeCloudinaryUpload(filePath);
         personDetails.qidDoc = uploadResult.url;
+        changedDocuments.push("QID Document");
         fs.unlink(filePath, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       } else if (fieldname === "nationalAddressDoc") {
+        if (originalValues.nationalAddressDoc) {
+          await archiveDocument({
+            clientId: job.clientId,
+            jobId: job._id,
+            documentType: "other_document",
+            sourceType: personType,
+            personName: personDetails.name,
+            personId: personDetails._id,
+            fileUrl: originalValues.nationalAddressDoc,
+            fileName: "National Address Document",
+            archivedBy: req.user._id,
+            reason: "replaced",
+          });
+        }
         const uploadResult = await safeCloudinaryUpload(filePath);
         personDetails.nationalAddressDoc = uploadResult.url;
+        changedDocuments.push("National Address Document");
         fs.unlink(filePath, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       } else if (fieldname === "passportDoc") {
+        if (originalValues.passportDoc) {
+          await archiveDocument({
+            clientId: job.clientId,
+            jobId: job._id,
+            documentType: "passport",
+            sourceType: personType,
+            personName: personDetails.name,
+            personId: personDetails._id,
+            fileUrl: originalValues.passportDoc,
+            fileName: "Passport Document",
+            archivedBy: req.user._id,
+            reason: "replaced",
+          });
+        }
         const uploadResult = await safeCloudinaryUpload(filePath);
         personDetails.passportDoc = uploadResult.url;
+        changedDocuments.push("Passport Document");
         fs.unlink(filePath, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
       } else if (fieldname === "cv") {
+        if (originalValues.cv) {
+          await archiveDocument({
+            clientId: job.clientId,
+            jobId: job._id,
+            documentType: "other_document",
+            sourceType: personType,
+            personName: personDetails.name,
+            personId: personDetails._id,
+            fileUrl: originalValues.cv,
+            fileName: "CV",
+            archivedBy: req.user._id,
+            reason: "replaced",
+          });
+        }
         const uploadResult = await safeCloudinaryUpload(filePath);
         personDetails.cv = uploadResult.url;
+        changedDocuments.push("CV");
         fs.unlink(filePath, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
@@ -1021,8 +1344,27 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
     if (req.body.otherDocumentsMetadata) {
       try {
         const metadata = JSON.parse(req.body.otherDocumentsMetadata);
-        const { existingDocs, totalCount } = metadata;
+        const { existingDocs, totalCount, replacedDocs } = metadata;
         const finalOtherDocs = [];
+
+        // Archive replaced documents
+        if (Array.isArray(replacedDocs)) {
+          for (const doc of replacedDocs) {
+            await archiveDocument({
+              clientId: job.clientId,
+              jobId: job._id,
+              documentType: "other_document",
+              sourceType: personType,
+              personName: personDetails.name,
+              personId: personDetails._id,
+              fileUrl: doc.fileUrl,
+              fileName: doc.fileName,
+              archivedBy: req.user._id,
+              reason: "replaced",
+              originalUploadedAt: doc.uploadedAt,
+            });
+          }
+        }
 
         // Create array with correct size
         for (let i = 0; i < totalCount; i++) {
@@ -1059,6 +1401,7 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
 
         // Filter out null values and replace the array
         personDetails.otherDocuments = finalOtherDocs.filter(doc => doc !== null);
+        changedDocuments.push("Other Documents");
       } catch (err) {
         console.error("Error parsing otherDocumentsMetadata:", err);
       }
@@ -1100,11 +1443,13 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
   const updatedPerson = await personDetails.save();
 
   // Add a timeline entry for the job
+  const personTypeName = personType.charAt(0).toUpperCase() + personType.slice(1);
+  const timelineDescription = changedDocuments.length > 0
+    ? `${personTypeName} document${changedDocuments.length > 1 ? 's' : ''} updated: ${changedDocuments.join(", ")}`
+    : `${personTypeName} details updated`;
   job.timeline.push({
     status: job.status,
-    description: `${
-      personType.charAt(0).toUpperCase() + personType.slice(1)
-    } details updated`,
+    description: timelineDescription,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -1129,7 +1474,7 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
 
   // Only notify about person details update
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: `${
           personType.charAt(0).toUpperCase() + personType.slice(1)
@@ -1144,7 +1489,8 @@ const updatePersonDetails = asyncHandler(async (req, res) => {
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
-      { "role.permissions.complianceManagement": true }
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
@@ -1219,7 +1565,7 @@ const deletePersonDetails = asyncHandler(async (req, res) => {
 
   // Create notification for person details removal
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: `${
           personType.charAt(0).toUpperCase() + personType.slice(1)
@@ -1230,7 +1576,8 @@ const deletePersonDetails = asyncHandler(async (req, res) => {
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
-      { "role.permissions.complianceManagement": true }
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
@@ -1336,9 +1683,11 @@ const updateKycDocuments = asyncHandler(async (req, res) => {
     const uploadPromises = req.files.map(async (file, index) => {
       const uploadResult = await safeCloudinaryUpload(file.path);
 
-      fs.unlink(file.path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+      if (uploadResult.success) {
+        fs.unlink(file.path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
 
       // Get description and date from request body if available
       const description = req.body[`description_${index}`] || "";
@@ -1373,9 +1722,13 @@ const updateKycDocuments = asyncHandler(async (req, res) => {
   const updatedKycDocuments = await kycDocuments.save();
 
   // Add a timeline entry for the job
+  const uploadCount = req.files ? req.files.length : 0;
+  const timelineDescription = uploadCount > 0
+    ? `KYC document${uploadCount > 1 ? 's' : ''} uploaded (${uploadCount} file${uploadCount > 1 ? 's' : ''})`
+    : "KYC documents updated";
   job.timeline.push({
     status: job.status,
-    description: "KYC documents updated",
+    description: timelineDescription,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -1384,20 +1737,126 @@ const updateKycDocuments = asyncHandler(async (req, res) => {
 
   // Create notification for KYC documents update
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: "KYC Documents Updated",
         description: `KYC documents updated for ${job.clientName}'s ${job.serviceType} job.`,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
-      { "role.permissions.complianceManagement": true }
+      job,
+      req.user._id
     );
   } catch (notificationError) {
     console.error("Error creating notification:", notificationError);
   }
 
   res.status(200).json(updatedKycDocuments);
+});
+
+const replaceKycDocument = asyncHandler(async (req, res) => {
+  const { jobId, documentIndex } = req.params;
+  const { documentName, notes } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to update this job");
+  }
+
+  let kycDocuments = await KycDocument.findOne({ jobId });
+
+  if (!kycDocuments) {
+    res.status(404);
+    throw new Error("KYC documents not found");
+  }
+
+  const docIndex = parseInt(documentIndex);
+  if (isNaN(docIndex) || docIndex < 0 || docIndex >= kycDocuments.documents.length) {
+    res.status(400);
+    throw new Error("Invalid document index");
+  }
+
+  const oldDocument = kycDocuments.documents[docIndex];
+
+  if (oldDocument && oldDocument.file) {
+    try {
+      await Archive.create({
+        clientId: job.clientId,
+        jobId: job._id,
+        documentType: "kyc_document",
+        sourceType: "kyc",
+        fileUrl: oldDocument.file,
+        fileName: oldDocument.description || "KYC Document",
+        title: oldDocument.description || "General KYC Document",
+        description: `Archived general KYC document - replaced`,
+        archivedBy: req.user._id,
+        reason: "replaced",
+        originalUploadedAt: oldDocument.date,
+        metadata: {
+          originalDescription: oldDocument.description
+        }
+      });
+      console.log(`Archived old KYC document for job ${jobId}`);
+    } catch (archiveError) {
+      console.error("Error archiving KYC document:", archiveError);
+    }
+  }
+
+  if (req.file) {
+    const uploadResult = await safeCloudinaryUpload(req.file.path);
+
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+
+    const description = notes ? `${documentName} - ${notes}` : documentName;
+
+    kycDocuments.documents[docIndex] = {
+      file: uploadResult.url,
+      description: description || oldDocument.description,
+      date: new Date(),
+    };
+  } else if (documentName) {
+    const description = notes ? `${documentName} - ${notes}` : documentName;
+    kycDocuments.documents[docIndex].description = description;
+  }
+
+  kycDocuments.updatedBy = req.user._id;
+  await kycDocuments.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: "KYC document replaced",
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+
+  await job.save();
+
+  res.status(200).json({
+    success: true,
+    message: "KYC document replaced successfully",
+    documents: kycDocuments.documents,
+  });
 });
 
 // Updated uploadEngagementLetter function for operationController.js
@@ -1484,7 +1943,17 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
     // Add the new engagement letter to the array
     companyDetails.engagementLetters.push(engagementLetterObject);
     companyDetails.updatedBy = req.user._id;
-    
+
+    if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+    companyDetails.documentHistory.push({
+      action: "upload",
+      documentType: "Engagement Letter",
+      fileName: req.file.originalname || 'Engagement Letter',
+      fileUrl: uploadResult.url,
+      performedBy: req.user._id,
+      performedAt: new Date(),
+    });
+
     await companyDetails.save();
     
     console.log(`Company details updated with engagement letter: ${uploadResult.url}`);
@@ -1573,14 +2042,15 @@ const uploadEngagementLetter = asyncHandler(async (req, res) => {
 
     // Create notification for engagement letter upload
     try {
-      await notificationService.createNotification(
+      await notificationService.createJobNotification(
         {
           title: "Engagement Letter Uploaded",
           description: `Engagement letter uploaded for ${job.clientName}'s ${job.serviceType} job.`,
           type: "job",
           relatedTo: { model: "Job", id: job._id },
         },
-        { "role.permissions.complianceManagement": true }
+        job,
+        req.user._id
       );
     } catch (notificationError) {
       console.error("Error creating notification:", notificationError);
@@ -1685,30 +2155,19 @@ const completeOperation = asyncHandler(async (req, res) => {
   
   const updatedJob = await job.save();
 
-  // Standard notifications
-  // 1. Notify the user who completed the operation
-  await notificationService.createNotification(
-    {
-      title: "Operation Completed",
-      description: `Operation for ${job.clientName}'s ${job.serviceType} job has been marked as complete.`,
-      type: "job",
-      relatedTo: { model: "Job", id: job._id },
-    },
-    { _id: req.user._id }
-  );
-  
-  // 2. Notify admins
-  await notificationService.createNotification(
+  // Notify job parties (creator, assigned person, selected service users)
+  await notificationService.createJobNotification(
     {
       title: "Operation Completed",
       description: `Operation for ${job.clientName}'s ${job.serviceType} job has been completed by ${req.user.name}.`,
       type: "job",
       relatedTo: { model: "Job", id: job._id },
     },
-    { "role.name": "admin" }
+    job,
+    req.user._id
   );
 
-  // 3. Notify KYC management (LMRO) team
+  // Notify KYC management (LMRO) team - workflow notification
   await notificationService.createNotification(
     {
       title: "Operation Completed - Ready for KYC",
@@ -1719,39 +2178,25 @@ const completeOperation = asyncHandler(async (req, res) => {
     { "role.permissions.kycManagement.lmro": true }
   );
 
-  // 4. Special notification for management team for KYC jobs
-  const isKycJob = job.serviceType && 
-                  (job.serviceType.toLowerCase().includes('kyc') || 
+  // Special processing for KYC jobs
+  const isKycJob = job.serviceType &&
+                  (job.serviceType.toLowerCase().includes('kyc') ||
                    job.type === 'kyc');
-  
-  if (isKycJob) {
-    await notificationService.createNotification(
-      {
-        title: "KYC Job Completed by Operations",
-        description: `A KYC job for ${job.clientName} (Job #${job._id}) has been completed by ${req.user.name} from Operations Management. Please review for further processing.`,
-        type: "job",
-        subType: "kyc", // This will use the purple shield icon
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "management" }
-    );
 
+  if (isKycJob) {
     // Process KYC-specific notifications using the dedicated service
-    if (isKycJob) {
-      try {
-        await kycService.processCompletedKycJob(updatedJob, req.user);
-      } catch (kycError) {
-        // Log but don't fail the request if KYC processing has an issue
-        console.error(
-          `Error in KYC notification processing: ${kycError.message}`
-        );
-      }
+    try {
+      await kycService.processCompletedKycJob(updatedJob, req.user);
+    } catch (kycError) {
+      console.error(
+        `Error in KYC notification processing: ${kycError.message}`
+      );
     }
 
-    // If KYC documents are missing, send an additional alert
+    // If KYC documents are missing, notify job parties
     const kycDocuments = await KycDocument.findOne({ jobId: job._id });
     if (!kycDocuments || kycDocuments.documents.length === 0) {
-      await notificationService.createNotification(
+      await notificationService.createJobNotification(
         {
           title: "KYC Documents Missing",
           description: `Attention: KYC job #${job._id} for ${job.clientName} has been completed, but no KYC documents have been uploaded. Please follow up.`,
@@ -1759,7 +2204,8 @@ const completeOperation = asyncHandler(async (req, res) => {
           subType: "kyc",
           relatedTo: { model: "Job", id: job._id },
         },
-        { "role.name": "management" }
+        job,
+        req.user._id
       );
     }
 
@@ -1792,6 +2238,8 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       clientName,
       gmail,
       startingPoint,
+      crNo,
+      contactNumber,
       // Company details
       companyDetails,
       // Person details
@@ -1861,15 +2309,26 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       // 1. Check if client exists, create if not
       let client = await Client.findOne({ gmail });
       if (!client) {
+        const nextClientCode = await Client.getNextClientCode();
         client = new Client({
           name: clientName,
           gmail,
           startingPoint,
+          clientCode: nextClientCode,
+          crNo: crNo || '',
+          contactNumber: contactNumber || ''
         });
         await client.save({ session });
-        console.log("✅ Created new client:", client._id);
+        console.log("✅ Created new client:", client._id, "with code:", nextClientCode);
       } else {
         console.log("ℹ️ Using existing client:", client._id);
+        // Update existing client with crNo and contactNumber if provided
+        if (crNo !== undefined || contactNumber !== undefined) {
+          const updateFields = {};
+          if (crNo !== undefined) updateFields.crNo = crNo;
+          if (contactNumber !== undefined) updateFields.contactNumber = contactNumber;
+          await Client.findByIdAndUpdate(client._id, updateFields, { session });
+        }
       }
 
       // 2. Upload job documents (now optional) OR use existing document URLs
@@ -2712,38 +3171,16 @@ const createPreApprovedJob = asyncHandler(async (req, res) => {
       await braApproval.save({ session });
       console.log("✅ Created and completed BRA approval with documents");
 
-      // 11. Send notifications
-      await notificationService.createNotification(
+      // 11. Send notifications to job parties
+      await notificationService.createJobNotification(
         {
           title: "New Pre-Approved Job Created",
-          description: `A new pre-approved ${serviceType} job (${jobNumber}) has been created for ${clientName} by Operation Management.`,
+          description: `A new pre-approved ${serviceType} job (${jobNumber}) has been created for ${clientName} by ${req.user.name}.`,
           type: "job",
           relatedTo: { model: "Job", id: savedJob._id },
         },
-        { "role.permissions.complianceManagement": true }
-      );
-
-      // Notify assigned person
-      await notificationService.createNotification(
-        {
-          title: "New Job Assigned",
-          description: `You have been assigned to a pre-approved ${serviceType} job (${jobNumber}) for ${clientName}.`,
-          type: "job",
-          subType: "assignment",
-          relatedTo: { model: "Job", id: savedJob._id },
-        },
-        assignedPerson
-      );
-
-      // Notify admins
-      await notificationService.createNotification(
-        {
-          title: "Pre-Approved Job Created",
-          description: `Pre-approved job ${jobNumber} for ${clientName} has been created by ${req.user.name}.`,
-          type: "job",
-          relatedTo: { model: "Job", id: savedJob._id },
-        },
-        { "role.name": "admin" }
+        savedJob,
+        req.user._id
       );
 
       // Commit transaction
@@ -3203,35 +3640,36 @@ const getClientEngagementLetters = asyncHandler(async (req, res) => {
 // FIXED: Expiring jobs functions in operationController.js
 
 
-// HELPER FUNCTION: Calculate urgency level (matches exportExpiringJobs logic exactly)
+// HELPER FUNCTION: Calculate urgency level
+// Critical: 0-30 days, Warning: 30-60 days, Normal: 60+ days
 const calculateUrgencyLevel = (actualExpiryDate, currentDate = new Date()) => {
   const diffDays = Math.ceil((new Date(actualExpiryDate) - currentDate) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
     const daysOverdue = Math.abs(diffDays);
-    return { 
-      level: "expired", 
+    return {
+      level: "expired",
       daysUntilExpiry: diffDays,
       description: `Expired ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} ago`,
       priority: 1
     };
-  } else if (diffDays <= 7) {
-    return { 
-      level: "critical", 
+  } else if (diffDays <= 30) {
+    return {
+      level: "critical",
       daysUntilExpiry: diffDays,
       description: diffDays === 0 ? "Expires today" : `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`,
       priority: diffDays === 0 ? 2 : 3
     };
-  } else if (diffDays <= 30) {
-    return { 
-      level: "warning", 
+  } else if (diffDays <= 60) {
+    return {
+      level: "warning",
       daysUntilExpiry: diffDays,
       description: `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`,
       priority: 4
     };
   }
-  return { 
-    level: "normal", 
+  return {
+    level: "normal",
     daysUntilExpiry: diffDays,
     description: `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`,
     priority: 5
@@ -3307,7 +3745,7 @@ const getExpiringJobs = async (req, res) => {
 
         // Process each document type individually
         const documentTypes = [
-          { date: detail.expiryDate, type: 'Main Document' },
+          { date: detail.expiryDate, type: 'Trade License' },
           { date: detail.companyComputerCardExpiry, type: 'Company Computer Card' },
           { date: detail.taxCardExpiry, type: 'Tax Card' },
           { date: detail.crExtractExpiry, type: 'CR Extract' },
@@ -3416,8 +3854,8 @@ const getExpiringJobs = async (req, res) => {
       // ADDED: Show unique jobs count and document breakdown
       uniqueJobs: [...new Set(uniqueJobs.map(job => job.jobId.toString()))].length,
       documentTypes: {
-        companyDocuments: uniqueJobs.filter(job => 
-          ['Main Document', 'Company Computer Card', 'Tax Card', 'CR Extract', 'Scope of License'].includes(job.expiryType)
+        companyDocuments: uniqueJobs.filter(job =>
+          ['Trade License', 'Company Computer Card', 'Tax Card', 'CR Extract', 'Scope of License'].includes(job.expiryType)
         ).length,
         personalDocuments: uniqueJobs.filter(job => 
           job.expiryType.includes('QID') || job.expiryType.includes('National Address') || job.expiryType.includes('Passport')
@@ -3516,7 +3954,7 @@ const getExpiringJobsForDashboard = async (req, res) => {
 
         // IMPORTANT: Create separate entries for EACH expiring document type
         const expiryChecks = [
-          { date: detail.expiryDate, type: 'Main Document' },
+          { date: detail.expiryDate, type: 'Trade License' },
           { date: detail.companyComputerCardExpiry, type: 'Company Computer Card' },
           { date: detail.taxCardExpiry, type: 'Tax Card' },
           { date: detail.crExtractExpiry, type: 'CR Extract' },
@@ -3761,7 +4199,7 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
   try {
     const currentDate = new Date();
     const warningDate = new Date();
-    warningDate.setDate(currentDate.getDate() + 7); // 7 days warning for notifications
+    warningDate.setDate(currentDate.getDate() + 60); // 60 days to capture WARNING level (31-60 days)
 
     const criticallyExpiringCompanyDetails = await CompanyDetails.find({
       $or: [
@@ -3790,7 +4228,7 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
       
       // Find the earliest expiring document
       const expiryDates = [
-        { date: companyDetail.expiryDate, type: 'Main Document' },
+        { date: companyDetail.expiryDate, type: 'Trade License' },
         { date: companyDetail.companyComputerCardExpiry, type: 'Company Computer Card' },
         { date: companyDetail.taxCardExpiry, type: 'Tax Card' },
         { date: companyDetail.crExtractExpiry, type: 'CR Extract' },
@@ -3806,54 +4244,147 @@ const sendExpiryNotifications = asyncHandler(async (req, res) => {
         (earliestExpiry.date - currentDate) / (1000 * 60 * 60 * 24)
       );
 
-      const urgencyText = daysUntilExpiry <= 0 ? 'has expired' : `expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}`;
-      
-      // ADDED: Include service status in notification
-      const serviceStatus = job.status === 'fully_completed_bra' || job.status === 'completed' 
-        ? ' (Service Completed - Document Renewal Required)' 
-        : '';
+      // MILESTONE NOTIFICATIONS: Only send on specific days (60, 30, 0)
+      // Skip if not a milestone day
+      const isMilestoneDay = daysUntilExpiry === 60 || daysUntilExpiry === 30 || daysUntilExpiry === 0;
+      if (!isMilestoneDay) continue;
 
-      // Send notification to assigned person
-      if (job.assignedPerson) {
-        await notificationService.createNotification(
-          {
-            title: "Document Expiry Alert",
-            description: `${earliestExpiry.type} for ${job.clientName} (Job #${job.jobNumber}) ${urgencyText}${serviceStatus}. Please take immediate action.`,
-            type: "expiry_alert",
-            priority: daysUntilExpiry <= 0 ? "high" : daysUntilExpiry <= 3 ? "medium" : "normal",
-            relatedTo: { model: "Job", id: job._id },
-          },
-          { _id: job.assignedPerson._id }
-        );
-        notificationsSent++;
+      // Calculate urgency level based on milestone
+      let urgencyLevel, urgencyLabel, urgencyText;
+      if (daysUntilExpiry === 0) {
+        urgencyLevel = "expired";
+        urgencyLabel = "🔴 EXPIRED";
+        urgencyText = "expires today! Immediate action required";
+      } else if (daysUntilExpiry === 30) {
+        urgencyLevel = "critical";
+        urgencyLabel = "🔴 CRITICAL";
+        urgencyText = "expires in 30 days";
+      } else if (daysUntilExpiry === 60) {
+        urgencyLevel = "warning";
+        urgencyLabel = "⚠️ WARNING";
+        urgencyText = "expires in 60 days";
+      } else {
+        continue; // Skip non-milestone days
       }
 
-      // Send notification to operations management
-      await notificationService.createNotification(
+      // ADDED: Include service status in notification
+      const serviceStatus = job.status === 'fully_completed_bra' || job.status === 'completed'
+        ? ' (Service Completed - Document Renewal Required)'
+        : '';
+
+      // Send notification to job parties only
+      await notificationService.createJobNotification(
         {
-          title: "Document Expiry Alert",
+          title: `${urgencyLabel}: Document Expiry Alert`,
           description: `${earliestExpiry.type} for ${job.clientName} (Job #${job.jobNumber}) ${urgencyText}${serviceStatus}. Assigned to: ${job.assignedPerson?.name || 'Unassigned'}`,
           type: "expiry_alert",
-          priority: daysUntilExpiry <= 0 ? "high" : daysUntilExpiry <= 3 ? "medium" : "normal",
+          subType: urgencyLevel,
+          priority: daysUntilExpiry === 0 ? "high" : daysUntilExpiry === 30 ? "medium" : "normal",
           relatedTo: { model: "Job", id: job._id },
         },
-        { "role.permissions.operationManagement": true }
+        job,
+        null
       );
       notificationsSent++;
     }
 
-    res.status(200).json({
+    // Also check PersonDetails for expiring documents (QID, Passport, National Address)
+    const expiringPersonDetails = await PersonDetails.find({
+      $or: [
+        { qidExpiry: { $exists: true, $ne: null, $lte: warningDate } },
+        { passportExpiry: { $exists: true, $ne: null, $lte: warningDate } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $lte: warningDate } },
+      ],
+    }).populate({
+      path: "jobId",
+      select: "jobNumber clientName serviceType assignedPerson status",
+      populate: { path: "assignedPerson", select: "_id name email" },
+      match: { status: { $nin: ["cancelled"] } }
+    });
+
+    for (const person of expiringPersonDetails) {
+      if (!person.jobId) continue;
+
+      const job = person.jobId;
+      const personTypeLabel = person.personType.charAt(0).toUpperCase() + person.personType.slice(1);
+
+      // Check each expiry field
+      const personExpiryDates = [
+        { date: person.qidExpiry, type: `${personTypeLabel} QID` },
+        { date: person.passportExpiry, type: `${personTypeLabel} Passport` },
+        { date: person.nationalAddressExpiry, type: `${personTypeLabel} National Address` },
+      ]
+        .filter(item => item.date && item.date <= warningDate)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      if (personExpiryDates.length === 0) continue;
+
+      const earliestPersonExpiry = personExpiryDates[0];
+      const personDaysUntilExpiry = Math.ceil(
+        (earliestPersonExpiry.date - currentDate) / (1000 * 60 * 60 * 24)
+      );
+
+      // MILESTONE NOTIFICATIONS: Only send on specific days (60, 30, 0)
+      const isPersonMilestoneDay = personDaysUntilExpiry === 60 || personDaysUntilExpiry === 30 || personDaysUntilExpiry === 0;
+      if (!isPersonMilestoneDay) continue;
+
+      // Calculate urgency level based on milestone
+      let personUrgencyLevel, personUrgencyLabel, personUrgencyText;
+      if (personDaysUntilExpiry === 0) {
+        personUrgencyLevel = "expired";
+        personUrgencyLabel = "🔴 EXPIRED";
+        personUrgencyText = "expires today! Immediate action required";
+      } else if (personDaysUntilExpiry === 30) {
+        personUrgencyLevel = "critical";
+        personUrgencyLabel = "🔴 CRITICAL";
+        personUrgencyText = "expires in 30 days";
+      } else if (personDaysUntilExpiry === 60) {
+        personUrgencyLevel = "warning";
+        personUrgencyLabel = "⚠️ WARNING";
+        personUrgencyText = "expires in 60 days";
+      } else {
+        continue; // Skip non-milestone days
+      }
+
+      const personName = person.name || 'Unknown';
+
+      // Send notification to job parties only
+      await notificationService.createJobNotification(
+        {
+          title: `${personUrgencyLabel}: ${earliestPersonExpiry.type} Expiry`,
+          description: `${earliestPersonExpiry.type} for ${personName} (${job.clientName} - Job #${job.jobNumber}) ${personUrgencyText}. Assigned to: ${job.assignedPerson?.name || 'Unassigned'}`,
+          type: "expiry_alert",
+          subType: personUrgencyLevel,
+          priority: personDaysUntilExpiry === 0 ? "high" : personDaysUntilExpiry === 30 ? "medium" : "normal",
+          relatedTo: { model: "Job", id: job._id },
+        },
+        job,
+        null
+      );
+      notificationsSent++;
+    }
+
+    const result = {
       message: `Expiry notifications sent successfully (including completed services)`,
       notificationsSent,
-      jobsChecked: criticallyExpiringCompanyDetails.length,
-    });
+      jobsChecked: criticallyExpiringCompanyDetails.length + expiringPersonDetails.length,
+    };
+
+    // Handle both API calls (with res) and cron job calls (without res)
+    if (res) {
+      res.status(200).json(result);
+    }
+    return result;
 
   } catch (error) {
     console.error('Error sending expiry notifications:', error);
-    res.status(500).json({
-      message: 'Failed to send expiry notifications',
-      error: error.message,
-    });
+    if (res) {
+      res.status(500).json({
+        message: 'Failed to send expiry notifications',
+        error: error.message,
+      });
+    }
+    return { notificationsSent: 0, error: error.message };
   }
 });
 
@@ -4104,7 +4635,9 @@ const updateJobExpiryDate = async (req, res) => {
 
 const exportExpiringJobs = asyncHandler(async (req, res) => {
   try {
+    const { urgency, search } = req.query;
     console.log("📊 Exporting future expiring documents to Excel (2 months, excluding expired)");
+    console.log(`📋 Filters - Urgency: ${urgency || 'all'}, Search: ${search || 'none'}`);
 
     const currentDate = new Date();
     const twoMonthsFromNow = new Date(currentDate.getTime() + 60 * 24 * 60 * 60 * 1000);
@@ -4159,10 +4692,10 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
 
         // Check each document type separately and create individual entries
         const documentChecks = [
-          { 
-            date: detail.expiryDate, 
-            type: 'Main Document',
-            hasDocument: detail.expiryDate 
+          {
+            date: detail.expiryDate,
+            type: 'Trade License',
+            hasDocument: detail.expiryDate
           },
           { 
             date: detail.companyComputerCardExpiry, 
@@ -4275,26 +4808,50 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
     // Sort by urgency level first, then by days until expiry
     uniqueExpiringJobs.sort((a, b) => {
       const urgencyOrder = { EXPIRED: 0, CRITICAL: 1, WARNING: 2, NORMAL: 3 };
-      
+
       if (urgencyOrder[a.urgencyLevel] !== urgencyOrder[b.urgencyLevel]) {
         return urgencyOrder[a.urgencyLevel] - urgencyOrder[b.urgencyLevel];
       }
-      
+
       // If same urgency, sort by days until expiry (most urgent first)
       return a.daysUntilExpiry - b.daysUntilExpiry;
     });
 
-    console.log(`📈 Exporting ${uniqueExpiringJobs.length} individual document expiries`);
+    // Apply filters from query parameters
+    let filteredJobs = [...uniqueExpiringJobs];
 
-    // Calculate statistics for summary
+    // Filter by urgency level if specified
+    if (urgency && urgency !== 'all') {
+      const urgencyUpper = urgency.toUpperCase();
+      filteredJobs = filteredJobs.filter(job => job.urgencyLevel === urgencyUpper);
+      console.log(`📋 After urgency filter (${urgency}): ${filteredJobs.length} documents`);
+    }
+
+    // Filter by search term if specified
+    if (search && search.trim()) {
+      const searchLower = search.toLowerCase().trim();
+      filteredJobs = filteredJobs.filter(job =>
+        (job.clientName && job.clientName.toLowerCase().includes(searchLower)) ||
+        (job.companyName && job.companyName.toLowerCase().includes(searchLower)) ||
+        (job.jobNumber && job.jobNumber.toLowerCase().includes(searchLower)) ||
+        (job.serviceType && job.serviceType.toLowerCase().includes(searchLower)) ||
+        (job.expiryType && job.expiryType.toLowerCase().includes(searchLower))
+      );
+      console.log(`📋 After search filter (${search}): ${filteredJobs.length} documents`);
+    }
+
+    console.log(`📈 Exporting ${filteredJobs.length} individual document expiries (filtered from ${uniqueExpiringJobs.length} total)`);
+
+    // Calculate statistics for summary (based on filtered data)
     const stats = {
-      total: uniqueExpiringJobs.length,
-      expired: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'EXPIRED').length,
-      critical: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'CRITICAL').length,
-      warning: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'WARNING').length,
-      normal: uniqueExpiringJobs.filter(j => j.urgencyLevel === 'NORMAL').length,
-      uniqueJobs: [...new Set(uniqueExpiringJobs.map(j => j.jobNumber))].length,
-      fromCompletedServices: uniqueExpiringJobs.filter(j => j.isServiceCompleted === 'Yes').length
+      total: filteredJobs.length,
+      expired: filteredJobs.filter(j => j.urgencyLevel === 'EXPIRED').length,
+      critical: filteredJobs.filter(j => j.urgencyLevel === 'CRITICAL').length,
+      warning: filteredJobs.filter(j => j.urgencyLevel === 'WARNING').length,
+      normal: filteredJobs.filter(j => j.urgencyLevel === 'NORMAL').length,
+      uniqueJobs: [...new Set(filteredJobs.map(j => j.jobNumber))].length,
+      fromCompletedServices: filteredJobs.filter(j => j.isServiceCompleted === 'Yes').length,
+      filterApplied: urgency && urgency !== 'all' ? urgency.toUpperCase() : 'ALL'
     };
 
     // Create Excel workbook
@@ -4331,8 +4888,9 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
     worksheet.getRow(2).font = { bold: true, color: { argb: 'FFFFFFFF' } }; // White text
 
     // Add summary row at the top
+    const filterLabel = stats.filterApplied !== 'ALL' ? ` (Filtered: ${stats.filterApplied})` : '';
     const summaryRow = worksheet.insertRow(1, [
-      'COMPLETE EXPIRING DOCUMENTS REPORT',
+      `EXPIRING DOCUMENTS REPORT${filterLabel}`,
       `Generated: ${new Date().toLocaleDateString()}`,
       `Total Documents: ${stats.total}`,
       `From ${stats.uniqueJobs} Jobs`,
@@ -4352,8 +4910,8 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
     // Merge cells for the summary
     worksheet.mergeCells('A1:P1');
 
-    // Add data rows with enhanced formatting
-uniqueExpiringJobs.forEach((job, index) => {
+    // Add data rows with enhanced formatting (use filtered data)
+filteredJobs.forEach((job, index) => {
   const row = worksheet.addRow({
     ...job,
     expiryDate: job.expiryDate.toLocaleDateString(),
@@ -4553,7 +5111,17 @@ const deleteEngagementLetter = asyncHandler(async (req, res) => {
     // Remove the engagement letter from the array
     companyDetails.engagementLetters.splice(letterIndex, 1);
     companyDetails.updatedBy = req.user._id;
-    
+
+    if (!companyDetails.documentHistory) companyDetails.documentHistory = [];
+    companyDetails.documentHistory.push({
+      action: "delete",
+      documentType: "Engagement Letter",
+      fileName: deletedLetter.fileName,
+      fileUrl: deletedLetter.fileUrl,
+      performedBy: req.user._id,
+      performedAt: new Date(),
+    });
+
     await companyDetails.save();
     
     console.log(`Engagement letter deleted from job ${jobId}`);
@@ -4618,14 +5186,15 @@ const deleteEngagementLetter = asyncHandler(async (req, res) => {
 
     // Create notification for engagement letter deletion
     try {
-      await notificationService.createNotification(
+      await notificationService.createJobNotification(
         {
           title: "Engagement Letter Deleted",
           description: `Engagement letter "${deletedLetter.fileName}" was deleted from ${job.clientName}'s ${job.serviceType} job.`,
           type: "job",
           relatedTo: { model: "Job", id: job._id },
         },
-        { "role.permissions.complianceManagement": true }
+        job,
+        req.user._id
       );
     } catch (notificationError) {
       console.error("Error creating notification:", notificationError);
@@ -4645,6 +5214,113 @@ const deleteEngagementLetter = asyncHandler(async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({
         message: "Failed to delete engagement letter",
+        error: error.message,
+      });
+    }
+  }
+});
+
+const replaceEngagementLetter = asyncHandler(async (req, res) => {
+  const { jobId, letterId } = req.params;
+
+  try {
+    console.log(`Starting engagement letter replacement for job ${jobId}, letter ${letterId}`);
+
+    if (!req.file) {
+      res.status(400);
+      throw new Error("No file uploaded");
+    }
+
+    const job = await Job.findById(jobId);
+    if (!job) {
+      res.status(404);
+      throw new Error("Job not found");
+    }
+
+    const isAdmin = req.user.role?.name === "admin";
+    const hasCompliancePermission = req.user.role?.permissions?.complianceManagement;
+    const hasOperationPermission = req.user.role?.permissions?.operationManagement;
+    const isAssignedPerson = job.assignedPerson?.toString() === req.user._id.toString();
+
+    if (!isAdmin && !hasCompliancePermission && !hasOperationPermission && !isAssignedPerson) {
+      res.status(403);
+      throw new Error("You are not authorized to update this job");
+    }
+
+    let companyDetails = await CompanyDetails.findOne({ jobId });
+    if (!companyDetails || !Array.isArray(companyDetails.engagementLetters)) {
+      res.status(404);
+      throw new Error("No engagement letters found for this job");
+    }
+
+    const letterIndex = companyDetails.engagementLetters.findIndex(
+      letter => letter._id.toString() === letterId
+    );
+
+    if (letterIndex === -1) {
+      res.status(404);
+      throw new Error("Engagement letter not found");
+    }
+
+    const oldLetter = companyDetails.engagementLetters[letterIndex];
+    console.log(`Replacing engagement letter: ${oldLetter.fileName}`);
+
+    await archiveDocument({
+      clientId: job.clientId,
+      jobId: job._id,
+      documentType: "engagement_letter",
+      sourceType: "engagement_letter",
+      fileUrl: oldLetter.fileUrl,
+      fileName: oldLetter.fileName,
+      archivedBy: req.user._id,
+      reason: "replaced",
+      originalUploadedAt: oldLetter.uploadedAt,
+    });
+
+    const uploadResult = await safeCloudinaryUpload(req.file.path, {
+      folder: `engagement-letters/${jobId}`,
+      resource_type: "auto",
+    });
+
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    companyDetails.engagementLetters[letterIndex] = {
+      _id: oldLetter._id,
+      fileUrl: uploadResult.url,
+      fileName: req.file.originalname,
+      uploadedAt: new Date(),
+      uploadedBy: req.user._id,
+      description: oldLetter.description,
+    };
+
+    companyDetails.updatedBy = req.user._id;
+    await companyDetails.save();
+
+    job.timeline.push({
+      status: job.status,
+      description: `Engagement letter "${oldLetter.fileName}" replaced with "${req.file.originalname}"`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    console.log(`Engagement letter replaced successfully`);
+
+    res.status(200).json({
+      message: "Engagement letter replaced successfully",
+      engagementLetters: companyDetails.engagementLetters,
+    });
+
+  } catch (error) {
+    console.error(`Error in replaceEngagementLetter: ${error.message}`);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    if (!res.headersSent) {
+      res.status(500).json({
+        message: "Failed to replace engagement letter",
         error: error.message,
       });
     }
@@ -4696,6 +5372,17 @@ const deleteCompanyDocument = asyncHandler(async (req, res) => {
 
     await companyDetails.save();
 
+    const job = await Job.findById(jobId);
+    if (job) {
+      job.timeline.push({
+        status: job.status,
+        description: `Company document "${documentType}" deleted`,
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+      });
+      await job.save();
+    }
+
     console.log(`✅ Successfully deleted ${documentType} document`);
     res.status(200).json({
       success: true,
@@ -4735,7 +5422,7 @@ const deletePersonDocument = asyncHandler(async (req, res) => {
     }
 
     personDetails[documentType] = null;
-    
+
     // Also clear expiry date if applicable
     const expiryField = `${documentType.replace('Doc', '')}Expiry`;
     if (personDetails[expiryField] !== undefined) {
@@ -4743,6 +5430,17 @@ const deletePersonDocument = asyncHandler(async (req, res) => {
     }
 
     await personDetails.save();
+
+    const job = await Job.findById(jobId);
+    if (job) {
+      job.timeline.push({
+        status: job.status,
+        description: `${personType.charAt(0).toUpperCase() + personType.slice(1)} document "${documentType}" deleted`,
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+      });
+      await job.save();
+    }
 
     console.log(`✅ Successfully deleted ${documentType} document for ${personType}`);
     res.status(200).json({
@@ -4756,6 +5454,121 @@ const deletePersonDocument = asyncHandler(async (req, res) => {
       message: "Failed to delete document",
       error: error.message
     });
+  }
+});
+
+const replacePersonDocument = asyncHandler(async (req, res) => {
+  const { jobId, personType, personId, documentType } = req.params;
+
+  try {
+    console.log(`🔄 Replacing ${documentType} for ${personType} ${personId} in job ${jobId}`);
+
+    if (!req.file) {
+      res.status(400);
+      throw new Error("No file uploaded");
+    }
+
+    const job = await Job.findById(jobId);
+    if (!job) {
+      res.status(404);
+      throw new Error("Job not found");
+    }
+
+    const isAdmin = req.user.role?.name === "admin";
+    const hasCompliancePermission = req.user.role?.permissions?.complianceManagement;
+    const hasOperationPermission = req.user.role?.permissions?.operationManagement;
+    const isAssignedPerson = job.assignedPerson?.toString() === req.user._id.toString();
+
+    if (!isAdmin && !hasCompliancePermission && !hasOperationPermission && !isAssignedPerson) {
+      res.status(403);
+      throw new Error("You are not authorized to update this job");
+    }
+
+    const personDetails = await PersonDetails.findOne({
+      _id: personId,
+      jobId,
+      personType
+    });
+
+    if (!personDetails) {
+      res.status(404);
+      throw new Error("Person details not found");
+    }
+
+    const oldDocUrl = personDetails[documentType];
+
+    if (oldDocUrl && typeof oldDocUrl === 'string') {
+      try {
+        const documentTypeLabels = {
+          qidDoc: 'QID Document',
+          passportDoc: 'Passport Document',
+          nationalAddressDoc: 'National Address Document',
+          cv: 'CV'
+        };
+
+        await Archive.create({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: documentType === 'cv' ? 'other_document' : 'id_document',
+          sourceType: personType,
+          fileUrl: oldDocUrl,
+          fileName: documentTypeLabels[documentType] || documentType,
+          personName: personDetails.name,
+          personId: personDetails._id,
+          title: `${personDetails.name} - ${documentTypeLabels[documentType] || documentType}`,
+          description: `Archived ${personType} ${documentTypeLabels[documentType] || documentType} - replaced`,
+          archivedBy: req.user._id,
+          reason: "replaced",
+          metadata: {
+            personType: personType,
+            documentField: documentType
+          }
+        });
+        console.log(`📦 Archived old ${documentType} for ${personType}`);
+      } catch (archiveError) {
+        console.error("Error archiving person document:", archiveError);
+      }
+    }
+
+    const uploadResult = await safeCloudinaryUpload(req.file.path, {
+      folder: `person-documents/${personType}/${documentType}`,
+      resource_type: "auto",
+    });
+
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    personDetails[documentType] = uploadResult.url;
+    await personDetails.save();
+
+    job.timeline.push({
+      status: job.status,
+      description: `${personType.charAt(0).toUpperCase() + personType.slice(1)} ${documentType} replaced for ${personDetails.name}`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    console.log(`✅ Successfully replaced ${documentType} for ${personType}`);
+    res.status(200).json({
+      success: true,
+      message: `${documentType} replaced successfully`,
+      personDetails,
+      newDocumentUrl: uploadResult.url
+    });
+
+  } catch (error) {
+    console.error(`Error replacing person document: ${error.message}`);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    if (!res.headersSent) {
+      res.status(500).json({
+        message: "Failed to replace document",
+        error: error.message
+      });
+    }
   }
 });
 
@@ -5180,9 +5993,10 @@ const updateOtherDocumentsDetails = asyncHandler(async (req, res) => {
   document.updatedBy = req.user._id;
   const updatedDocument = await document.save();
 
+  const docTypeName = document.documentType || "Other document";
   job.timeline.push({
     status: job.status,
-    description: "Other document details updated",
+    description: `${docTypeName} updated`,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -5225,11 +6039,12 @@ const deleteOtherDocumentsDetails = asyncHandler(async (req, res) => {
     throw new Error("You are not authorized to update this job");
   }
 
+  const deletedDocTypeName = document.documentType || "Other document";
   await OtherDocumentsDetails.findByIdAndDelete(documentId);
 
   job.timeline.push({
     status: job.status,
-    description: "Other document details deleted",
+    description: `${deletedDocTypeName} deleted`,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -5334,9 +6149,11 @@ const updateBraDocuments = asyncHandler(async (req, res) => {
     const uploadPromises = req.files.map(async (file, index) => {
       const uploadResult = await safeCloudinaryUpload(file.path);
 
-      fs.unlink(file.path, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
+      if (uploadResult.success) {
+        fs.unlink(file.path, (err) => {
+          if (err) console.error("Error deleting temp file:", err);
+        });
+      }
 
       const description = braDocumentDescriptions[index] || "";
       const documentType = braDocumentTypes[index] || "BRA Document";
@@ -5362,9 +6179,13 @@ const updateBraDocuments = asyncHandler(async (req, res) => {
 
   const updatedBraDocuments = await braDocuments.save();
 
+  const uploadCount = req.files ? req.files.length : 0;
+  const braTimelineDescription = uploadCount > 0
+    ? `BRA document${uploadCount > 1 ? 's' : ''} uploaded (${uploadCount} file${uploadCount > 1 ? 's' : ''})`
+    : "BRA documents updated";
   job.timeline.push({
     status: job.status,
-    description: "BRA documents updated",
+    description: braTimelineDescription,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -5372,13 +6193,14 @@ const updateBraDocuments = asyncHandler(async (req, res) => {
   await job.save();
 
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: "BRA Documents Updated",
         description: `BRA documents updated for ${job.clientName}'s ${job.serviceType} job.`,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
+      job,
       req.user._id
     );
   } catch (notificationError) {
@@ -5427,6 +6249,9 @@ const deleteBraDocument = asyncHandler(async (req, res) => {
     throw new Error("BRA documents not found");
   }
 
+  const deletedDoc = braDocuments.documents.find((doc) => doc.file === fileUrl);
+  const deletedDocName = deletedDoc?.documentName || deletedDoc?.description || "BRA document";
+
   braDocuments.documents = braDocuments.documents.filter(
     (doc) => doc.file !== fileUrl
   );
@@ -5435,7 +6260,7 @@ const deleteBraDocument = asyncHandler(async (req, res) => {
 
   job.timeline.push({
     status: job.status,
-    description: "BRA document deleted",
+    description: `BRA document "${deletedDocName}" deleted`,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
@@ -5443,13 +6268,14 @@ const deleteBraDocument = asyncHandler(async (req, res) => {
   await job.save();
 
   try {
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: "BRA Document Deleted",
         description: `BRA document deleted for ${job.clientName}'s ${job.serviceType} job.`,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
+      job,
       req.user._id
     );
   } catch (notificationError) {
@@ -5462,6 +6288,820 @@ const deleteBraDocument = asyncHandler(async (req, res) => {
   });
 });
 
+const replaceBraDocument = asyncHandler(async (req, res) => {
+  const { jobId, documentIndex } = req.params;
+  const { documentName, notes } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const isAdmin = req.user.role?.name === "admin";
+  const hasCompliancePermission =
+    req.user.role?.permissions?.complianceManagement;
+  const hasOperationPermission =
+    req.user.role?.permissions?.operationManagement;
+  const isAssignedPerson =
+    job.assignedPerson?.toString() === req.user._id.toString();
+
+  if (
+    !isAdmin &&
+    !hasCompliancePermission &&
+    !hasOperationPermission &&
+    !isAssignedPerson
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to update this job");
+  }
+
+  let braDocuments = await BraDocument.findOne({ jobId });
+
+  if (!braDocuments) {
+    res.status(404);
+    throw new Error("BRA documents not found");
+  }
+
+  const docIndex = parseInt(documentIndex);
+  if (isNaN(docIndex) || docIndex < 0 || docIndex >= braDocuments.documents.length) {
+    res.status(400);
+    throw new Error("Invalid document index");
+  }
+
+  const oldDocument = braDocuments.documents[docIndex];
+
+  if (oldDocument && oldDocument.file) {
+    try {
+      await Archive.create({
+        clientId: job.clientId,
+        jobId: job._id,
+        documentType: "bra_document",
+        sourceType: "bra",
+        fileUrl: oldDocument.file,
+        fileName: oldDocument.description || "BRA Document",
+        title: oldDocument.description || "General BRA Document",
+        description: `Archived general BRA document - replaced`,
+        archivedBy: req.user._id,
+        reason: "replaced",
+        originalUploadedAt: oldDocument.date,
+        metadata: {
+          documentType: oldDocument.documentType,
+          originalDescription: oldDocument.description
+        }
+      });
+      console.log(`Archived old BRA document for job ${jobId}`);
+    } catch (archiveError) {
+      console.error("Error archiving BRA document:", archiveError);
+    }
+  }
+
+  if (req.file) {
+    const uploadResult = await safeCloudinaryUpload(req.file.path);
+
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+
+    const description = notes ? `${documentName} - ${notes}` : documentName;
+
+    braDocuments.documents[docIndex] = {
+      file: uploadResult.url,
+      description: description || oldDocument.description,
+      documentType: oldDocument.documentType || "BRA Document",
+      date: new Date(),
+    };
+  } else if (documentName) {
+    const description = notes ? `${documentName} - ${notes}` : documentName;
+    braDocuments.documents[docIndex].description = description;
+  }
+
+  braDocuments.updatedBy = req.user._id;
+  await braDocuments.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: "BRA document replaced",
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+
+  await job.save();
+
+  res.status(200).json({
+    success: true,
+    message: "BRA document replaced successfully",
+    documents: braDocuments.documents,
+  });
+});
+
+// ============== UBO DETAILS FUNCTIONS ==============
+
+const getUboDetails = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  let uboRecord = await UboDetails.findOne({ jobId });
+
+  if (!uboRecord) {
+    uboRecord = { jobId, documents: [] };
+  }
+
+  res.status(200).json(uboRecord);
+});
+
+const addUboDocument = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { title, description } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  if (!req.file) {
+    res.status(400);
+    throw new Error("No file uploaded");
+  }
+
+  const uploadResult = await safeCloudinaryUpload(req.file.path, {
+    folder: `ubo/${jobId}`,
+    resource_type: "auto",
+  });
+
+  if (fs.existsSync(req.file.path)) {
+    fs.unlinkSync(req.file.path);
+  }
+
+  let uboRecord = await UboDetails.findOne({ jobId });
+
+  if (!uboRecord) {
+    uboRecord = new UboDetails({
+      jobId,
+      documents: [],
+      updatedBy: req.user._id,
+    });
+  }
+
+  const newDoc = {
+    fileUrl: uploadResult.url,
+    fileName: req.file.originalname,
+    title: title || '',
+    description: description || '',
+    uploadedAt: new Date(),
+  };
+
+  uboRecord.documents.push(newDoc);
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: `UBO document "${title || req.file.originalname}" uploaded`,
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+  await job.save();
+
+  res.status(201).json({ success: true, document: newDoc, ubo: uboRecord });
+});
+
+const updateUboDocument = asyncHandler(async (req, res) => {
+  const { jobId, documentId } = req.params;
+  const { title, description } = req.body;
+
+  const uboRecord = await UboDetails.findOne({ jobId });
+  if (!uboRecord) {
+    res.status(404);
+    throw new Error("UBO record not found");
+  }
+
+  const docIndex = uboRecord.documents.findIndex(doc => doc._id.toString() === documentId);
+  if (docIndex === -1) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  const job = await Job.findById(jobId);
+
+  if (title !== undefined) uboRecord.documents[docIndex].title = title;
+  if (description !== undefined) uboRecord.documents[docIndex].description = description;
+
+  if (req.file) {
+    // Archive old document before replacing
+    if (uboRecord.documents[docIndex].fileUrl && job) {
+      await archiveDocument({
+        clientId: job.clientId,
+        jobId: job._id,
+        documentType: "ubo_document",
+        sourceType: "ubo",
+        fileUrl: uboRecord.documents[docIndex].fileUrl,
+        fileName: uboRecord.documents[docIndex].fileName,
+        title: uboRecord.documents[docIndex].title,
+        description: uboRecord.documents[docIndex].description,
+        archivedBy: req.user._id,
+        reason: "replaced",
+        originalUploadedAt: uboRecord.documents[docIndex].uploadedAt,
+      });
+    }
+
+    const uploadResult = await safeCloudinaryUpload(req.file.path, {
+      folder: `ubo/${jobId}`,
+      resource_type: "auto",
+    });
+
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    uboRecord.documents[docIndex].fileUrl = uploadResult.url;
+    uboRecord.documents[docIndex].fileName = req.file.originalname;
+    uboRecord.documents[docIndex].uploadedAt = new Date();
+  }
+
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  if (job) {
+    job.timeline.push({
+      status: job.status,
+      description: `UBO document "${uboRecord.documents[docIndex].title || uboRecord.documents[docIndex].fileName}" updated`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+  }
+
+  res.status(200).json({ success: true, document: uboRecord.documents[docIndex], ubo: uboRecord });
+});
+
+const deleteUboDocument = asyncHandler(async (req, res) => {
+  const { jobId, documentId } = req.params;
+
+  const uboRecord = await UboDetails.findOne({ jobId });
+  if (!uboRecord) {
+    res.status(404);
+    throw new Error("UBO record not found");
+  }
+
+  const docIndex = uboRecord.documents.findIndex(doc => doc._id.toString() === documentId);
+  if (docIndex === -1) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  const deletedDoc = uboRecord.documents[docIndex];
+  uboRecord.documents.splice(docIndex, 1);
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  const job = await Job.findById(jobId);
+  if (job) {
+    job.timeline.push({
+      status: job.status,
+      description: `UBO document "${deletedDoc.title || deletedDoc.fileName}" deleted`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+  }
+
+  res.status(200).json({ success: true, message: "Document deleted successfully", ubo: uboRecord });
+});
+
+const addUboPerson = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { name, passportNo, qidNo, nationality } = req.body;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  let uboRecord = await UboDetails.findOne({ jobId });
+
+  if (!uboRecord) {
+    uboRecord = new UboDetails({
+      jobId,
+      ubos: [],
+      updatedBy: req.user._id,
+    });
+  }
+
+  if (!uboRecord.ubos) {
+    uboRecord.ubos = [];
+  }
+
+  const documents = [];
+  if (req.files && req.files.length > 0) {
+    for (const file of req.files) {
+      const uploadResult = await safeCloudinaryUpload(file.path, {
+        folder: `ubo/${jobId}`,
+        resource_type: "auto",
+      });
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      documents.push({
+        fileUrl: uploadResult.url,
+        fileName: file.originalname,
+        title: file.originalname,
+        description: '',
+        uploadedAt: new Date(),
+      });
+    }
+  }
+
+  const newUbo = {
+    name: name || '',
+    passportNo: passportNo || '',
+    qidNo: qidNo || '',
+    nationality: nationality || '',
+    documents: documents,
+  };
+
+  uboRecord.ubos.push(newUbo);
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: `UBO "${name}" added`,
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+  await job.save();
+
+  res.status(201).json({ success: true, ubo: uboRecord });
+});
+
+const updateUboPerson = asyncHandler(async (req, res) => {
+  const { jobId, uboId } = req.params;
+  const { name, passportNo, qidNo, nationality, existingDocuments } = req.body;
+
+  const uboRecord = await UboDetails.findOne({ jobId });
+  if (!uboRecord) {
+    res.status(404);
+    throw new Error("UBO record not found");
+  }
+
+  if (!uboRecord.ubos) {
+    uboRecord.ubos = [];
+  }
+
+  const uboIndex = uboRecord.ubos.findIndex(ubo => ubo._id.toString() === uboId);
+  if (uboIndex === -1) {
+    res.status(404);
+    throw new Error("UBO person not found");
+  }
+
+  if (name !== undefined) uboRecord.ubos[uboIndex].name = name;
+  if (passportNo !== undefined) uboRecord.ubos[uboIndex].passportNo = passportNo;
+  if (qidNo !== undefined) uboRecord.ubos[uboIndex].qidNo = qidNo;
+  if (nationality !== undefined) uboRecord.ubos[uboIndex].nationality = nationality;
+
+  let existingDocs = [];
+  if (existingDocuments) {
+    try {
+      existingDocs = JSON.parse(existingDocuments);
+    } catch (e) {
+      existingDocs = [];
+    }
+  }
+
+  if (req.files && req.files.length > 0) {
+    for (const file of req.files) {
+      const uploadResult = await safeCloudinaryUpload(file.path, {
+        folder: `ubo/${jobId}`,
+        resource_type: "auto",
+      });
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      existingDocs.push({
+        fileUrl: uploadResult.url,
+        fileName: file.originalname,
+        title: file.originalname,
+        description: '',
+        uploadedAt: new Date(),
+      });
+    }
+  }
+
+  uboRecord.ubos[uboIndex].documents = existingDocs;
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  const job = await Job.findById(jobId);
+  if (job) {
+    job.timeline.push({
+      status: job.status,
+      description: `UBO "${name || uboRecord.ubos[uboIndex].name}" updated`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+  }
+
+  res.status(200).json({ success: true, ubo: uboRecord });
+});
+
+const deleteUboPerson = asyncHandler(async (req, res) => {
+  const { jobId, uboId } = req.params;
+
+  const uboRecord = await UboDetails.findOne({ jobId });
+  if (!uboRecord) {
+    res.status(404);
+    throw new Error("UBO record not found");
+  }
+
+  if (!uboRecord.ubos) {
+    res.status(404);
+    throw new Error("No UBO persons found");
+  }
+
+  const uboIndex = uboRecord.ubos.findIndex(ubo => ubo._id.toString() === uboId);
+  if (uboIndex === -1) {
+    res.status(404);
+    throw new Error("UBO person not found");
+  }
+
+  const deletedUbo = uboRecord.ubos[uboIndex];
+  uboRecord.ubos.splice(uboIndex, 1);
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  const job = await Job.findById(jobId);
+  if (job) {
+    job.timeline.push({
+      status: job.status,
+      description: `UBO "${deletedUbo.name}" deleted`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+  }
+
+  res.status(200).json({ success: true, message: "UBO person deleted successfully", ubo: uboRecord });
+});
+
+const addUboPersonDocument = asyncHandler(async (req, res) => {
+  const { jobId, uboId } = req.params;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const uboRecord = await UboDetails.findOne({ jobId });
+  if (!uboRecord) {
+    res.status(404);
+    throw new Error("UBO record not found");
+  }
+
+  const uboIndex = uboRecord.ubos.findIndex(ubo => ubo._id.toString() === uboId);
+  if (uboIndex === -1) {
+    res.status(404);
+    throw new Error("UBO person not found");
+  }
+
+  if (!req.file) {
+    res.status(400);
+    throw new Error("No file uploaded");
+  }
+
+  const uploadResult = await safeCloudinaryUpload(req.file.path, {
+    folder: `ubo/${jobId}`,
+    resource_type: "auto",
+  });
+
+  if (fs.existsSync(req.file.path)) {
+    fs.unlinkSync(req.file.path);
+  }
+
+  if (!uboRecord.ubos[uboIndex].documents) {
+    uboRecord.ubos[uboIndex].documents = [];
+  }
+
+  const newDoc = {
+    fileUrl: uploadResult.url,
+    fileName: req.file.originalname,
+    title: req.file.originalname,
+    description: '',
+    uploadedAt: new Date(),
+  };
+
+  uboRecord.ubos[uboIndex].documents.push(newDoc);
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  job.timeline.push({
+    status: job.status,
+    description: `Document added to UBO "${uboRecord.ubos[uboIndex].name}"`,
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+  await job.save();
+
+  res.status(201).json({ success: true, ubo: uboRecord });
+});
+
+const replaceUboPersonDocument = asyncHandler(async (req, res) => {
+  const { jobId, uboId, documentId } = req.params;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  const uboRecord = await UboDetails.findOne({ jobId });
+  if (!uboRecord) {
+    res.status(404);
+    throw new Error("UBO record not found");
+  }
+
+  const uboIndex = uboRecord.ubos.findIndex(ubo => ubo._id.toString() === uboId);
+  if (uboIndex === -1) {
+    res.status(404);
+    throw new Error("UBO person not found");
+  }
+
+  if (!uboRecord.ubos[uboIndex].documents) {
+    res.status(404);
+    throw new Error("No documents found");
+  }
+
+  const docIndex = uboRecord.ubos[uboIndex].documents.findIndex(doc => doc._id.toString() === documentId);
+  if (docIndex === -1) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  if (!req.file) {
+    res.status(400);
+    throw new Error("No file uploaded");
+  }
+
+  const uploadResult = await safeCloudinaryUpload(req.file.path, {
+    folder: `ubo/${jobId}`,
+  });
+
+  if (uploadResult.success) {
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+  }
+
+  uboRecord.ubos[uboIndex].documents[docIndex].fileUrl = uploadResult.url;
+  uboRecord.ubos[uboIndex].documents[docIndex].fileName = req.file.originalname;
+  uboRecord.ubos[uboIndex].documents[docIndex].uploadedAt = new Date();
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  job.timeline.push({
+    status: "ubo_document_replaced",
+    description: `UBO document replaced for ${uboRecord.ubos[uboIndex].name}`,
+    performedBy: req.user._id,
+    performedAt: new Date(),
+  });
+  await job.save();
+
+  res.json({
+    success: true,
+    message: "UBO document replaced successfully",
+    document: uboRecord.ubos[uboIndex].documents[docIndex],
+  });
+});
+
+const deleteUboPersonDocument = asyncHandler(async (req, res) => {
+  const { jobId, uboId, documentId } = req.params;
+
+  const uboRecord = await UboDetails.findOne({ jobId });
+  if (!uboRecord) {
+    res.status(404);
+    throw new Error("UBO record not found");
+  }
+
+  const uboIndex = uboRecord.ubos.findIndex(ubo => ubo._id.toString() === uboId);
+  if (uboIndex === -1) {
+    res.status(404);
+    throw new Error("UBO person not found");
+  }
+
+  if (!uboRecord.ubos[uboIndex].documents) {
+    res.status(404);
+    throw new Error("No documents found");
+  }
+
+  const docIndex = uboRecord.ubos[uboIndex].documents.findIndex(doc => doc._id.toString() === documentId);
+  if (docIndex === -1) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  uboRecord.ubos[uboIndex].documents.splice(docIndex, 1);
+  uboRecord.updatedBy = req.user._id;
+  await uboRecord.save();
+
+  const job = await Job.findById(jobId);
+  if (job) {
+    job.timeline.push({
+      status: job.status,
+      description: `Document removed from UBO "${uboRecord.ubos[uboIndex].name}"`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+  }
+
+  res.status(200).json({ success: true, ubo: uboRecord });
+});
+
+const getCddDetails = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  let cddRecord = await CddDetails.findOne({ jobId });
+
+  if (!cddRecord) {
+    cddRecord = { jobId, documents: [] };
+  }
+
+  res.status(200).json(cddRecord);
+});
+
+const addCddDocument = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  const job = await Job.findById(jobId);
+  if (!job) {
+    res.status(404);
+    throw new Error("Job not found");
+  }
+
+  if (!req.files || req.files.length === 0) {
+    res.status(400);
+    throw new Error("No files uploaded");
+  }
+
+  let cddRecord = await CddDetails.findOne({ jobId });
+
+  if (!cddRecord) {
+    cddRecord = new CddDetails({
+      jobId,
+      documents: [],
+      updatedBy: req.user._id,
+    });
+  }
+
+  for (let i = 0; i < req.files.length; i++) {
+    const file = req.files[i];
+    const title = req.body[`title_${i}`] || req.body.title || "";
+    const description = req.body[`description_${i}`] || req.body.description || "";
+
+    const uploadResult = await safeCloudinaryUpload(file.path, {
+      folder: `cdd/${jobId}`,
+      resource_type: "auto",
+    });
+
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+
+    cddRecord.documents.push({
+      fileUrl: uploadResult.url,
+      fileName: file.originalname,
+      title: title,
+      description: description,
+      uploadedAt: new Date(),
+    });
+  }
+
+  cddRecord.updatedBy = req.user._id;
+  await cddRecord.save();
+
+  const uploadCount = req.files.length;
+
+  job.timeline.push({
+    status: job.status,
+    description: `${uploadCount} CDD document${uploadCount > 1 ? 's' : ''} uploaded`,
+    timestamp: new Date(),
+    updatedBy: req.user._id,
+  });
+  await job.save();
+
+  res.status(201).json({
+    success: true,
+    message: `${uploadCount} CDD document${uploadCount > 1 ? 's' : ''} uploaded successfully`,
+    cdd: cddRecord
+  });
+});
+
+const updateCddDocument = asyncHandler(async (req, res) => {
+  const { jobId, documentId } = req.params;
+  const { title, description } = req.body;
+
+  const cddRecord = await CddDetails.findOne({ jobId });
+  if (!cddRecord) {
+    res.status(404);
+    throw new Error("CDD record not found");
+  }
+
+  const docIndex = cddRecord.documents.findIndex(doc => doc._id.toString() === documentId);
+  if (docIndex === -1) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  const job = await Job.findById(jobId);
+
+  if (title !== undefined) cddRecord.documents[docIndex].title = title;
+  if (description !== undefined) cddRecord.documents[docIndex].description = description;
+
+  if (req.file) {
+    // Archive old document before replacing
+    if (cddRecord.documents[docIndex].fileUrl && job) {
+      await archiveDocument({
+        clientId: job.clientId,
+        jobId: job._id,
+        documentType: "cdd_document",
+        sourceType: "cdd",
+        fileUrl: cddRecord.documents[docIndex].fileUrl,
+        fileName: cddRecord.documents[docIndex].fileName,
+        title: cddRecord.documents[docIndex].title,
+        description: cddRecord.documents[docIndex].description,
+        archivedBy: req.user._id,
+        reason: "replaced",
+        originalUploadedAt: cddRecord.documents[docIndex].uploadedAt,
+      });
+    }
+
+    const uploadResult = await safeCloudinaryUpload(req.file.path, {
+      folder: `cdd/${jobId}`,
+      resource_type: "auto",
+    });
+
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    cddRecord.documents[docIndex].fileUrl = uploadResult.url;
+    cddRecord.documents[docIndex].fileName = req.file.originalname;
+    cddRecord.documents[docIndex].uploadedAt = new Date();
+  }
+
+  cddRecord.updatedBy = req.user._id;
+  await cddRecord.save();
+
+  if (job) {
+    job.timeline.push({
+      status: job.status,
+      description: `CDD document "${cddRecord.documents[docIndex].title || cddRecord.documents[docIndex].fileName}" updated`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+  }
+
+  res.status(200).json({ success: true, message: "CDD document updated successfully", cdd: cddRecord });
+});
+
+const deleteCddDocument = asyncHandler(async (req, res) => {
+  const { jobId, documentId } = req.params;
+
+  const cddRecord = await CddDetails.findOne({ jobId });
+  if (!cddRecord) {
+    res.status(404);
+    throw new Error("CDD record not found");
+  }
+
+  const docIndex = cddRecord.documents.findIndex(doc => doc._id.toString() === documentId);
+  if (docIndex === -1) {
+    res.status(404);
+    throw new Error("Document not found");
+  }
+
+  const deletedDoc = cddRecord.documents[docIndex];
+  cddRecord.documents.splice(docIndex, 1);
+  cddRecord.updatedBy = req.user._id;
+  await cddRecord.save();
+
+  const job = await Job.findById(jobId);
+  if (job) {
+    job.timeline.push({
+      status: job.status,
+      description: `CDD document "${deletedDoc.title || deletedDoc.fileName}" deleted`,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+  }
+
+  res.status(200).json({ success: true, message: "Document deleted successfully", cdd: cddRecord });
+});
+
 module.exports = {
   getCompanyDetails,
   updateCompanyDetails,
@@ -5471,9 +7111,11 @@ module.exports = {
   deletePersonDetails,
   getKycDocuments,
   updateKycDocuments,
+  replaceKycDocument,
   getBraDocuments,
   updateBraDocuments,
   deleteBraDocument,
+  replaceBraDocument,
   uploadEngagementLetter,
   getEngagementLetters,
   completeOperation,
@@ -5487,14 +7129,30 @@ module.exports = {
   updateJobExpiryDate,
   getExpiringJobsStats,
   deleteEngagementLetter,
+  replaceEngagementLetter,
   getJobDataByEmail,
   deleteCompanyDocument,
   deletePersonDocument,
+  replacePersonDocument,
   deleteKycSignedDocument,
   fixCorruptedCrExtract,
   getOtherDocumentsDetails,
   addOtherDocumentsDetails,
   updateOtherDocumentsDetails,
   deleteOtherDocumentsDetails,
+  getUboDetails,
+  addUboDocument,
+  updateUboDocument,
+  deleteUboDocument,
+  addUboPerson,
+  updateUboPerson,
+  deleteUboPerson,
+  addUboPersonDocument,
+  replaceUboPersonDocument,
+  deleteUboPersonDocument,
+  getCddDetails,
+  addCddDocument,
+  updateCddDocument,
+  deleteCddDocument,
 };
 

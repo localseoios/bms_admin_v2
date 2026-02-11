@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import { Dialog, Transition } from "@headlessui/react";
 import { Link } from "react-router-dom";
 import axiosInstance from "../../../utils/axios";
@@ -1414,7 +1414,7 @@ function ComplianceManagement() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -1963,7 +1963,7 @@ function ComplianceManagement() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -2151,7 +2151,7 @@ function ComplianceManagement() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -2339,7 +2339,7 @@ function ComplianceManagement() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child

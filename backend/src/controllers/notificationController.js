@@ -81,7 +81,6 @@ const getUnreadCount = asyncHandler(async (req, res) => {
   }
 });
 
-// Added a new function to remove notifications (optional enhancement)
 const removeNotification = asyncHandler(async (req, res) => {
   try {
     const { notificationId } = req.params;
@@ -89,8 +88,7 @@ const removeNotification = asyncHandler(async (req, res) => {
       `Removing notification ${notificationId} for user ${req.user._id}`
     );
 
-    // This would need a corresponding function in the service
-    // await notificationService.removeNotification(notificationId, req.user._id);
+    await notificationService.removeNotification(notificationId, req.user._id);
 
     res.status(200).json({ message: "Notification removed successfully" });
   } catch (error) {
@@ -102,13 +100,11 @@ const removeNotification = asyncHandler(async (req, res) => {
   }
 });
 
-// Added a new function to clear all notifications (optional enhancement)
 const clearAllNotifications = asyncHandler(async (req, res) => {
   try {
     console.log(`Clearing all notifications for user ${req.user._id}`);
 
-    // This would need a corresponding function in the service
-    // await notificationService.clearAllNotifications(req.user._id);
+    await notificationService.clearAllNotifications(req.user._id);
 
     res.status(200).json({ message: "All notifications cleared successfully" });
   } catch (error) {

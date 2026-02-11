@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   UserPlusIcon,
   UserGroupIcon,
@@ -9,12 +9,29 @@ import {
   KeyIcon,
   XMarkIcon,
   TrashIcon,
+  PencilSquareIcon,
+  PhotoIcon,
+  ArrowUpTrayIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import axiosInstance from "../../utils/axios";
+import SignatureCanvas from "react-signature-canvas";
+import { useAuth } from "../../context/AuthContext";
 
 function UserManagement() {
-  const [activeTab, setActiveTab] = useState("createRole");
+  const { user: currentUser } = useAuth();
+
+  // Check if current user is admin
+  const isAdmin = currentUser?.role?.name?.toLowerCase() === "admin";
+
+  // Check if current user has any signing permission (LMRO, DLMRO, CEO)
+  const hasSigningPermission =
+    currentUser?.role?.permissions?.kycManagement?.lmro ||
+    currentUser?.role?.permissions?.kycManagement?.dlmro ||
+    currentUser?.role?.permissions?.kycManagement?.ceo;
+
+  // Set default tab based on user role
+  const [activeTab, setActiveTab] = useState(isAdmin ? "createRole" : "signatures");
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
@@ -22,6 +39,12 @@ function UserManagement() {
   const [error, setError] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState(null);
+  const [showUserDeleteConfirm, setShowUserDeleteConfirm] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [signatureUsers, setSignatureUsers] = useState([]);
+  const [drawingSignatureFor, setDrawingSignatureFor] = useState(null);
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const signatureCanvasRef = useRef(null);
 
   const [newRole, setNewRole] = useState({
     name: "",
@@ -43,8 +66,8 @@ function UserManagement() {
       userManagement: false,
       operationManagement: false,
       accountManagement: false, // Added Account Management permission
-      // KYC Management permissions
       kycManagement: {
+        amlSupervisor: false,
         lmro: false,
         dlmro: false,
         ceo: false,
@@ -54,6 +77,10 @@ function UserManagement() {
         lmro: false,
         dlmro: false,
         ceo: false,
+      },
+      // Compliance Resources permissions
+      complianceResources: {
+        manage: false,
       },
     },
   });
@@ -65,14 +92,28 @@ function UserManagement() {
     roleId: "",
   });
 
+  // Set default tab based on user role
+  useEffect(() => {
+    if (currentUser) {
+      if (!isAdmin && hasSigningPermission) {
+        setActiveTab("signatures");
+      } else if (isAdmin) {
+        setActiveTab("createRole");
+      }
+    }
+  }, [currentUser, isAdmin, hasSigningPermission]);
+
   // Fetch roles and users from the backend
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const rolesResponse = await axiosInstance.get("/roles");
-        setRoles(rolesResponse.data);
-        const usersResponse = await axiosInstance.get("/users");
-        setUsers(usersResponse.data);
+        // Only fetch roles and users if admin
+        if (isAdmin) {
+          const rolesResponse = await axiosInstance.get("/roles");
+          setRoles(rolesResponse.data);
+          const usersResponse = await axiosInstance.get("/users");
+          setUsers(usersResponse.data);
+        }
         setLoading(false);
       } catch (err) {
         setError(
@@ -82,7 +123,7 @@ function UserManagement() {
       }
     };
     fetchData();
-  }, []);
+  }, [isAdmin]);
 
   // Handle role submission (create or update)
   const handleRoleSubmit = async (e) => {
@@ -130,6 +171,7 @@ function UserManagement() {
           operationManagement: false,
           accountManagement: false, // Reset Account Management permission
           kycManagement: {
+            amlSupervisor: false,
             lmro: false,
             dlmro: false,
             ceo: false,
@@ -138,6 +180,9 @@ function UserManagement() {
             lmro: false,
             dlmro: false,
             ceo: false,
+          },
+          complianceResources: {
+            manage: false,
           },
         },
       });
@@ -153,13 +198,16 @@ function UserManagement() {
       const response = await axiosInstance.get(`/roles/${roleId}`);
       const roleToEdit = response.data;
 
-      // Ensure kycManagement exists in the data structure
       if (!roleToEdit.permissions.kycManagement) {
         roleToEdit.permissions.kycManagement = {
+          amlSupervisor: false,
           lmro: false,
           dlmro: false,
           ceo: false,
         };
+      }
+      if (roleToEdit.permissions.kycManagement && roleToEdit.permissions.kycManagement.amlSupervisor === undefined) {
+        roleToEdit.permissions.kycManagement.amlSupervisor = false;
       }
 
       // Ensure braManagement exists in the data structure
@@ -168,6 +216,13 @@ function UserManagement() {
           lmro: false,
           dlmro: false,
           ceo: false,
+        };
+      }
+
+      // Ensure complianceResources exists in the data structure
+      if (!roleToEdit.permissions.complianceResources) {
+        roleToEdit.permissions.complianceResources = {
+          manage: false,
         };
       }
 
@@ -218,6 +273,43 @@ function UserManagement() {
     }
   };
 
+  // Confirm user deletion
+  const confirmDeleteUser = (user) => {
+    setUserToDelete(user);
+    setShowUserDeleteConfirm(true);
+  };
+
+  // Handle user deletion
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+      await axiosInstance.delete(`/users/${userToDelete._id}`);
+
+      // Update users list after successful deletion
+      setUsers(users.filter((user) => user._id !== userToDelete._id));
+
+      // Reset state
+      setUserToDelete(null);
+      setShowUserDeleteConfirm(false);
+
+      alert("User deleted successfully!");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to delete user");
+      alert(
+        "Error: " + (err.response?.data?.message || "Failed to delete user")
+      );
+    }
+  };
+
+  // Check if user has admin role
+  const isAdminUser = (user) => {
+    const userRole = roles.find(
+      (role) => role._id === user.role?._id || role._id === user.roleId
+    );
+    return userRole?.name?.toLowerCase() === "admin";
+  };
+
   // Handle user creation
   const handleUserSubmit = async (e) => {
     e.preventDefault();
@@ -245,29 +337,89 @@ function UserManagement() {
     return colors[roleName] || "bg-gray-100 text-gray-800";
   };
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  // Fetch signature users function
+  const fetchSignatureUsers = async () => {
+    try {
+      if (isAdmin) {
+        // Admin can see all users with signing permissions
+        const response = await axiosInstance.get("/users/with-signature-permissions");
+        setSignatureUsers(Array.isArray(response.data) ? response.data : []);
+      } else if (hasSigningPermission && currentUser) {
+        // Non-admin with signing permission can only see their own data
+        const response = await axiosInstance.get("/users/me");
+        setSignatureUsers(response.data ? [response.data] : []);
+      } else {
+        setSignatureUsers([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch signature users:", err);
+      setSignatureUsers([]);
+    }
+  };
 
-  // Error state
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-        <p className="text-lg text-red-600">{error}</p>
-      </div>
-    );
-  }
+  // useEffect for fetching signature users - MUST be before early returns
+  useEffect(() => {
+    if (activeTab === "signatures") {
+      fetchSignatureUsers();
+    }
+  }, [activeTab, isAdmin, hasSigningPermission, currentUser]);
+
+  // Save signature from canvas
+  const handleSaveSignature = async (userId) => {
+    if (!signatureCanvasRef.current || signatureCanvasRef.current.isEmpty()) {
+      alert("Please draw your signature first");
+      return;
+    }
+
+    setSignatureSaving(true);
+
+    try {
+      const canvas = signatureCanvasRef.current.getCanvas();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+
+      const formData = new FormData();
+      formData.append("signature", blob, "signature.png");
+
+      await axiosInstance.put(`/users/${userId}/signature`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      alert("Signature saved successfully!");
+      setDrawingSignatureFor(null);
+      fetchSignatureUsers();
+    } catch (err) {
+      alert("Error: " + (err.response?.data?.message || "Failed to save signature"));
+    } finally {
+      setSignatureSaving(false);
+    }
+  };
+
+  // Clear the signature canvas
+  const handleClearSignature = () => {
+    if (signatureCanvasRef.current) {
+      signatureCanvasRef.current.clear();
+    }
+  };
+
+  // Signature delete handler
+  const handleDeleteSignature = async (userId) => {
+    if (!confirm("Are you sure you want to delete this signature?")) return;
+
+    try {
+      await axiosInstance.delete(`/users/${userId}/signature`);
+      alert("Signature deleted successfully!");
+      fetchSignatureUsers();
+    } catch (err) {
+      alert("Error: " + (err.response?.data?.message || "Failed to delete signature"));
+    }
+  };
 
   // Check if role is admin
   const isAdminRole = (role) => {
     return role.name.toLowerCase() === "admin";
   };
 
+  // Get empty role state for form reset
   const getEmptyRoleState = () => ({
     name: "",
     permissions: {
@@ -287,8 +439,9 @@ function UserManagement() {
       requestService: false,
       userManagement: false,
       operationManagement: false,
-      accountManagement: false, // Include Account Management in empty state
+      accountManagement: false,
       kycManagement: {
+        amlSupervisor: false,
         lmro: false,
         dlmro: false,
         ceo: false,
@@ -298,8 +451,44 @@ function UserManagement() {
         dlmro: false,
         ceo: false,
       },
+      complianceResources: {
+        manage: false,
+      },
     },
   });
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <p className="text-lg text-red-600">{error}</p>
+      </div>
+    );
+  }
+
+  // Access denied for users without proper permissions
+  if (!isAdmin && !hasSigningPermission) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="text-center">
+          <ShieldCheckIcon className="mx-auto h-16 w-16 text-gray-400" />
+          <h2 className="mt-4 text-xl font-semibold text-gray-900">Access Denied</h2>
+          <p className="mt-2 text-gray-600">
+            You don't have permission to access this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -308,31 +497,39 @@ function UserManagement() {
           <div className="sm:flex-auto">
             <div className="flex items-center space-x-4">
               <div className="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl">
-                <ShieldCheckIcon className="h-8 w-8 text-white" />
+                {isAdmin ? (
+                  <ShieldCheckIcon className="h-8 w-8 text-white" />
+                ) : (
+                  <PencilSquareIcon className="h-8 w-8 text-white" />
+                )}
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
-                  User Management
+                  {isAdmin ? "User Management" : "Digital Signature"}
                 </h1>
                 <p className="mt-2 text-lg text-gray-600">
-                  Manage user roles and permissions for your organization
+                  {isAdmin
+                    ? "Manage user roles and permissions for your organization"
+                    : "Manage your digital signature for KYC document signing"}
                 </p>
               </div>
             </div>
           </div>
-          <div className="mt-4 sm:mt-0 sm:flex-none">
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <div className="flex items-center">
-                <UsersIcon className="h-5 w-5 mr-1 text-gray-400" />
-                <span>{users.length} Users</span>
-              </div>
-              <span>•</span>
-              <div className="flex items-center">
-                <KeyIcon className="h-5 w-5 mr-1 text-gray-400" />
-                <span>{roles.length} Roles</span>
+          {isAdmin && (
+            <div className="mt-4 sm:mt-0 sm:flex-none">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <div className="flex items-center">
+                  <UsersIcon className="h-5 w-5 mr-1 text-gray-400" />
+                  <span>{users.length} Users</span>
+                </div>
+                <span>•</span>
+                <div className="flex items-center">
+                  <KeyIcon className="h-5 w-5 mr-1 text-gray-400" />
+                  <span>{roles.length} Roles</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="mt-12">
@@ -342,41 +539,64 @@ function UserManagement() {
               value={activeTab}
               onChange={(e) => setActiveTab(e.target.value)}
             >
-              <option value="createRole">Create Role</option>
-              <option value="addUser">Add User</option>
+              {isAdmin && <option value="createRole">Create Role</option>}
+              {isAdmin && <option value="addUser">Add User</option>}
+              {(isAdmin || hasSigningPermission) && <option value="signatures">My Signature</option>}
             </select>
           </div>
 
           <div className="hidden sm:block">
             <nav className="flex space-x-6 mb-8" aria-label="Tabs">
-              <button
-                onClick={() => setActiveTab("createRole")}
-                className={clsx(
-                  activeTab === "createRole"
-                    ? "bg-white text-blue-600 shadow-lg shadow-blue-100/50"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-white hover:shadow-md",
-                  "px-6 py-3 font-medium text-sm rounded-xl inline-flex items-center transition-all duration-200"
-                )}
-              >
-                <UserGroupIcon className="h-5 w-5 mr-2" />
-                {selectedRoleId ? "Update Role" : "Create Role"}
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("addUser");
-                  setSelectedRoleId(null);
-                  setNewRole(getEmptyRoleState());
-                }}
-                className={clsx(
-                  activeTab === "addUser"
-                    ? "bg-white text-blue-600 shadow-lg shadow-blue-100/50"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-white hover:shadow-md",
-                  "px-6 py-3 font-medium text-sm rounded-xl inline-flex items-center transition-all duration-200"
-                )}
-              >
-                <UserPlusIcon className="h-5 w-5 mr-2" />
-                Add User
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setActiveTab("createRole")}
+                  className={clsx(
+                    activeTab === "createRole"
+                      ? "bg-white text-blue-600 shadow-lg shadow-blue-100/50"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-white hover:shadow-md",
+                    "px-6 py-3 font-medium text-sm rounded-xl inline-flex items-center transition-all duration-200"
+                  )}
+                >
+                  <UserGroupIcon className="h-5 w-5 mr-2" />
+                  {selectedRoleId ? "Update Role" : "Create Role"}
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setActiveTab("addUser");
+                    setSelectedRoleId(null);
+                    setNewRole(getEmptyRoleState());
+                  }}
+                  className={clsx(
+                    activeTab === "addUser"
+                      ? "bg-white text-blue-600 shadow-lg shadow-blue-100/50"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-white hover:shadow-md",
+                    "px-6 py-3 font-medium text-sm rounded-xl inline-flex items-center transition-all duration-200"
+                  )}
+                >
+                  <UserPlusIcon className="h-5 w-5 mr-2" />
+                  Add User
+                </button>
+              )}
+              {(isAdmin || hasSigningPermission) && (
+                <button
+                  onClick={() => {
+                    setActiveTab("signatures");
+                    setSelectedRoleId(null);
+                    setNewRole(getEmptyRoleState());
+                  }}
+                  className={clsx(
+                    activeTab === "signatures"
+                      ? "bg-white text-blue-600 shadow-lg shadow-blue-100/50"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-white hover:shadow-md",
+                    "px-6 py-3 font-medium text-sm rounded-xl inline-flex items-center transition-all duration-200"
+                  )}
+                >
+                  <PencilSquareIcon className="h-5 w-5 mr-2" />
+                  {isAdmin ? "Signatures" : "My Signature"}
+                </button>
+              )}
             </nav>
           </div>
 
@@ -486,6 +706,7 @@ function UserManagement() {
                           <div className="grid gap-4">
                             {Object.entries(
                               newRole.permissions.kycManagement || {
+                                amlSupervisor: false,
                                 lmro: false,
                                 dlmro: false,
                                 ceo: false,
@@ -513,11 +734,13 @@ function UserManagement() {
                                   }
                                 />
                                 <span className="ml-3 text-sm font-medium text-gray-900 capitalize">
-                                  {key === "lmro"
-                                    ? "LMRO (Level 1 KYC Approval)"
+                                  {key === "amlSupervisor"
+                                    ? "AML Supervisor (Initial Document Upload)"
                                     : key === "dlmro"
-                                    ? "DLMRO (Level 2 KYC Approval)"
-                                    : "CEO (Final KYC Approval)"}
+                                    ? "DLMRO (Level 1 KYC Signing)"
+                                    : key === "lmro"
+                                    ? "LMRO (Level 2 KYC Signing)"
+                                    : "CEO (Final KYC Signing)"}
                                 </span>
                               </div>
                             ))}
@@ -567,6 +790,37 @@ function UserManagement() {
                                 </span>
                               </div>
                             ))}
+                          </div>
+                        </div>
+
+                        {/* Compliance Resources Section */}
+                        <div className="bg-gray-50 rounded-xl p-6">
+                          <h4 className="text-base font-medium text-gray-900 mb-4">
+                            Compliance Resources
+                          </h4>
+                          <div className="grid gap-4">
+                            <div className="flex items-center bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-5 w-5"
+                                checked={newRole.permissions.complianceResources?.manage || false}
+                                onChange={(e) =>
+                                  setNewRole({
+                                    ...newRole,
+                                    permissions: {
+                                      ...newRole.permissions,
+                                      complianceResources: {
+                                        ...newRole.permissions.complianceResources,
+                                        manage: e.target.checked,
+                                      },
+                                    },
+                                  })
+                                }
+                              />
+                              <span className="ml-3 text-sm font-medium text-gray-900">
+                                Manage Resources (Upload, Edit, Delete documents/links)
+                              </span>
+                            </div>
                           </div>
                         </div>
 
@@ -722,6 +976,193 @@ function UserManagement() {
                 </div>
               </div>
             )}
+
+            {activeTab === "signatures" && (
+              <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-100">
+                <div className="px-6 py-8 sm:p-10">
+                  <div className="mb-6">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {isAdmin ? "Digital Signatures" : "My Digital Signature"}
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {isAdmin
+                        ? "Create and manage digital signatures for users with KYC signing permissions (DLMRO, LMRO, CEO)"
+                        : "Create your digital signature for signing KYC documents. Your signature will be used when you approve documents."}
+                    </p>
+                  </div>
+
+                  {signatureUsers.length === 0 && isAdmin ? (
+                    <div className="text-center py-12">
+                      <PhotoIcon className="mx-auto h-12 w-12 text-gray-400" />
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">No signature users</h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        No users with DLMRO, LMRO, or CEO permissions found.
+                      </p>
+                    </div>
+                  ) : signatureUsers.length === 0 && !isAdmin ? (
+                    <div className="max-w-md mx-auto">
+                      <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                        <div className="text-center mb-6">
+                          <PencilSquareIcon className="mx-auto h-12 w-12 text-gray-400" />
+                          <h3 className="mt-2 text-sm font-medium text-gray-900">Create Your Signature</h3>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Draw your signature below to use for signing KYC documents.
+                          </p>
+                        </div>
+                        <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-2">
+                          <SignatureCanvas
+                            ref={signatureCanvasRef}
+                            canvasProps={{
+                              width: 400,
+                              height: 150,
+                              className: "w-full rounded-lg",
+                              style: { background: "#fff" },
+                            }}
+                            penColor="black"
+                          />
+                        </div>
+                        <div className="mt-4 flex gap-3">
+                          <button
+                            onClick={() => signatureCanvasRef.current?.clear()}
+                            className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            onClick={() => handleSaveSignature(currentUser._id)}
+                            disabled={signatureSaving}
+                            className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-500 hover:to-indigo-500 transition-colors disabled:opacity-50"
+                          >
+                            {signatureSaving ? "Saving..." : "Save Signature"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                      {signatureUsers.map((user) => (
+                        <div
+                          key={user._id}
+                          className="bg-gray-50 rounded-xl p-6 border border-gray-200 hover:shadow-md transition-all duration-200"
+                        >
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <h4 className="font-semibold text-gray-900">{user.name}</h4>
+                              <p className="text-sm text-gray-500">{user.email}</p>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {user.role?.permissions?.kycManagement?.dlmro && (
+                                  <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                                    DLMRO
+                                  </span>
+                                )}
+                                {user.role?.permissions?.kycManagement?.lmro && (
+                                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                                    LMRO
+                                  </span>
+                                )}
+                                {user.role?.permissions?.kycManagement?.ceo && (
+                                  <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
+                                    CEO
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-gray-200 pt-4">
+                            {user.signatureImage?.fileUrl ? (
+                              <div className="space-y-3">
+                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                  <img
+                                    src={user.signatureImage.fileUrl}
+                                    alt={`${user.name}'s signature`}
+                                    className="max-h-20 mx-auto object-contain"
+                                  />
+                                </div>
+                                <p className="text-xs text-gray-500 text-center">
+                                  Created: {new Date(user.signatureImage.uploadedAt).toLocaleDateString()}
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setDrawingSignatureFor(user._id)}
+                                    className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                                  >
+                                    <PencilSquareIcon className="h-4 w-4 mr-1" />
+                                    Redraw
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteSignature(user._id)}
+                                    className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                                  >
+                                    <TrashIcon className="h-4 w-4 mr-1" />
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                <div className="bg-gray-100 rounded-lg p-6 flex flex-col items-center justify-center border-2 border-dashed border-gray-300">
+                                  <PencilSquareIcon className="h-10 w-10 text-gray-400" />
+                                  <p className="mt-2 text-sm text-gray-500">No signature</p>
+                                </div>
+                                <button
+                                  onClick={() => setDrawingSignatureFor(user._id)}
+                                  className="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-500 hover:to-indigo-500 transition-colors"
+                                >
+                                  <PencilSquareIcon className="h-4 w-4 mr-2" />
+                                  Create Signature
+                                </button>
+                              </div>
+                            )}
+
+                            {drawingSignatureFor === user._id && (
+                              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Draw signature below
+                                </label>
+                                <div className="bg-white rounded-lg border-2 border-gray-300 overflow-hidden">
+                                  <SignatureCanvas
+                                    ref={signatureCanvasRef}
+                                    penColor="black"
+                                    canvasProps={{
+                                      width: 280,
+                                      height: 120,
+                                      className: "signature-canvas w-full"
+                                    }}
+                                    backgroundColor="white"
+                                  />
+                                </div>
+                                <div className="mt-3 flex gap-2">
+                                  <button
+                                    onClick={handleClearSignature}
+                                    className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                  >
+                                    Clear
+                                  </button>
+                                  <button
+                                    onClick={() => handleSaveSignature(user._id)}
+                                    disabled={signatureSaving}
+                                    className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                  >
+                                    {signatureSaving ? "Saving..." : "Save Signature"}
+                                  </button>
+                                </div>
+                                <button
+                                  onClick={() => setDrawingSignatureFor(null)}
+                                  className="w-full mt-2 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Roles List */}
@@ -844,7 +1285,7 @@ function UserManagement() {
                     <tr className="bg-gray-50">
                       <th
                         scope="col"
-                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
+                        className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider sticky left-0 bg-gray-50 z-10 min-w-[150px] border-r border-gray-200"
                       >
                         User
                       </th>
@@ -905,6 +1346,12 @@ function UserManagement() {
                       </th>
                       <th
                         scope="col"
+                        className="px-3 py-4 text-left text-xs font-semibold text-orange-700 uppercase tracking-wider bg-orange-100"
+                      >
+                        Resources
+                      </th>
+                      <th
+                        scope="col"
                         className="px-3 py-4 text-left text-xs font-semibold text-gray-900 uppercase tracking-wider"
                       >
                         Document Management
@@ -946,6 +1393,13 @@ function UserManagement() {
                       >
                         Account Management
                       </th>
+                      {/* Actions column */}
+                      <th
+                        scope="col"
+                        className="px-3 py-4 text-center text-xs font-semibold text-gray-900 uppercase tracking-wider sticky right-0 bg-gray-50 z-10 min-w-[80px] border-l border-gray-200"
+                      >
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
@@ -960,8 +1414,8 @@ function UserManagement() {
                           key={user._id || index}
                           className="hover:bg-gray-50 transition-colors duration-150"
                         >
-                          <td className="whitespace-nowrap px-3 py-4">
-                            {user.name}
+                          <td className="whitespace-nowrap px-3 py-4 sticky left-0 bg-white z-10 min-w-[150px] border-r border-gray-200">
+                            <span className="font-medium text-gray-900">{user.name}</span>
                           </td>
                           <td className="whitespace-nowrap px-3 py-4">
                             <span
@@ -1081,6 +1535,18 @@ function UserManagement() {
                               disabled
                             />
                           </td>
+                          {/* Compliance Resources permission */}
+                          <td className="whitespace-nowrap px-3 py-4 bg-orange-50">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              checked={
+                                userRole?.permissions?.complianceResources?.manage ||
+                                false
+                              }
+                              disabled
+                            />
+                          </td>
                           <td className="whitespace-nowrap px-3 py-4">
                             <input
                               type="checkbox"
@@ -1157,6 +1623,26 @@ function UserManagement() {
                               disabled
                             />
                           </td>
+                          {/* Actions column */}
+                          <td className="whitespace-nowrap px-3 py-4 text-center sticky right-0 bg-white z-10 min-w-[80px] border-l border-gray-200">
+                            <button
+                              onClick={() => confirmDeleteUser(user)}
+                              className={clsx(
+                                "p-2 rounded-lg transition-colors duration-200",
+                                isAdminUser(user)
+                                  ? "text-gray-300 cursor-not-allowed"
+                                  : "text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              )}
+                              disabled={isAdminUser(user)}
+                              title={
+                                isAdminUser(user)
+                                  ? "Cannot delete: Admin users are protected"
+                                  : `Delete "${user.name}"`
+                              }
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1202,6 +1688,50 @@ function UserManagement() {
                 onClick={() => {
                   setShowDeleteConfirm(false);
                   setRoleToDelete(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Delete Confirmation Modal */}
+      {showUserDeleteConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="sm:flex sm:items-start">
+              <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                <TrashIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                <h3 className="text-lg leading-6 font-medium text-gray-900">
+                  Delete User
+                </h3>
+                <div className="mt-2">
+                  <p className="text-sm text-gray-500">
+                    Are you sure you want to delete user{" "}
+                    <span className="font-semibold">{userToDelete?.name}</span>?
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+              <button
+                type="button"
+                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                onClick={handleDeleteUser}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm"
+                onClick={() => {
+                  setShowUserDeleteConfirm(false);
+                  setUserToDelete(null);
                 }}
               >
                 Cancel

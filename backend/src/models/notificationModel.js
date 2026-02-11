@@ -8,10 +8,9 @@ const notificationSchema = new mongoose.Schema(
     // REMOVED: time field - now calculated dynamically
     type: {
       type: String,
-      enum: ["job", "role", "user", "system", "security"],
+      enum: ["job", "role", "user", "system", "security", "client"],
       required: true,
     },
-    // Added subType for more specific categorization
     subType: {
       type: String,
       enum: [
@@ -21,6 +20,7 @@ const notificationSchema = new mongoose.Schema(
         "approval",
         "rejection",
         "cancellation",
+        "deletion",
       ],
       required: false,
     },

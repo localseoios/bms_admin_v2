@@ -1,13 +1,17 @@
-// controllers/kycController.js - COMPLETE FIXED VERSION
 const asyncHandler = require("express-async-handler");
 const KycApproval = require("../models/kycApprovalModel");
 const Job = require("../models/Job");
+const User = require("../models/userModel");
+const Archive = require("../models/archiveModel");
 const notificationService = require("../services/notificationService");
 const {
   uploadToCloudinary,
   deleteFromCloudinary,
 } = require("../services/fileUploadService");
+const { addSignatureToPdf } = require("../services/pdfSignatureService");
+const { sendKycReviewEmail, sendKycRejectionEmail } = require("../services/emailService");
 const fs = require("fs");
+const path = require("path");
 const mongoose = require("mongoose");
 
 // Helper function to extract job data for response
@@ -31,23 +35,23 @@ const prepareJobForResponse = (job) => {
   }
 };
 
-// FIXED: Helper function to safely get KYC status with complete population
 const getKycStatusSafely = async (jobId) => {
   try {
     const kycApproval = await KycApproval.findOne({ jobId })
+      .populate("amlSupervisorApproval.approvedBy", "name email")
       .populate("lmroApproval.approvedBy", "name email")
       .populate("dlmroApproval.approvedBy", "name email")
       .populate("ceoApproval.approvedBy", "name email")
       .populate("rejectedBy", "name email")
-      // Document uploader population
+      .populate("amlSupervisorApproval.document.uploadedBy", "name email")
       .populate("lmroApproval.document.uploadedBy", "name email")
       .populate("dlmroApproval.document.uploadedBy", "name email")
       .populate("ceoApproval.document.uploadedBy", "name email")
-      // FIXED: Add modifiedBy population
+      .populate("amlSupervisorApproval.modifiedBy", "name email")
       .populate("lmroApproval.modifiedBy", "name email")
       .populate("dlmroApproval.modifiedBy", "name email")
       .populate("ceoApproval.modifiedBy", "name email")
-      // FIXED: Add deletedBy population
+      .populate("amlSupervisorApproval.deletedBy", "name email")
       .populate("lmroApproval.deletedBy", "name email")
       .populate("dlmroApproval.deletedBy", "name email")
       .populate("ceoApproval.deletedBy", "name email");
@@ -56,6 +60,39 @@ const getKycStatusSafely = async (jobId) => {
   } catch (error) {
     console.error(`Error getting KYC status for job ${jobId}:`, error);
     return null;
+  }
+};
+
+const sendKycNotificationAndEmail = async (job, targetPermission, stage) => {
+  const users = await User.find({})
+    .populate({
+      path: "role",
+      select: "name permissions",
+    })
+    .select("_id name email role");
+
+  const targetUsers = users.filter((user) => {
+    if (!user.role || !user.role.permissions) return false;
+    const kycPerms = user.role.permissions.kycManagement;
+    return kycPerms && kycPerms[targetPermission] === true;
+  });
+
+  await notificationService.createNotification(
+    {
+      title: "KYC Document Review Required",
+      description: `KYC document for ${job.clientName} requires your review and signature`,
+      type: "kyc",
+      relatedTo: { model: "Job", id: job._id },
+    },
+    { [`role.permissions.kycManagement.${targetPermission}`]: true }
+  );
+
+  for (const user of targetUsers) {
+    try {
+      await sendKycReviewEmail(user.email, user.name, job.clientName, job.jobNumber || job._id, stage);
+    } catch (emailErr) {
+      console.error(`Failed to send email to ${user.email}:`, emailErr.message);
+    }
   }
 };
 
@@ -110,40 +147,36 @@ const initializeKyc = asyncHandler(async (req, res) => {
         });
       }
     } else {
-      // Create new KYC approval record
       kycApproval = new KycApproval({
         jobId,
         status: "in_progress",
-        currentApprovalStage: "lmro",
+        currentApprovalStage: "amlSupervisor",
       });
 
       await kycApproval.save();
     }
 
-    // Update job status
     job.status = "kyc_pending";
     job.timeline.push({
       status: "kyc_pending",
-      description: "KYC process initialized",
+      description: "KYC process initialized - awaiting AML Supervisor document upload",
       timestamp: new Date(),
       updatedBy: req.user._id,
     });
 
     await job.save();
 
-    // Send notifications to LMRO users
     try {
       await notificationService.createNotification(
         {
-          title: "New KYC Review Required",
-          description: `KYC review required for ${job.clientName}'s job`,
+          title: "New KYC Document Upload Required",
+          description: `KYC document upload required for ${job.clientName}'s job`,
           type: "kyc",
           relatedTo: { model: "Job", id: job._id },
         },
-        { "role.permissions.kycManagement.lmro": true }
+        { "role.permissions.kycManagement.amlSupervisor": true }
       );
     } catch (notifError) {
-      // Log but don't fail if notification sending fails
       console.error("Error sending notification:", notifError);
     }
 
@@ -175,21 +208,21 @@ const getKycStatus = asyncHandler(async (req, res) => {
       });
     }
 
-    // FIXED: Use complete population including modifiedBy and deletedBy
     const kycApproval = await KycApproval.findOne({ jobId })
+      .populate("amlSupervisorApproval.approvedBy", "name email")
       .populate("lmroApproval.approvedBy", "name email")
       .populate("dlmroApproval.approvedBy", "name email")
       .populate("ceoApproval.approvedBy", "name email")
       .populate("rejectedBy", "name email")
-      // Document uploader population
+      .populate("amlSupervisorApproval.document.uploadedBy", "name email")
       .populate("lmroApproval.document.uploadedBy", "name email")
       .populate("dlmroApproval.document.uploadedBy", "name email")
       .populate("ceoApproval.document.uploadedBy", "name email")
-      // FIXED: Add modifiedBy population
+      .populate("amlSupervisorApproval.modifiedBy", "name email")
       .populate("lmroApproval.modifiedBy", "name email")
       .populate("dlmroApproval.modifiedBy", "name email")
       .populate("ceoApproval.modifiedBy", "name email")
-      // FIXED: Add deletedBy population
+      .populate("amlSupervisorApproval.deletedBy", "name email")
       .populate("lmroApproval.deletedBy", "name email")
       .populate("dlmroApproval.deletedBy", "name email")
       .populate("ceoApproval.deletedBy", "name email");
@@ -270,7 +303,498 @@ const getAllKycJobs = asyncHandler(async (req, res) => {
   }
 });
 
-// LMRO Approval with Document Upload to Cloudinary - FIXED
+const amlSupervisorUpload = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { notes } = req.body;
+
+  // Admin bypass or AML Supervisor permission check
+  const isAdmin = req.user.role.name === "admin";
+  const hasAmlSupervisorPermission = req.user.role.permissions?.kycManagement?.amlSupervisor;
+
+  if (!isAdmin && !hasAmlSupervisorPermission) {
+    return res.status(403).json({ message: "Insufficient permissions. AML Supervisor role required." });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ message: "Document upload is required" });
+  }
+
+  const kycApproval = await KycApproval.findOne({ jobId });
+
+  if (!kycApproval) {
+    return res.status(404).json({ message: "KYC approval record not found" });
+  }
+
+  if (kycApproval.status === "rejected" || kycApproval.status === "completed") {
+    return res.status(400).json({ message: `KYC process is already ${kycApproval.status}` });
+  }
+
+  if (kycApproval.currentApprovalStage !== "amlSupervisor") {
+    return res.status(400).json({
+      message: `Current approval stage is ${kycApproval.currentApprovalStage}, not AML Supervisor`,
+    });
+  }
+
+  try {
+    const cloudinaryResult = await uploadToCloudinary(req.file.path, {
+      folder: "kyc-documents/aml-supervisor",
+    });
+
+    if (!cloudinaryResult.success) {
+      return res.status(500).json({
+        message: "Failed to upload document to cloud storage",
+        error: cloudinaryResult.error,
+      });
+    }
+
+    kycApproval.amlSupervisorApproval = {
+      approved: true,
+      approvedBy: req.user._id,
+      approvedAt: new Date(),
+      notes: notes || "",
+      document: {
+        fileUrl: cloudinaryResult.url,
+        fileName: req.file.originalname,
+        fileType: req.file.mimetype,
+        cloudinaryId: cloudinaryResult.publicId,
+        uploadedAt: new Date(),
+        uploadedBy: req.user._id,
+      },
+    };
+
+    kycApproval.currentApprovalStage = "dlmro";
+    await kycApproval.save();
+
+    const job = await Job.findById(jobId);
+    job.status = "kyc_aml_uploaded";
+    job.timeline.push({
+      status: "kyc_aml_uploaded",
+      description: "KYC document uploaded by AML Supervisor",
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    try {
+      await sendKycNotificationAndEmail(job, "dlmro", "dlmro");
+    } catch (notifError) {
+      console.error("Error sending notification:", notifError);
+    }
+
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
+    res.status(200).json({
+      exists: true,
+      ...populatedKycApproval.toObject(),
+    });
+  } catch (error) {
+    console.error(`Error in AML Supervisor upload for job ${jobId}:`, error);
+
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    res.status(500).json({
+      message: "Server error processing AML Supervisor upload",
+      error: error.message,
+    });
+  }
+});
+
+const dlmroSign = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { notes, signaturePosition, signaturePositions } = req.body;
+
+  // Admin bypass or DLMRO permission check
+  const isAdmin = req.user.role.name === "admin";
+  const hasDlmroPermission = req.user.role.permissions?.kycManagement?.dlmro;
+
+  if (!isAdmin && !hasDlmroPermission) {
+    return res.status(403).json({ message: "Insufficient permissions. DLMRO role required." });
+  }
+
+  const kycApproval = await KycApproval.findOne({ jobId });
+
+  if (!kycApproval) {
+    return res.status(404).json({ message: "KYC approval record not found" });
+  }
+
+  if (kycApproval.status === "rejected" || kycApproval.status === "completed") {
+    return res.status(400).json({ message: `KYC process is already ${kycApproval.status}` });
+  }
+
+  if (kycApproval.currentApprovalStage !== "dlmro") {
+    return res.status(400).json({
+      message: `Current approval stage is ${kycApproval.currentApprovalStage}, not DLMRO`,
+    });
+  }
+
+  if (!kycApproval.amlSupervisorApproval.approved) {
+    return res.status(400).json({ message: "AML Supervisor approval is required first" });
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user.signatureImage?.fileUrl) {
+    return res.status(400).json({ message: "You do not have a signature uploaded. Please contact admin to upload your signature." });
+  }
+
+  try {
+    const currentDocUrl = kycApproval.amlSupervisorApproval.document.fileUrl;
+    // Support both single position and multiple positions
+    const positionData = signaturePositions || signaturePosition || "dlmro";
+    const signedPdfBuffer = await addSignatureToPdf(currentDocUrl, user.signatureImage.fileUrl, positionData);
+
+    const tempDir = path.join(__dirname, "../temp-uploads");
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFilePath = path.join(tempDir, `signed-dlmro-${Date.now()}.pdf`);
+    fs.writeFileSync(tempFilePath, signedPdfBuffer);
+
+    const cloudinaryResult = await uploadToCloudinary(tempFilePath, {
+      folder: "kyc-documents/dlmro-signed",
+    });
+
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+
+    if (!cloudinaryResult.success) {
+      return res.status(500).json({
+        message: "Failed to upload signed document to cloud storage",
+        error: cloudinaryResult.error,
+      });
+    }
+
+    kycApproval.dlmroApproval = {
+      approved: true,
+      approvedBy: req.user._id,
+      approvedAt: new Date(),
+      notes: notes || "",
+      document: {
+        fileUrl: cloudinaryResult.url,
+        fileName: `DLMRO-signed-${kycApproval.amlSupervisorApproval.document.fileName}`,
+        fileType: "application/pdf",
+        cloudinaryId: cloudinaryResult.publicId,
+        uploadedAt: new Date(),
+        uploadedBy: req.user._id,
+      },
+    };
+
+    kycApproval.currentApprovalStage = "lmro";
+    await kycApproval.save();
+
+    const job = await Job.findById(jobId);
+    job.status = "kyc_dlmro_signed";
+    job.timeline.push({
+      status: "kyc_dlmro_signed",
+      description: "KYC document signed by DLMRO",
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    try {
+      await sendKycNotificationAndEmail(job, "lmro", "lmro");
+    } catch (notifError) {
+      console.error("Error sending notification:", notifError);
+    }
+
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
+    res.status(200).json({
+      exists: true,
+      ...populatedKycApproval.toObject(),
+    });
+  } catch (error) {
+    console.error(`Error in DLMRO sign for job ${jobId}:`, error);
+    res.status(500).json({
+      message: "Server error processing DLMRO signature",
+      error: error.message,
+    });
+  }
+});
+
+const lmroSign = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { notes, signaturePosition, signaturePositions } = req.body;
+
+  // Admin bypass or LMRO permission check
+  const isAdmin = req.user.role.name === "admin";
+  const hasLmroPermission = req.user.role.permissions?.kycManagement?.lmro;
+
+  if (!isAdmin && !hasLmroPermission) {
+    return res.status(403).json({ message: "Insufficient permissions. LMRO role required." });
+  }
+
+  const kycApproval = await KycApproval.findOne({ jobId });
+
+  if (!kycApproval) {
+    return res.status(404).json({ message: "KYC approval record not found" });
+  }
+
+  if (kycApproval.status === "rejected" || kycApproval.status === "completed") {
+    return res.status(400).json({ message: `KYC process is already ${kycApproval.status}` });
+  }
+
+  if (kycApproval.currentApprovalStage !== "lmro") {
+    return res.status(400).json({
+      message: `Current approval stage is ${kycApproval.currentApprovalStage}, not LMRO`,
+    });
+  }
+
+  if (!kycApproval.dlmroApproval.approved) {
+    return res.status(400).json({ message: "DLMRO approval is required first" });
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user.signatureImage?.fileUrl) {
+    return res.status(400).json({ message: "You do not have a signature uploaded. Please contact admin to upload your signature." });
+  }
+
+  try {
+    const currentDocUrl = kycApproval.dlmroApproval.document.fileUrl;
+    // Support both single position and multiple positions
+    const positionData = signaturePositions || signaturePosition || "lmro";
+    const signedPdfBuffer = await addSignatureToPdf(currentDocUrl, user.signatureImage.fileUrl, positionData);
+
+    const tempDir = path.join(__dirname, "../temp-uploads");
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFilePath = path.join(tempDir, `signed-lmro-${Date.now()}.pdf`);
+    fs.writeFileSync(tempFilePath, signedPdfBuffer);
+
+    const cloudinaryResult = await uploadToCloudinary(tempFilePath, {
+      folder: "kyc-documents/lmro-signed",
+    });
+
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+
+    if (!cloudinaryResult.success) {
+      return res.status(500).json({
+        message: "Failed to upload signed document to cloud storage",
+        error: cloudinaryResult.error,
+      });
+    }
+
+    kycApproval.lmroApproval = {
+      approved: true,
+      approvedBy: req.user._id,
+      approvedAt: new Date(),
+      notes: notes || "",
+      document: {
+        fileUrl: cloudinaryResult.url,
+        fileName: `LMRO-signed-${kycApproval.dlmroApproval.document.fileName}`,
+        fileType: "application/pdf",
+        cloudinaryId: cloudinaryResult.publicId,
+        uploadedAt: new Date(),
+        uploadedBy: req.user._id,
+      },
+    };
+
+    kycApproval.currentApprovalStage = "ceo";
+    await kycApproval.save();
+
+    const job = await Job.findById(jobId);
+    job.status = "kyc_lmro_signed";
+    job.timeline.push({
+      status: "kyc_lmro_signed",
+      description: "KYC document signed by LMRO",
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    try {
+      await sendKycNotificationAndEmail(job, "ceo", "ceo");
+    } catch (notifError) {
+      console.error("Error sending notification:", notifError);
+    }
+
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
+    res.status(200).json({
+      exists: true,
+      ...populatedKycApproval.toObject(),
+    });
+  } catch (error) {
+    console.error(`Error in LMRO sign for job ${jobId}:`, error);
+    res.status(500).json({
+      message: "Server error processing LMRO signature",
+      error: error.message,
+    });
+  }
+});
+
+const ceoSign = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { notes, signaturePosition, signaturePositions } = req.body;
+
+  // Admin bypass or CEO permission check
+  const isAdmin = req.user.role.name === "admin";
+  const hasCeoPermission = req.user.role.permissions?.kycManagement?.ceo;
+
+  if (!isAdmin && !hasCeoPermission) {
+    return res.status(403).json({ message: "Insufficient permissions. CEO role required." });
+  }
+
+  const kycApproval = await KycApproval.findOne({ jobId });
+
+  if (!kycApproval) {
+    return res.status(404).json({ message: "KYC approval record not found" });
+  }
+
+  if (kycApproval.status === "rejected" || kycApproval.status === "completed") {
+    return res.status(400).json({ message: `KYC process is already ${kycApproval.status}` });
+  }
+
+  if (kycApproval.currentApprovalStage !== "ceo") {
+    return res.status(400).json({
+      message: `Current approval stage is ${kycApproval.currentApprovalStage}, not CEO`,
+    });
+  }
+
+  if (!kycApproval.lmroApproval.approved) {
+    return res.status(400).json({ message: "LMRO approval is required first" });
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user.signatureImage?.fileUrl) {
+    return res.status(400).json({ message: "You do not have a signature uploaded. Please contact admin to upload your signature." });
+  }
+
+  try {
+    const currentDocUrl = kycApproval.lmroApproval.document.fileUrl;
+    // Support both single position and multiple positions
+    const positionData = signaturePositions || signaturePosition || "ceo";
+    const signedPdfBuffer = await addSignatureToPdf(currentDocUrl, user.signatureImage.fileUrl, positionData);
+
+    const tempDir = path.join(__dirname, "../temp-uploads");
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFilePath = path.join(tempDir, `signed-ceo-${Date.now()}.pdf`);
+    fs.writeFileSync(tempFilePath, signedPdfBuffer);
+
+    const cloudinaryResult = await uploadToCloudinary(tempFilePath, {
+      folder: "kyc-documents/ceo-signed",
+    });
+
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+
+    if (!cloudinaryResult.success) {
+      return res.status(500).json({
+        message: "Failed to upload signed document to cloud storage",
+        error: cloudinaryResult.error,
+      });
+    }
+
+    kycApproval.ceoApproval = {
+      approved: true,
+      approvedBy: req.user._id,
+      approvedAt: new Date(),
+      notes: notes || "",
+      document: {
+        fileUrl: cloudinaryResult.url,
+        fileName: `CEO-signed-${kycApproval.lmroApproval.document.fileName}`,
+        fileType: "application/pdf",
+        cloudinaryId: cloudinaryResult.publicId,
+        uploadedAt: new Date(),
+        uploadedBy: req.user._id,
+      },
+    };
+
+    kycApproval.status = "completed";
+    kycApproval.currentApprovalStage = "completed";
+    kycApproval.completedAt = new Date();
+    await kycApproval.save();
+
+    const job = await Job.findById(jobId);
+    job.status = "completed";
+    job.timeline.push({
+      status: "completed",
+      description: "KYC process completed - document fully signed by DLMRO, LMRO, and CEO",
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+    });
+    await job.save();
+
+    await notificationService.createJobNotification(
+      {
+        title: "KYC Process Completed",
+        description: `KYC process for ${job.clientName}'s job has been completed successfully.`,
+        type: "kyc",
+        relatedTo: { model: "Job", id: job._id },
+      },
+      job,
+      req.user._id
+    );
+
+    try {
+      const BraApproval = require("../models/braApprovalModel");
+      let braExists = await BraApproval.findOne({ jobId });
+
+      if (!braExists) {
+        const braApproval = new BraApproval({
+          jobId,
+          status: "in_progress",
+          currentApprovalStage: "lmro",
+        });
+
+        await braApproval.save();
+
+        job.status = "bra_pending";
+        job.timeline.push({
+          status: "bra_pending",
+          description: "BRA process automatically initialized after KYC completion",
+          timestamp: new Date(),
+          updatedBy: req.user._id,
+        });
+
+        await job.save();
+
+        await notificationService.createNotification(
+          {
+            title: "New BRA Review Required",
+            description: `BRA review required for ${job.clientName}'s job after KYC completion`,
+            type: "job",
+            subType: "bra",
+            relatedTo: { model: "Job", id: job._id },
+          },
+          { "role.permissions.braManagement.lmro": true }
+        );
+
+        console.log(`BRA process automatically initialized for job ${jobId}`);
+      }
+    } catch (braError) {
+      console.error(`Error auto-initializing BRA process: ${braError.message}`);
+    }
+
+    const populatedKycApproval = await getKycStatusSafely(jobId);
+
+    res.status(200).json({
+      exists: true,
+      ...populatedKycApproval.toObject(),
+      braInitialized: true,
+    });
+  } catch (error) {
+    console.error(`Error in CEO sign for job ${jobId}:`, error);
+    res.status(500).json({
+      message: "Server error processing CEO signature",
+      error: error.message,
+    });
+  }
+});
+
 const lmroApprove = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
   const { notes } = req.body;
@@ -671,26 +1195,16 @@ const ceoApprove = asyncHandler(async (req, res) => {
     });
     await job.save();
 
-    // Send notifications to all parties
-    await notificationService.createNotification(
+    // Send notification to job parties
+    await notificationService.createJobNotification(
       {
         title: "KYC Process Completed",
         description: `KYC process for ${job.clientName}'s job has been completed successfully.`,
         type: "kyc",
         relatedTo: { model: "Job", id: job._id },
       },
-      { _id: job.assignedPerson }
-    );
-
-    // Notify admin
-    await notificationService.createNotification(
-      {
-        title: "KYC Completed",
-        description: `KYC process for ${job.clientName}'s job has been completed successfully.`,
-        type: "kyc",
-        relatedTo: { model: "Job", id: job._id },
-      },
-      { "role.name": "admin" }
+      job,
+      req.user._id
     );
 
     // NEW: Initialize BRA process automatically after KYC completion
@@ -780,87 +1294,152 @@ const rejectKyc = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Rejection reason is required" });
   }
 
-  // Check if user has appropriate permission based on current stage
   const kycApproval = await KycApproval.findOne({ jobId });
 
   if (!kycApproval) {
     return res.status(404).json({ message: "KYC approval record not found" });
   }
 
-  if (kycApproval.status === "rejected" || kycApproval.status === "completed") {
+  if (kycApproval.status === "completed") {
     return res.status(400).json({
-      message: `KYC process is already ${kycApproval.status}`,
+      message: "KYC process is already completed and cannot be rejected",
     });
   }
 
-  // Verify permissions based on current stage
   const stage = kycApproval.currentApprovalStage;
   let hasPermission = false;
+  let rejectorRole = null;
 
-  if (stage === "lmro" && req.user.role.permissions.kycManagement.lmro) {
+  if (stage === "dlmro" && req.user.role.permissions?.kycManagement?.dlmro) {
     hasPermission = true;
-  } else if (
-    stage === "dlmro" &&
-    req.user.role.permissions.kycManagement.dlmro
-  ) {
+    rejectorRole = "dlmro";
+  } else if (stage === "lmro" && req.user.role.permissions?.kycManagement?.lmro) {
     hasPermission = true;
-  } else if (stage === "ceo" && req.user.role.permissions.kycManagement.ceo) {
+    rejectorRole = "lmro";
+  } else if (stage === "ceo" && req.user.role.permissions?.kycManagement?.ceo) {
     hasPermission = true;
+    rejectorRole = "ceo";
   }
 
   if (!hasPermission) {
     return res.status(403).json({
-      message: `Insufficient permissions for current stage: ${stage}`,
+      message: `Only DLMRO, LMRO, or CEO can reject at their respective stages. Current stage: ${stage}`,
     });
   }
 
-  // Update KYC approval status
-  kycApproval.status = "rejected";
-  kycApproval.currentApprovalStage = "rejected";
+  const rejectionTime = new Date().toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+
+  kycApproval.status = "in_progress";
+  kycApproval.currentApprovalStage = "amlSupervisor";
   kycApproval.rejectionReason = rejectionReason;
   kycApproval.rejectedBy = req.user._id;
   kycApproval.rejectedAt = new Date();
+
+  kycApproval.amlSupervisorApproval = {};
+  kycApproval.dlmroApproval = {};
+  kycApproval.lmroApproval = {};
+  kycApproval.ceoApproval = {};
+
   await kycApproval.save();
 
-  // Update job status
   const job = await Job.findById(jobId);
-  job.status = "kyc_rejected";
+  job.status = "kyc_pending";
   job.timeline.push({
     status: "kyc_rejected",
-    description: `KYC rejected: ${rejectionReason}`,
+    description: `KYC rejected by ${req.user.name} (${rejectorRole.toUpperCase()}): ${rejectionReason}. Document sent back for AML Supervisor to upload new document.`,
     timestamp: new Date(),
     updatedBy: req.user._id,
   });
   await job.save();
 
-  // Send notifications
-  await notificationService.createNotification(
-    {
-      title: "KYC Request Rejected",
-      description: `KYC for ${job.clientName}'s job has been rejected: ${rejectionReason}`,
-      type: "kyc",
-      relatedTo: { model: "Job", id: job._id },
-    },
-    { _id: job.assignedPerson }
-  );
+  const users = await User.find({})
+    .populate({
+      path: "role",
+      select: "name permissions",
+    })
+    .select("_id name email role");
 
-  // Notify admin
-  await notificationService.createNotification(
-    {
-      title: "KYC Rejected",
-      description: `KYC for ${job.clientName}'s job rejected by ${req.user.name}: ${rejectionReason}`,
-      type: "kyc",
-      relatedTo: { model: "Job", id: job._id },
-    },
-    { "role.name": "admin" }
-  );
+  let emailTargets = [];
+  let notificationTargets = [];
 
-  // FIXED: Return populated data
+  if (rejectorRole === "ceo") {
+    emailTargets = ["dlmro", "lmro", "amlSupervisor"];
+    notificationTargets = ["dlmro", "lmro", "amlSupervisor"];
+  } else if (rejectorRole === "lmro") {
+    emailTargets = ["dlmro", "amlSupervisor"];
+    notificationTargets = ["dlmro", "amlSupervisor"];
+  } else if (rejectorRole === "dlmro") {
+    emailTargets = ["amlSupervisor"];
+    notificationTargets = ["amlSupervisor"];
+  }
+
+  for (const targetRole of emailTargets) {
+    const targetUsers = users.filter((user) => {
+      if (!user.role || !user.role.permissions) return false;
+      const kycPerms = user.role.permissions.kycManagement;
+      return kycPerms && kycPerms[targetRole] === true;
+    });
+
+    for (const targetUser of targetUsers) {
+      try {
+        await sendKycRejectionEmail(
+          targetUser.email,
+          targetUser.name,
+          job.clientName,
+          job.jobNumber || job._id,
+          req.user.name,
+          rejectorRole,
+          rejectionReason,
+          rejectionTime
+        );
+        console.log(`KYC rejection email sent to ${targetUser.email} (${targetRole})`);
+      } catch (emailErr) {
+        console.error(`Failed to send rejection email to ${targetUser.email}:`, emailErr.message);
+      }
+    }
+  }
+
+  for (const targetRole of notificationTargets) {
+    try {
+      await notificationService.createNotification(
+        {
+          title: "KYC Document Rejected",
+          description: `KYC for ${job.clientName} has been rejected by ${req.user.name} (${rejectorRole.toUpperCase()}): "${rejectionReason}". New document upload required.`,
+          type: "job",
+          subType: "rejection",
+          relatedTo: { model: "Job", id: job._id },
+        },
+        { [`role.permissions.kycManagement.${targetRole}`]: true }
+      );
+    } catch (notifErr) {
+      console.error(`Failed to send notification to ${targetRole}:`, notifErr.message);
+    }
+  }
+
+  try {
+    await notificationService.createJobNotification(
+      {
+        title: "KYC Rejected",
+        description: `KYC for ${job.clientName}'s job rejected by ${req.user.name} (${rejectorRole.toUpperCase()}): ${rejectionReason}`,
+        type: "job",
+        subType: "rejection",
+        relatedTo: { model: "Job", id: job._id },
+      },
+      job,
+      req.user._id
+    );
+  } catch (adminNotifErr) {
+    console.error("Failed to send job notification:", adminNotifErr.message);
+  }
+
   const populatedKycApproval = await getKycStatusSafely(jobId);
 
-  // Return exists: true to maintain consistency with other endpoints
   res.status(200).json({
     exists: true,
+    message: "KYC rejected successfully. Document sent back to AML Supervisor for new upload.",
     ...populatedKycApproval.toObject(),
   });
 });
@@ -870,12 +1449,10 @@ const updateKycDocument = asyncHandler(async (req, res) => {
   const { jobId, stage } = req.params; // stage: lmro, dlmro, ceo
   const { notes } = req.body;
 
-  // Validate stage
-  if (!["lmro", "dlmro", "ceo"].includes(stage)) {
+  if (!["amlSupervisor", "lmro", "dlmro", "ceo"].includes(stage)) {
     return res.status(400).json({ message: "Invalid approval stage" });
   }
 
-  // Check permissions (only if user is authenticated)
   if (req.user && (!req.user.role || !req.user.role.permissions.kycManagement[stage])) {
     return res.status(403).json({
       message: `Insufficient permissions. ${stage.toUpperCase()} role required.`
@@ -902,6 +1479,40 @@ const updateKycDocument = asyncHandler(async (req, res) => {
       return res.status(400).json({
         message: `${stage.toUpperCase()} stage has not been approved yet. Cannot update document.`,
       });
+    }
+
+    // Get the job to find clientId for archiving
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    // Archive old document before deleting if it exists
+    if (stageApproval.document?.fileUrl) {
+      try {
+        const stageLabels = { lmro: 'LMRO', dlmro: 'DLMRO', ceo: 'CEO' };
+        await Archive.create({
+          clientId: job.clientId,
+          jobId: job._id,
+          documentType: "kyc_document",
+          sourceType: "kyc",
+          fileUrl: stageApproval.document.fileUrl,
+          fileName: stageApproval.document.fileName || `${stageLabels[stage]} KYC Document`,
+          title: `${stageLabels[stage]} KYC Approval Document`,
+          description: `Archived ${stageLabels[stage]} KYC approval document - replaced`,
+          archivedBy: req.user ? req.user._id : null,
+          reason: "replaced",
+          originalUploadedAt: stageApproval.document.uploadedAt,
+          metadata: {
+            stage: stage,
+            approvedBy: stageApproval.approvedBy,
+            approvedAt: stageApproval.approvedAt
+          }
+        });
+        console.log(`Archived old ${stage} KYC document for job ${jobId}`);
+      } catch (archiveError) {
+        console.error(`Error archiving ${stage} KYC document:`, archiveError);
+      }
     }
 
     // Delete old document from Cloudinary if it exists
@@ -950,7 +1561,6 @@ const updateKycDocument = asyncHandler(async (req, res) => {
     await kycApproval.save();
 
     // Add timeline entry
-    const job = await Job.findById(jobId);
     const userName = req.user ? req.user.name : 'Compliance User';
     const userId = req.user ? req.user._id : null;
 
@@ -969,14 +1579,15 @@ const updateKycDocument = asyncHandler(async (req, res) => {
 
     // Send notifications (only if authenticated user)
     if (req.user) {
-      await notificationService.createNotification(
+      await notificationService.createJobNotification(
         {
-          title: "KYC Document Updated",
+          title: "KYC Documents Updated",
           description: `${stage.toUpperCase()} document updated for ${job.clientName}'s KYC by ${req.user.name}`,
           type: "kyc",
           relatedTo: { model: "Job", id: job._id },
         },
-        { "role.name": "admin" }
+        job,
+        req.user._id
       );
     }
 
@@ -1064,14 +1675,15 @@ const deleteKycDocument = asyncHandler(async (req, res) => {
     await job.save();
 
     // Send notifications
-    await notificationService.createNotification(
+    await notificationService.createJobNotification(
       {
         title: "KYC Document Deleted",
         description: `${stage.toUpperCase()} document deleted for ${job.clientName}'s KYC by ${req.user.name}`,
         type: "kyc",
         relatedTo: { model: "Job", id: job._id },
       },
-      { "role.name": "admin" }
+      job,
+      req.user._id
     );
 
     res.status(200).json({
@@ -1089,11 +1701,15 @@ const deleteKycDocument = asyncHandler(async (req, res) => {
 module.exports = {
   initializeKyc,
   getKycStatus,
+  amlSupervisorUpload,
+  dlmroSign,
+  lmroSign,
+  ceoSign,
   lmroApprove,
   dlmroApprove,
   ceoApprove,
   rejectKyc,
   getAllKycJobs,
-  updateKycDocument, // FIXED
-  deleteKycDocument, // FIXED
+  updateKycDocument,
+  deleteKycDocument,
 };

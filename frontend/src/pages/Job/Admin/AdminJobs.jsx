@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import {
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
@@ -25,6 +25,7 @@ import {
   EnvelopeIcon,
   MapPinIcon,
   BuildingOfficeIcon,
+  PhoneIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment } from "react";
@@ -89,10 +90,17 @@ const DOCUMENT_TYPES = {
   OTHER: "newOtherDocuments",
 };
 
-// Helper function to get assigned person name by ID
-const getAssignedPersonName = (id) => {
-  const person = assignedPersons.find((p) => p.id === id);
-  return person ? person.name : "Unknown";
+// Helper function to get assigned person name
+const getAssignedPersonName = (assignedPerson) => {
+  if (!assignedPerson) return "Unassigned";
+  if (typeof assignedPerson === "object" && assignedPerson.name) {
+    return assignedPerson.name;
+  }
+  if (typeof assignedPerson === "string") {
+    const person = assignedPersons.find((p) => p.id === assignedPerson);
+    return person ? person.name : "Unassigned";
+  }
+  return "Unassigned";
 };
 
 // Helper function to get file type icon based on file extension
@@ -170,6 +178,8 @@ function AdminJobs() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false); // New edit modal state
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+  const [selectedJobUsers, setSelectedJobUsers] = useState({ jobNumber: "", users: [], job: null });
   const [selectedJob, setSelectedJob] = useState(null);
 
   // State for resubmission form
@@ -206,6 +216,10 @@ function AdminJobs() {
     clientName: "",
     gmail: "",
     startingPoint: "",
+    crNo: "",
+    contactNumber: "",
+    address: "",
+    selectedServiceUsers: [],
   });
 
   const [editDocuments, setEditDocuments] = useState({
@@ -217,6 +231,10 @@ function AdminJobs() {
   const [editErrors, setEditErrors] = useState({});
   const [operationManagers, setOperationManagers] = useState([]);
   const [services, setServices] = useState([]);
+
+  // State for service users in edit mode
+  const [editServiceUsers, setEditServiceUsers] = useState([]);
+  const [loadingEditServiceUsers, setLoadingEditServiceUsers] = useState(false);
 
   // State for export functionality
   const [isExporting, setIsExporting] = useState(false);
@@ -240,6 +258,31 @@ function AdminJobs() {
 
     fetchEditFormData();
   }, []);
+
+  // Fetch service users when edit form service type changes
+  useEffect(() => {
+    const fetchEditServiceUsers = async () => {
+      if (!editFormData.serviceType || !isEditModalOpen) {
+        setEditServiceUsers([]);
+        return;
+      }
+
+      try {
+        setLoadingEditServiceUsers(true);
+        const response = await axiosInstance.get(
+          `/users/by-service/${encodeURIComponent(editFormData.serviceType)}`
+        );
+        setEditServiceUsers(response.data || []);
+      } catch (error) {
+        console.error("Error fetching users by service:", error);
+        setEditServiceUsers([]);
+      } finally {
+        setLoadingEditServiceUsers(false);
+      }
+    };
+
+    fetchEditServiceUsers();
+  }, [editFormData.serviceType, isEditModalOpen]);
 
   // Fetch jobs from the API when the component mounts
   useEffect(() => {
@@ -482,6 +525,7 @@ function AdminJobs() {
   const handleEditJob = (job) => {
     setSelectedJob(job);
     // Pre-populate the edit form with existing job data
+    const existingSelectedUsers = job.selectedServiceUsers?.map(u => u._id || u) || [];
     setEditFormData({
       jobNumber: job.jobNumber || "",
       serviceType: job.serviceType || "",
@@ -491,6 +535,10 @@ function AdminJobs() {
       clientName: job.clientName || "",
       gmail: job.gmail || "",
       startingPoint: job.startingPoint || "",
+      crNo: job.clientId?.crNo || "",
+      contactNumber: job.clientId?.contactNumber || "",
+      address: job.clientId?.address || "",
+      selectedServiceUsers: existingSelectedUsers,
     });
     setEditDocuments({
       documentPassport: null,
@@ -601,9 +649,6 @@ function AdminJobs() {
     if (!editFormData.serviceType) {
       newErrors.serviceType = "Service type is required";
     }
-    if (!editFormData.assignedPerson) {
-      newErrors.assignedPerson = "Assigned person is required";
-    }
     if (!editFormData.jobDetails) {
       newErrors.jobDetails = "Job details are required";
     }
@@ -637,7 +682,11 @@ function AdminJobs() {
 
       // Add text fields
       Object.keys(editFormData).forEach((key) => {
-        formData.append(key, editFormData[key]);
+        if (key === 'selectedServiceUsers') {
+          formData.append(key, JSON.stringify(editFormData[key]));
+        } else {
+          formData.append(key, editFormData[key]);
+        }
       });
 
       // Add documents
@@ -961,6 +1010,8 @@ function AdminJobs() {
         return "bg-red-50 text-red-700 ring-red-600/20";
       case "cancelled":
         return "bg-gray-50 text-gray-700 ring-gray-600/20";
+      case "fully_completed_bra":
+        return "bg-blue-50 text-blue-700 ring-blue-600/20";
       default:
         return "bg-yellow-50 text-yellow-700 ring-yellow-600/20";
     }
@@ -974,9 +1025,16 @@ function AdminJobs() {
         return <XMarkIcon className="h-5 w-5 text-red-500" />;
       case "cancelled":
         return <NoSymbolIcon className="h-5 w-5 text-gray-500" />;
+      case "fully_completed_bra":
+        return <ClockIcon className="h-5 w-5 text-blue-500" />;
       default:
         return <ClockIcon className="h-5 w-5 text-yellow-500" />;
     }
+  };
+
+  const getStatusLabel = (status) => {
+    if (status === "fully_completed_bra") return "Processing";
+    return status || "pending";
   };
 
   // Check if job can be cancelled
@@ -1036,64 +1094,52 @@ function AdminJobs() {
         )}
 
         {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-blue-50 rounded-xl">
-                <UserGroupIcon className="h-6 w-6 text-blue-600" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+          <div className="group bg-white rounded-2xl p-6 shadow-md hover:shadow-xl border border-gray-100 transition-all duration-300 overflow-hidden relative">
+            <div className="flex items-center space-x-4">
+              <div className="p-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <UserGroupIcon className="h-7 w-7 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Total Jobs</p>
-                <p className="text-2xl font-semibold text-gray-900">
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Jobs</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">
                   {isLoading ? "..." : jobs.length}
                 </p>
               </div>
             </div>
+            <div className="h-1 w-full bg-gradient-to-r from-blue-400 to-blue-600 absolute bottom-0 left-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           </div>
-          <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-green-50 rounded-xl">
-                <CheckIcon className="h-6 w-6 text-green-600" />
+          <div className="group bg-white rounded-2xl p-6 shadow-md hover:shadow-xl border border-gray-100 transition-all duration-300 overflow-hidden relative">
+            <div className="flex items-center space-x-4">
+              <div className="p-4 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <CheckIcon className="h-7 w-7 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Approved</p>
-                <p className="text-2xl font-semibold text-gray-900">
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Approved</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">
                   {isLoading
                     ? "..."
                     : jobs.filter((job) => job.status === "approved").length}
                 </p>
               </div>
             </div>
+            <div className="h-1 w-full bg-gradient-to-r from-emerald-400 to-emerald-600 absolute bottom-0 left-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           </div>
-          <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-yellow-50 rounded-xl">
-                <ClockIcon className="h-6 w-6 text-yellow-600" />
+          <div className="group bg-white rounded-2xl p-6 shadow-md hover:shadow-xl border border-gray-100 transition-all duration-300 overflow-hidden relative">
+            <div className="flex items-center space-x-4">
+              <div className="p-4 bg-gradient-to-br from-gray-500 to-gray-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <NoSymbolIcon className="h-7 w-7 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Pending</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {isLoading
-                    ? "..."
-                    : jobs.filter((job) => job.status === "pending").length}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-gray-50 rounded-xl">
-                <NoSymbolIcon className="h-6 w-6 text-gray-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Cancelled</p>
-                <p className="text-2xl font-semibold text-gray-900">
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cancelled</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">
                   {isLoading
                     ? "..."
                     : jobs.filter((job) => job.status === "cancelled").length}
                 </p>
               </div>
             </div>
+            <div className="h-1 w-full bg-gradient-to-r from-gray-400 to-gray-600 absolute bottom-0 left-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           </div>
         </div>
 
@@ -1259,9 +1305,24 @@ function AdminJobs() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {getAssignedPersonName(job.assignedPerson) ||
-                              "Unassigned"}
+                            {getAssignedPersonName(job.assignedPerson) || "Unassigned"}
                           </div>
+                          {job.selectedServiceUsers && job.selectedServiceUsers.length > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedJobUsers({
+                                  jobNumber: job.jobNumber,
+                                  users: job.selectedServiceUsers,
+                                  job: job
+                                });
+                                setIsUsersModalOpen(true);
+                              }}
+                              className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-1 cursor-pointer"
+                            >
+                              +{job.selectedServiceUsers.length} user{job.selectedServiceUsers.length > 1 ? 's' : ''}
+                            </button>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
@@ -1270,6 +1331,16 @@ function AdminJobs() {
                           <div className="text-sm text-gray-500">
                             {job.gmail || "N/A"}
                           </div>
+                          {job.clientId?.crNo && (
+                            <div className="text-xs text-gray-400">
+                              CR: {job.clientId.crNo}
+                            </div>
+                          )}
+                          {job.clientId?.contactNumber && (
+                            <div className="text-xs text-gray-400">
+                              Tel: {job.clientId.contactNumber}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <motion.span
@@ -1280,7 +1351,7 @@ function AdminJobs() {
                           >
                             {getStatusIcon(job.status || "pending")}
                             <span className="ml-1.5">
-                              {job.status || "pending"}
+                              {getStatusLabel(job.status)}
                             </span>
                           </motion.span>
                         </td>
@@ -1394,7 +1465,7 @@ function AdminJobs() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -1483,8 +1554,8 @@ function AdminJobs() {
                         {/* Assigned Person */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Assigned Person{" "}
-                            <span className="text-red-500">*</span>
+                            Assigned Person
+                            <span className="text-gray-500 text-xs ml-1">(Optional)</span>
                           </label>
                           <select
                             name="assignedPerson"
@@ -1507,6 +1578,78 @@ function AdminJobs() {
                             </p>
                           )}
                         </div>
+
+                        {/* Users with access to this service - Multi-Select */}
+                        {editFormData.serviceType && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Assigned Users for This Service
+                              <span className="text-gray-500 text-xs ml-1">(Optional - Select multiple)</span>
+                            </label>
+                            {loadingEditServiceUsers ? (
+                              <div className="flex items-center space-x-2 text-gray-500">
+                                <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                                <span className="text-sm">Loading users...</span>
+                              </div>
+                            ) : editServiceUsers.length > 0 ? (
+                              <>
+                                <div className="border border-gray-300 rounded-xl p-3 max-h-48 overflow-y-auto bg-white">
+                                  {editServiceUsers.map((serviceUser) => (
+                                    <label
+                                      key={serviceUser._id}
+                                      className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={editFormData.selectedServiceUsers.includes(serviceUser._id)}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setEditFormData((prev) => ({
+                                              ...prev,
+                                              selectedServiceUsers: [...prev.selectedServiceUsers, serviceUser._id],
+                                            }));
+                                          } else {
+                                            setEditFormData((prev) => ({
+                                              ...prev,
+                                              selectedServiceUsers: prev.selectedServiceUsers.filter(
+                                                (id) => id !== serviceUser._id
+                                              ),
+                                            }));
+                                          }
+                                        }}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                      />
+                                      <div className="flex-1">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          {serviceUser.name}
+                                        </span>
+                                        <span className="text-xs text-gray-500 ml-2">
+                                          ({serviceUser.role?.name || "N/A"})
+                                        </span>
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                                <div className="mt-2 flex items-center justify-between">
+                                  <p className="text-xs text-gray-500">
+                                    {editServiceUsers.length} user{editServiceUsers.length !== 1 ? "s" : ""} available
+                                  </p>
+                                  {editFormData.selectedServiceUsers.length > 0 && (
+                                    <p className="text-xs text-blue-600 font-medium">
+                                      {editFormData.selectedServiceUsers.length} selected
+                                    </p>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                                <p className="text-sm text-yellow-700">
+                                  No specific users assigned to this service. All users with appropriate permissions can access it.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Job Details */}
                         <div>
@@ -1627,6 +1770,67 @@ function AdminJobs() {
                               {editErrors.startingPoint}
                             </p>
                           )}
+                        </div>
+
+                        {/* CR Number and Contact Number */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              CR Number
+                            </label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <DocumentTextIcon className="h-5 w-5 text-gray-400" />
+                              </div>
+                              <input
+                                type="text"
+                                name="crNo"
+                                value={editFormData.crNo}
+                                onChange={handleEditInputChange}
+                                className="block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Enter CR Number"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Contact Number
+                            </label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <PhoneIcon className="h-5 w-5 text-gray-400" />
+                              </div>
+                              <input
+                                type="text"
+                                name="contactNumber"
+                                value={editFormData.contactNumber}
+                                onChange={handleEditInputChange}
+                                className="block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Enter contact number"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Address */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Address
+                          </label>
+                          <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                              <MapPinIcon className="h-5 w-5 text-gray-400" />
+                            </div>
+                            <input
+                              type="text"
+                              name="address"
+                              value={editFormData.address}
+                              onChange={handleEditInputChange}
+                              className="block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="Enter address"
+                            />
+                          </div>
                         </div>
 
                         {/* Document Upload Section */}
@@ -1855,7 +2059,7 @@ function AdminJobs() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -1907,6 +2111,16 @@ function AdminJobs() {
                               Starting Point:{" "}
                               {selectedJob.startingPoint || "N/A"}
                             </p>
+                            {selectedJob.clientId?.crNo && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                CR Number: {selectedJob.clientId.crNo}
+                              </p>
+                            )}
+                            {selectedJob.clientId?.contactNumber && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                Contact: {selectedJob.clientId.contactNumber}
+                              </p>
+                            )}
                           </div>
                           <div className="bg-gray-50 p-4 rounded-xl">
                             <h4 className="text-sm font-medium text-gray-700 mb-2">
@@ -2196,7 +2410,7 @@ function AdminJobs() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -2544,7 +2758,7 @@ function AdminJobs() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -2664,7 +2878,7 @@ function AdminJobs() {
                 className="inline-block h-screen align-middle"
                 aria-hidden="true"
               >
-                ​
+                
               </span>
 
               <Transition.Child
@@ -2731,6 +2945,130 @@ function AdminJobs() {
                         "Delete Job"
                       )}
                     </motion.button>
+                  </div>
+                </div>
+              </Transition.Child>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Assigned Users Modal */}
+        <Transition appear show={isUsersModalOpen} as={Fragment}>
+          <Dialog
+            as="div"
+            className="fixed inset-0 z-50 overflow-y-auto"
+            onClose={() => setIsUsersModalOpen(false)}
+          >
+            <div className="min-h-screen px-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0"
+                enterTo="opacity-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100"
+                leaveTo="opacity-0"
+              >
+                <Dialog.Overlay className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
+              </Transition.Child>
+
+              <span
+                className="inline-block h-screen align-middle"
+                aria-hidden="true"
+              >
+                &#8203;
+              </span>
+
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <UserGroupIcon className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <Dialog.Title
+                        as="h3"
+                        className="text-lg font-medium leading-6 text-gray-900"
+                      >
+                        Assigned Users
+                      </Dialog.Title>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          if (selectedJobUsers.job) {
+                            handleEditJob(selectedJobUsers.job);
+                            setIsUsersModalOpen(false);
+                          }
+                        }}
+                        className="p-1.5 hover:bg-blue-100 rounded-full transition-colors"
+                        title="Edit assigned users"
+                      >
+                        <PencilIcon className="h-5 w-5 text-blue-600" />
+                      </button>
+                      <button
+                        onClick={() => setIsUsersModalOpen(false)}
+                        className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5 text-gray-500" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedJobUsers.jobNumber && (
+                    <div className="mt-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <HashtagIcon className="h-3 w-3 mr-1" />
+                        {selectedJobUsers.jobNumber}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                    {selectedJobUsers.users && selectedJobUsers.users.length > 0 ? (
+                      selectedJobUsers.users.map((user, idx) => (
+                        <div
+                          key={user._id || idx}
+                          className="flex items-center p-3 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex-shrink-0">
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium">
+                              {(user.name || "U").charAt(0).toUpperCase()}
+                            </div>
+                          </div>
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-gray-900">
+                              {user.name || "Unknown User"}
+                            </p>
+                            {user.email && (
+                              <p className="text-xs text-gray-500">{user.email}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        No users assigned
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                      onClick={() => setIsUsersModalOpen(false)}
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               </Transition.Child>

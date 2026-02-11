@@ -23,7 +23,7 @@ import {
   ArrowPathIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import axios, { fileUploadInstance } from '../../../utils/axios';
 import { toast } from 'react-toastify';
 
@@ -40,11 +40,39 @@ const BRASheet = ({ client }) => {
   const [uploading, setUploading] = useState(false);
   const [generalBraDocuments, setGeneralBraDocuments] = useState({});
 
+  const isOfficeFile = (url) => {
+    if (!url) return false;
+    const extension = url.toLowerCase().split('.').pop().split('?')[0];
+    return ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(extension);
+  };
+
+  const isPublicUrl = (url) => {
+    return url && (url.includes('cloudinary.com') || url.includes('res.cloudinary.com'));
+  };
+
+  const openDocument = (url, fileName) => {
+    console.log('Opening document:', { url, fileName });
+    if (!url) {
+      alert('Document not available');
+      return;
+    }
+
+    if (isOfficeFile(url) && isPublicUrl(url)) {
+      const viewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
+      console.log('Opening in Office Viewer:', viewerUrl);
+      window.open(viewerUrl, '_blank');
+    } else {
+      console.log('Opening directly:', url);
+      window.open(url, '_blank');
+    }
+  };
+
   useEffect(() => {
     if (client?.riskLevel) {
       setRiskLevel(client.riskLevel);
     }
   }, [client?.riskLevel]);
+
 
   const updateRiskLevel = async (newRiskLevel) => {
     if (!client) return;
@@ -208,13 +236,9 @@ const BRASheet = ({ client }) => {
   };
 
   const handleViewDocument = (doc) => {
-    if (doc.fileUrl) {
-      window.open(doc.fileUrl, '_blank');
-    } else if (doc.url) {
-      window.open(doc.url, '_blank');
-    } else {
-      alert('Document preview not available');
-    }
+    const url = doc.fileUrl || doc.url;
+    const fileName = doc.fileName || doc.name || '';
+    openDocument(url, fileName);
   };
 
   const handleDownloadDocument = (doc) => {
@@ -285,32 +309,21 @@ const BRASheet = ({ client }) => {
     try {
       setUploading(true);
 
-      const response = await axios.get(`/operations/jobs/${jobId}/bra-documents`);
-      const existingDocs = response.data.documents || [];
-      const currentDoc = existingDocs[documentIndex];
-
-      if (!currentDoc) {
-        throw new Error('Document not found');
-      }
-
-      await axios.delete(`/operations/jobs/${jobId}/bra-documents`, {
-        data: { fileUrl: currentDoc.file }
-      });
-
+      const formData = new FormData();
       if (file) {
-        const formData = new FormData();
-        formData.append('braDocuments', file);
-        const description = notes ? `${documentName} - ${notes}` : documentName;
-        formData.append('braDocumentDescriptions', JSON.stringify([description]));
-        formData.append('braDocumentTypes', JSON.stringify([currentDoc.documentType || 'BRA Document']));
-
-        await fileUploadInstance.post(
-          `/operations/jobs/${jobId}/bra-documents`,
-          formData
-        );
+        formData.append('braDocument', file);
+      }
+      formData.append('documentName', documentName);
+      if (notes) {
+        formData.append('notes', notes);
       }
 
-      toast.success('Document updated successfully');
+      await fileUploadInstance.put(
+        `/operations/jobs/${jobId}/bra-documents/${documentIndex}/replace`,
+        formData
+      );
+
+      toast.success('Document replaced successfully');
       setReplaceModal({ open: false, document: null, jobId: null, documentIndex: null });
 
       const fileInput = document.getElementById('replaceFile');
@@ -327,7 +340,7 @@ const BRASheet = ({ client }) => {
       }));
     } catch (error) {
       console.error('Error replacing document:', error);
-      toast.error(error.response?.data?.message || 'Failed to update document');
+      toast.error(error.response?.data?.message || 'Failed to replace document');
     } finally {
       setUploading(false);
     }
@@ -544,15 +557,13 @@ const BRASheet = ({ client }) => {
                       {doc.docType}
                     </span>
                     <div className="mt-3 flex items-center gap-2">
-                      <a
-                        href={doc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => openDocument(doc.url, doc.name)}
                         className="inline-flex items-center text-xs text-purple-600 hover:text-purple-800 bg-white rounded-md px-2 py-1 border border-purple-200 hover:shadow-sm transition-all"
                       >
                         <EyeIcon className="h-3.5 w-3.5 mr-1" />
                         View
-                      </a>
+                      </button>
                       {doc.type === 'general' && (
                         <>
                           <button
@@ -726,15 +737,13 @@ const BRASheet = ({ client }) => {
                     </div>
 
                     <div className="mt-3 flex items-center gap-2">
-                      <a
-                        href={doc.document.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => openDocument(doc.document.fileUrl, doc.document.fileName)}
                         className={`inline-flex items-center text-xs ${colors.icon} hover:opacity-80 bg-white rounded-md px-2 py-1 ${colors.border} hover:shadow-sm transition-all`}
                       >
                         <EyeIcon className="h-3.5 w-3.5 mr-1" />
                         View
-                      </a>
+                      </button>
                       <a
                         href={doc.document.fileUrl}
                         download
@@ -785,38 +794,28 @@ const BRASheet = ({ client }) => {
 
             <div className="bg-gray-50 rounded-lg p-4 space-y-3">
               <div className="flex justify-between">
-                <span className="text-gray-600">Full Name:</span>
-                <span className="font-medium">{client?.name || 'John Doe'}</span>
+                <span className="text-gray-600">Client Name:</span>
+                <span className="font-medium">{client?.name || 'N/A'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Date of Birth:</span>
-                <span className="font-medium">1985-06-15</span>
+                <span className="text-gray-600">Email:</span>
+                <span className="font-medium">{client?.email || 'N/A'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Nationality:</span>
-                <span className="font-medium">British</span>
+                <span className="text-gray-600">Phone:</span>
+                <span className="font-medium">{client?.phone || client?.contactNumber || 'N/A'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">ID Number:</span>
-                <span className="font-medium">AB123456789</span>
+                <span className="text-gray-600">Address:</span>
+                <span className="font-medium">{client?.address || 'N/A'}</span>
               </div>
-            </div>
-
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-              <h4 className="font-semibold text-purple-900 mb-2">Verification Status</h4>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Identity Verification</span>
-                  <CheckCircleIcon className="h-5 w-5 text-green-500" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Address Verification</span>
-                  <CheckCircleIcon className="h-5 w-5 text-green-500" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Source of Funds</span>
-                  <ClockIcon className="h-5 w-5 text-yellow-500" />
-                </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Starting Point:</span>
+                <span className="font-medium">{client?.startingPoint || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">CR Number:</span>
+                <span className="font-medium">{client?.crNo || 'N/A'}</span>
               </div>
             </div>
           </div>
@@ -917,7 +916,7 @@ const BRASheet = ({ client }) => {
                     type="file"
                     id="uploadFile"
                     className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
                   />
                 </div>
 
@@ -1021,15 +1020,16 @@ const BRASheet = ({ client }) => {
                     {replaceModal.document?.fileName || replaceModal.document?.description || 'Document'}
                   </p>
                   {(replaceModal.document?.file || replaceModal.document?.fileUrl) && (
-                    <a
-                      href={replaceModal.document?.file || replaceModal.document?.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => openDocument(
+                        replaceModal.document?.file || replaceModal.document?.fileUrl,
+                        replaceModal.document?.fileName || replaceModal.document?.description
+                      )}
                       className="inline-flex items-center text-xs text-purple-600 hover:text-purple-800 bg-white rounded-md px-2 py-1 border border-purple-200 hover:shadow-sm transition-all"
                     >
                       <EyeIcon className="h-3.5 w-3.5 mr-1" />
                       View
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
@@ -1057,7 +1057,7 @@ const BRASheet = ({ client }) => {
                       type="file"
                       id="replaceFile"
                       className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
                     />
                   </div>
 
@@ -1084,7 +1084,7 @@ const BRASheet = ({ client }) => {
                     type="file"
                     id="replaceFile"
                     className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
                   />
                 </div>
               )}

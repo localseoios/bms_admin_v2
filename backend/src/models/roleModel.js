@@ -27,8 +27,8 @@ const roleSchema = new mongoose.Schema({
     operationManagement: { type: Boolean, default: false },
     accountManagement: { type: Boolean, default: false },
 
-    // Existing KYC Management permissions
     kycManagement: {
+      amlSupervisor: { type: Boolean, default: false },
       lmro: { type: Boolean, default: false },
       dlmro: { type: Boolean, default: false },
       ceo: { type: Boolean, default: false },
@@ -38,6 +38,10 @@ const roleSchema = new mongoose.Schema({
       lmro: { type: Boolean, default: false }, // LMRO role permission
       dlmro: { type: Boolean, default: false }, // DLMRO role permission
       ceo: { type: Boolean, default: false }, // CEO role permission
+    },
+    // Compliance Resources permissions
+    complianceResources: {
+      manage: { type: Boolean, default: false }, // Can upload, edit, delete resources
     },
   },
 });

@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import { format } from "date-fns";
 import axiosInstance from "../utils/axios";
+import accountService from "../utils/accountService";
 import {
   UserCircleIcon,
   CalendarIcon,
@@ -37,6 +38,7 @@ import {
   CheckIcon,
   ShieldExclamationIcon,
   ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
   // BRA Management icon
   ClipboardIcon,
   DocumentArrowDownIcon,
@@ -44,6 +46,7 @@ import {
   PlusIcon,
   TrashIcon,
   ExclamationTriangleIcon,
+  EyeSlashIcon,
 } from "@heroicons/react/24/outline";
 import MonthlyPaymentForm from "./MonthlyPaymentForm/MonthlyPaymentForm";
 import EnhancedMonthlyPaymentHistory from "./MonthlyPaymentForm/EnhancedMonthlyPaymentHistory";
@@ -300,6 +303,15 @@ function ClientProfile() {
                               day: "numeric",
                             }
                           )}
+                        </span>
+                      </div>
+                    )}
+
+                    {letter.uploadedBy && (
+                      <div className="flex items-center text-xs text-gray-600">
+                        <UserIcon className="h-3 w-3 mr-1" />
+                        <span>
+                          By: {letter.uploadedBy.name || letter.uploadedBy.email || "Unknown"}
                         </span>
                       </div>
                     )}
@@ -585,36 +597,7 @@ function ClientProfile() {
     // Extract documents from KYC Management data
     const managementDocuments = [];
 
-    if (kycData?.lmroApproval?.document?.fileUrl) {
-      managementDocuments.push({
-        id: `lmro-${jobId}`,
-        type: 'management',
-        stage: 'lmro',
-        stageLabel: 'LMRO',
-        document: kycData.lmroApproval.document,
-        approval: kycData.lmroApproval,
-        name: kycData.lmroApproval.document.fileName || 'LMRO Document',
-        url: kycData.lmroApproval.document.fileUrl,
-        uploadDate: kycData.lmroApproval.document.uploadedAt || kycData.lmroApproval.approvedAt,
-        docType: 'LMRO Approval'
-      });
-    }
-
-    if (kycData?.dlmroApproval?.document?.fileUrl) {
-      managementDocuments.push({
-        id: `dlmro-${jobId}`,
-        type: 'management',
-        stage: 'dlmro',
-        stageLabel: 'DLMRO',
-        document: kycData.dlmroApproval.document,
-        approval: kycData.dlmroApproval,
-        name: kycData.dlmroApproval.document.fileName || 'DLMRO Document',
-        url: kycData.dlmroApproval.document.fileUrl,
-        uploadDate: kycData.dlmroApproval.document.uploadedAt || kycData.dlmroApproval.approvedAt,
-        docType: 'DLMRO Approval'
-      });
-    }
-
+    // Only show the final CEO signed document (contains all signatures)
     if (kycData?.ceoApproval?.document?.fileUrl) {
       managementDocuments.push({
         id: `ceo-${jobId}`,
@@ -1476,15 +1459,7 @@ function ClientProfile() {
       };
     };
 
-    // Collect all available documents
-    if (kycData.lmroApproval?.document?.fileUrl) {
-      documents.push(createDocumentInfo("lmro", kycData.lmroApproval));
-    }
-
-    if (kycData.dlmroApproval?.document?.fileUrl) {
-      documents.push(createDocumentInfo("dlmro", kycData.dlmroApproval));
-    }
-
+    // Only show the final CEO signed document (contains all signatures)
     if (kycData.ceoApproval?.document?.fileUrl) {
       documents.push(createDocumentInfo("ceo", kycData.ceoApproval));
     }
@@ -2937,15 +2912,16 @@ function ClientProfile() {
   const getStatusColor = (status) => {
     switch (status) {
       case "completed":
-        return "text-green-600 bg-green-100 ring-1 ring-green-600/20";
+        return "text-white bg-green-500";
       case "in-progress":
-        return "text-blue-600 bg-blue-100 ring-1 ring-blue-600/20";
+        return "text-white bg-blue-500";
       case "pending":
-        return "text-yellow-600 bg-yellow-100 ring-1 ring-yellow-600/20";
+        return "text-white bg-yellow-500";
       case "rejected":
-        return "text-red-600 bg-red-100 ring-1 ring-red-600/20";
+      case "cancelled":
+        return "text-white bg-red-500";
       default:
-        return "text-gray-600 bg-gray-100 ring-1 ring-gray-600/20";
+        return "text-white bg-gray-400";
     }
   };
 
@@ -2954,12 +2930,44 @@ function ClientProfile() {
       case "created":
         return DocumentTextIcon;
       case "screening_done":
+      case "om_completed":
+      case "kyc_lmro_approved":
+      case "kyc_dlmro_approved":
+      case "kyc_ceo_approved":
+      case "bra_lmro_approved":
+      case "bra_dlmro_approved":
+      case "bra_ceo_approved":
+      case "completed":
+      case "approved":
         return CheckCircleIcon;
       case "rejected":
+      case "cancelled":
+      case "kyc_rejected":
+      case "bra_rejected":
         return XCircleIcon;
       case "corrected":
+      case "updated":
+      case "person_details_updated":
+      case "company_details_updated":
         return PencilIcon;
+      case "assigned":
+        return UserGroupIcon;
+      case "fully_completed_bra":
+      case "kyc_pending":
+      case "bra_pending":
+        return ClockIcon;
+      case "engagement_letter_uploaded":
+      case "document_uploaded":
+        return DocumentArrowDownIcon;
+      case "document_deleted":
+        return TrashIcon;
       default:
+        if (status && (status.includes("_updated") || status.includes("_uploaded"))) {
+          return PencilIcon;
+        }
+        if (status && status.includes("_deleted")) {
+          return TrashIcon;
+        }
         return ClockIcon;
     }
   };
@@ -2968,10 +2976,40 @@ function ClientProfile() {
     switch (status) {
       case "created":
       case "screening_done":
-      case "rejected":
       case "corrected":
+      case "om_completed":
+      case "kyc_lmro_approved":
+      case "kyc_dlmro_approved":
+      case "kyc_ceo_approved":
+      case "bra_lmro_approved":
+      case "bra_dlmro_approved":
+      case "bra_ceo_approved":
+      case "completed":
+      case "approved":
+      case "updated":
+      case "person_details_updated":
+      case "company_details_updated":
+      case "engagement_letter_uploaded":
+      case "document_uploaded":
         return "completed";
+      case "rejected":
+      case "cancelled":
+      case "kyc_rejected":
+      case "bra_rejected":
+      case "document_deleted":
+        return "rejected";
+      case "fully_completed_bra":
+      case "kyc_pending":
+      case "bra_pending":
+      case "assigned":
+        return "in-progress";
       default:
+        if (status && (status.includes("_approved") || status.includes("_completed") || status.includes("_updated") || status.includes("_uploaded"))) {
+          return "completed";
+        }
+        if (status && (status.includes("_rejected") || status.includes("_deleted"))) {
+          return "rejected";
+        }
         return "in-progress";
     }
   };
@@ -2979,15 +3017,83 @@ function ClientProfile() {
   const getTimelineTitle = (status) => {
     switch (status) {
       case "created":
-        return "Service Requested";
+        return "Job Created";
       case "screening_done":
-        return "Screening Done";
+        return "Screening Completed";
       case "rejected":
         return "Job Rejected";
       case "corrected":
         return "Job Resubmitted";
-      default:
+      case "cancelled":
+        return "Job Cancelled";
+      case "approved":
+        return "Job Approved";
+      case "assigned":
+        return "Job Assigned";
+      case "updated":
+        return "Job Updated";
+      case "om_completed":
+        return "Operation Management Completed";
+      case "kyc_pending":
+        return "KYC Process Started";
+      case "kyc_lmro_approved":
+        return "KYC LMRO Approved";
+      case "kyc_dlmro_approved":
+        return "KYC DLMRO Approved";
+      case "kyc_ceo_approved":
+        return "KYC CEO Approved";
+      case "kyc_rejected":
+        return "KYC Rejected";
+      case "kyc_lmro_document_updated":
+        return "KYC LMRO Document Updated";
+      case "kyc_dlmro_document_updated":
+        return "KYC DLMRO Document Updated";
+      case "kyc_ceo_document_updated":
+        return "KYC CEO Document Updated";
+      case "kyc_lmro_document_deleted":
+        return "KYC LMRO Document Deleted";
+      case "kyc_dlmro_document_deleted":
+        return "KYC DLMRO Document Deleted";
+      case "kyc_ceo_document_deleted":
+        return "KYC CEO Document Deleted";
+      case "bra_pending":
+        return "BRA Process Started";
+      case "bra_lmro_approved":
+        return "BRA LMRO Approved";
+      case "bra_dlmro_approved":
+        return "BRA DLMRO Approved";
+      case "bra_ceo_approved":
+        return "BRA CEO Approved";
+      case "bra_rejected":
+        return "BRA Rejected";
+      case "bra_lmro_document_updated":
+        return "BRA LMRO Document Updated";
+      case "bra_dlmro_document_updated":
+        return "BRA DLMRO Document Updated";
+      case "bra_ceo_document_updated":
+        return "BRA CEO Document Updated";
+      case "completed":
+        return "Service Completed";
+      case "fully_completed_bra":
         return "Processing";
+      case "person_details_updated":
+        return "Person Details Updated";
+      case "company_details_updated":
+        return "Company Details Updated";
+      case "engagement_letter_uploaded":
+        return "Engagement Letter Uploaded";
+      case "document_uploaded":
+        return "Document Uploaded";
+      case "document_deleted":
+        return "Document Deleted";
+      default:
+        if (status && status.includes("_updated")) {
+          return status.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+        }
+        if (status && status.includes("_deleted")) {
+          return status.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+        }
+        return status ? status.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()) : "Processing";
     }
   };
 
@@ -3018,6 +3124,9 @@ function ClientProfile() {
 
   const mapTimelineData = (jobId) => {
     const timeline = jobTimelines[jobId] || [];
+    const company = companyDetails[jobId];
+    const docHistory = company?.documentHistory || [];
+
     if (!timeline.length && loadingTimelines[jobId]) {
       return [
         {
@@ -3030,7 +3139,7 @@ function ClientProfile() {
         },
       ];
     }
-    if (!timeline.length) {
+    if (!timeline.length && !docHistory.length) {
       const job = jobs.find((j) => j._id === jobId);
       return [
         {
@@ -3043,14 +3152,38 @@ function ClientProfile() {
         },
       ];
     }
-    return timeline.map((event, index) => ({
-      id: index,
-      title: getTimelineTitle(event.status),
-      description: event.description,
+
+    const timelineEvents = timeline.map((event, index) => ({
+      id: `timeline-${index}`,
+      title: event.description || getTimelineTitle(event.status),
+      description: event.updatedBy ? `by ${event.updatedBy.name || event.updatedBy.email || "Unknown"}` : "",
       date: event.timestamp,
       status: getTimelineStatus(event.status),
       icon: getTimelineStatusIcon(event.status),
     }));
+
+    const docHistoryEvents = docHistory.map((event, index) => ({
+      id: `doc-${index}`,
+      title: `Document ${event.action === "upload" ? "Uploaded" : event.action === "delete" ? "Deleted" : "Updated"}`,
+      description: `${event.documentType}: ${event.fileName || "Document"}${event.performedBy ? ` by ${event.performedBy.name || event.performedBy.email || "Unknown"}` : ""}`,
+      date: event.performedAt,
+      status: event.action === "delete" ? "rejected" : "completed",
+      icon: event.action === "upload" ? ArrowUpTrayIcon : event.action === "delete" ? TrashIcon : PencilIcon,
+    }));
+
+    const allEvents = [...timelineEvents, ...docHistoryEvents];
+    allEvents.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return allEvents.length > 0 ? allEvents : [
+      {
+        id: 1,
+        title: "Service Requested",
+        description: `Requested ${jobs.find((j) => j._id === jobId)?.serviceType}`,
+        date: jobs.find((j) => j._id === jobId)?.createdAt,
+        status: "completed",
+        icon: DocumentTextIcon,
+      },
+    ];
   };
 
   // Helper to render person details in view-only mode with complete data
@@ -3649,6 +3782,17 @@ function ClientProfile() {
               </div>
             )}
           </div>
+          {company.updatedBy && (
+            <div className="mt-2 text-xs text-blue-100 flex items-center">
+              <UserIcon className="h-3 w-3 mr-1" />
+              Last modified by: {company.updatedBy.name || company.updatedBy.email || "Unknown"}
+              {company.updatedAt && (
+                <span className="ml-2">
+                  on {new Date(company.updatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-6">
@@ -3929,6 +4073,11 @@ function ClientProfile() {
                               <p className="text-xs text-gray-500 mt-1">
                                 Uploaded:{" "}
                                 {new Date(doc.uploadedAt).toLocaleDateString()}
+                                {doc.uploadedBy && (
+                                  <span className="ml-1">
+                                    by {doc.uploadedBy.name || doc.uploadedBy.email || "Unknown"}
+                                  </span>
+                                )}
                               </p>
                             )}
                             {company.crExtractExpiry && (
@@ -4337,33 +4486,12 @@ function ClientProfile() {
   //   }
   // });
 
-  // Helper function to safely get KYC status - UPDATED with better population
-  const getKycStatusSafely = async (jobId) => {
-    try {
-      const kycApproval = await KycApproval.findOne({ jobId })
-        .populate("lmroApproval.approvedBy", "name email")
-        .populate("dlmroApproval.approvedBy", "name email")
-        .populate("ceoApproval.approvedBy", "name email")
-        .populate("rejectedBy", "name email")
-        // Document uploader population
-        .populate("lmroApproval.document.uploadedBy", "name email")
-        .populate("dlmroApproval.document.uploadedBy", "name email")
-        .populate("ceoApproval.document.uploadedBy", "name email")
-        // FIXED: Modified by population
-        .populate("lmroApproval.modifiedBy", "name email")
-        .populate("dlmroApproval.modifiedBy", "name email")
-        .populate("ceoApproval.modifiedBy", "name email")
-        // FIXED: Deleted by population
-        .populate("lmroApproval.deletedBy", "name email")
-        .populate("dlmroApproval.deletedBy", "name email")
-        .populate("ceoApproval.deletedBy", "name email");
-
-      return kycApproval;
-    } catch (error) {
-      console.error(`Error getting KYC status for job ${jobId}:`, error);
-      return null;
-    }
+  /* eslint-disable no-unused-vars */
+  // Helper function to safely get KYC status - REMOVED (was backend code)
+  const getKycStatusSafely = async (_jobId) => {
+    return null;
   };
+  /* eslint-enable no-unused-vars */
 
   const renderKycDocumentLink = (kycData) => {
     let document = null;
@@ -4594,7 +4722,9 @@ function ClientProfile() {
                           {job.serviceType}
                         </h3>
                         <p className="text-sm text-gray-500">
-                          Assigned to {job.assignedPerson}
+                          Assigned to {job.selectedServiceUsers && job.selectedServiceUsers.length > 0
+                            ? job.selectedServiceUsers.map(user => user.name || user).join(", ")
+                            : job.assignedPerson?.name || job.assignedPerson || "Not assigned"}
                         </p>
                       </div>
                     </div>
@@ -4675,7 +4805,9 @@ function ClientProfile() {
                                     Assigned Person
                                   </h5>
                                   <p className="text-sm text-gray-700">
-                                    {job.assignedPerson}
+                                    {job.selectedServiceUsers && job.selectedServiceUsers.length > 0
+                                      ? job.selectedServiceUsers.map(user => user.name || user).join(", ")
+                                      : job.assignedPerson?.name || job.assignedPerson || "Not assigned"}
                                   </p>
                                 </div>
                               </div>
@@ -4909,6 +5041,7 @@ function ClientProfile() {
                                   />
                                   <span>SEF</span>
                                 </button>
+                                {/* KYC Tab - Hidden
                                 <button
                                   onClick={() => setActivePersonTab("kyc")}
                                   className={`${
@@ -4926,6 +5059,8 @@ function ClientProfile() {
                                   />
                                   <span>KYC</span>
                                 </button>
+                                */}
+                                {/* BRA Tab - Hidden
                                 <button
                                   onClick={() => setActivePersonTab("bra")}
                                   className={`${
@@ -4943,6 +5078,7 @@ function ClientProfile() {
                                   />
                                   <span>BRA</span>
                                 </button>
+                                */}
                               </nav>
                             </div>
                           </div>
@@ -4960,10 +5096,14 @@ function ClientProfile() {
                               renderViewOnlyPersonDetails(job._id, "secretary")}
                             {activePersonTab === "sef" &&
                               renderViewOnlyPersonDetails(job._id, "sef")}
+                            {/* KYC Content - Hidden
                             {activePersonTab === "kyc" &&
                               renderViewOnlyKycDetails(job._id)}
+                            */}
+                            {/* BRA Content - Hidden
                             {activePersonTab === "bra" &&
                               renderViewOnlyBraDetails(job._id)}
+                            */}
                           </div>
                         </motion.div>
 
@@ -4972,103 +5112,117 @@ function ClientProfile() {
                           initial={{ y: 20, opacity: 0 }}
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ delay: 0.3 }}
-                          className="mt-6"
+                          className="mt-6 bg-white rounded-xl border border-gray-200 shadow-sm"
                         >
-                          <div className="flex justify-between items-center mb-4">
-                            <h4 className="text-base font-medium text-gray-900">
-                              Service Timeline
-                            </h4>
+                          <div className="flex justify-between items-center px-5 py-4 border-b border-gray-100">
+                            <div className="flex items-center">
+                              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mr-3">
+                                <ClockIcon className="h-4 w-4 text-white" />
+                              </div>
+                              <h4 className="text-base font-semibold text-gray-900">
+                                Service Timeline
+                              </h4>
+                            </div>
                             <button
                               onClick={() => toggleTimelineVisibility(job._id)}
-                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                               title={showTimelines[job._id] === false ? "Show Timeline" : "Hide Timeline"}
                             >
                               {showTimelines[job._id] === false ? (
-                                <ChevronDownIcon className="h-4 w-4" />
+                                <ChevronDownIcon className="h-5 w-5" />
                               ) : (
-                                <ChevronUpIcon className="h-4 w-4" />
+                                <ChevronUpIcon className="h-5 w-5" />
                               )}
                             </button>
                           </div>
                           <AnimatePresence mode="wait">
                           {showTimelines[job._id] !== false ? (
-                            <motion.div 
+                            <motion.div
                               key="timeline-visible"
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: "auto" }}
                               exit={{ opacity: 0, height: 0 }}
                               transition={{ duration: 0.3 }}
-                              className="flow-root">
-                            <ul className="-mb-8">
-                              {mapTimelineData(job._id).map(
-                                (event, eventIdx) => (
-                                  <motion.li
-                                    key={event.id}
-                                    initial={{ x: -20, opacity: 0 }}
-                                    animate={{ x: 0, opacity: 1 }}
-                                    transition={{ delay: 0.4 + eventIdx * 0.1 }}
-                                  >
-                                    <div className="relative pb-8">
-                                      {eventIdx !==
-                                      mapTimelineData(job._id).length - 1 ? (
-                                        <span
-                                          className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200"
-                                          aria-hidden="true"
-                                        />
-                                      ) : null}
-                                      <div className="relative flex space-x-3">
+                              className="p-5"
+                            >
+                              <div className="relative">
+                                {mapTimelineData(job._id).map((event, eventIdx) => {
+                                  const isLast = eventIdx === mapTimelineData(job._id).length - 1;
+                                  const isFirst = eventIdx === 0;
+                                  return (
+                                    <motion.div
+                                      key={event.id}
+                                      initial={{ x: -20, opacity: 0 }}
+                                      animate={{ x: 0, opacity: 1 }}
+                                      transition={{ delay: 0.1 + eventIdx * 0.05 }}
+                                      className="relative flex gap-4 pb-6 last:pb-0"
+                                    >
+                                      {/* Connector Line */}
+                                      {!isLast && (
+                                        <div className="absolute left-[17px] top-10 bottom-0 w-0.5 bg-gradient-to-b from-gray-300 to-gray-200" />
+                                      )}
+
+                                      {/* Icon Circle */}
+                                      <div className="relative z-10 flex-shrink-0">
                                         <motion.div
                                           whileHover={{ scale: 1.1 }}
-                                          transition={{
-                                            type: "spring",
-                                            stiffness: 400,
-                                            damping: 10,
-                                          }}
+                                          className={`h-9 w-9 rounded-full flex items-center justify-center shadow-md ${getStatusColor(event.status)}`}
                                         >
-                                          <span
-                                            className={`h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white ${getStatusColor(
-                                              event.status
-                                            )}`}
-                                          >
-                                            <event.icon
-                                              className="h-5 w-5"
-                                              aria-hidden="true"
-                                            />
-                                          </span>
+                                          <event.icon className="h-4 w-4" aria-hidden="true" />
                                         </motion.div>
-                                        <div className="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
-                                          <div>
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {event.title}
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="flex-1 min-w-0 bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+                                        <div className="flex flex-wrap items-start justify-between gap-2">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <p className="text-sm font-semibold text-gray-900">
+                                                {event.title}
+                                              </p>
                                               {event.status === "completed" && (
-                                                <motion.span
-                                                  initial={{ scale: 0 }}
-                                                  animate={{ scale: 1 }}
-                                                  className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"
-                                                >
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
                                                   <CheckCircleIcon className="h-3 w-3 mr-1" />
-                                                  Done
-                                                </motion.span>
+                                                  Completed
+                                                </span>
                                               )}
-                                            </p>
-                                            <p className="mt-1 text-sm text-gray-500">
-                                              {event.description}
-                                            </p>
-                                          </div>
-                                          <div className="whitespace-nowrap text-right text-sm text-gray-500">
-                                            {format(
-                                              new Date(event.date),
-                                              "PPp"
+                                              {event.status === "in-progress" && (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                                  <ClockIcon className="h-3 w-3 mr-1" />
+                                                  In Progress
+                                                </span>
+                                              )}
+                                            </div>
+                                            {event.description && (
+                                              <p className="mt-1 text-sm text-gray-600">
+                                                {event.description}
+                                              </p>
                                             )}
+                                          </div>
+                                          <div className="flex-shrink-0 text-right">
+                                            <p className="text-xs font-medium text-gray-500">
+                                              {new Date(event.date).toLocaleDateString(undefined, {
+                                                year: 'numeric',
+                                                month: 'short',
+                                                day: 'numeric'
+                                              })}
+                                            </p>
+                                            <p className="text-xs text-gray-400">
+                                              {new Date(event.date).toLocaleTimeString(undefined, {
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                hour12: true,
+                                                timeZoneName: 'short'
+                                              })}
+                                            </p>
                                           </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  </motion.li>
-                                )
-                              )}
-                            </ul>
-                          </motion.div>
+                                    </motion.div>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
                           ) : (
                             <motion.div
                               key="timeline-hidden"
@@ -5076,9 +5230,12 @@ function ClientProfile() {
                               animate={{ opacity: 1, height: "auto" }}
                               exit={{ opacity: 0, height: 0 }}
                               transition={{ duration: 0.3 }}
-                              className="text-center py-3 bg-gray-50 rounded-lg"
+                              className="text-center py-6 px-5"
                             >
-                              <p className="text-sm text-gray-500">Timeline hidden. Click the arrow to show.</p>
+                              <div className="flex items-center justify-center text-gray-400">
+                                <EyeSlashIcon className="h-5 w-5 mr-2" />
+                                <p className="text-sm">Timeline hidden. Click the arrow to show.</p>
+                              </div>
                             </motion.div>
                           )}
                           </AnimatePresence>

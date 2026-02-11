@@ -5,7 +5,9 @@ const Service = require("../models/serviceModel");
 // @route   GET /api/services
 // @access  Private/Admin
 const getServices = asyncHandler(async (req, res) => {
-  const services = await Service.find({}).sort({ createdAt: -1 });
+  const services = await Service.find({})
+    .populate("roles", "name")
+    .sort({ createdAt: -1 });
   res.status(200).json(services);
 });
 
@@ -13,7 +15,7 @@ const getServices = asyncHandler(async (req, res) => {
 // @route   GET /api/services/:id
 // @access  Private/Admin
 const getServiceById = asyncHandler(async (req, res) => {
-  const service = await Service.findById(req.params.id);
+  const service = await Service.findById(req.params.id).populate("roles", "name");
   if (service) {
     res.status(200).json(service);
   } else {
@@ -26,7 +28,7 @@ const getServiceById = asyncHandler(async (req, res) => {
 // @route   POST /api/services
 // @access  Private/Admin
 const createService = asyncHandler(async (req, res) => {
-  const { name, description, status } = req.body;
+  const { name, description, status, roles } = req.body;
 
   // Check if service already exists with the same name
   const serviceExists = await Service.findOne({ name });
@@ -40,10 +42,12 @@ const createService = asyncHandler(async (req, res) => {
     description,
     status: status || "active",
     usageCount: 0,
+    roles: roles || [],
   });
 
   if (service) {
-    res.status(201).json(service);
+    const populatedService = await Service.findById(service._id).populate("roles", "name");
+    res.status(201).json(populatedService);
   } else {
     res.status(400);
     throw new Error("Invalid service data");
@@ -54,7 +58,7 @@ const createService = asyncHandler(async (req, res) => {
 // @route   PUT /api/services/:id
 // @access  Private/Admin
 const updateService = asyncHandler(async (req, res) => {
-  const { name, description, status } = req.body;
+  const { name, description, status, roles } = req.body;
 
   const service = await Service.findById(req.params.id);
   if (!service) {
@@ -74,8 +78,12 @@ const updateService = asyncHandler(async (req, res) => {
   service.name = name || service.name;
   service.description = description || service.description;
   service.status = status || service.status;
+  if (roles !== undefined) {
+    service.roles = roles;
+  }
 
-  const updatedService = await service.save();
+  await service.save();
+  const updatedService = await Service.findById(service._id).populate("roles", "name");
   res.status(200).json(updatedService);
 });
 

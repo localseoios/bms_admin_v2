@@ -1,5 +1,6 @@
 // Dashboard.jsx - Fixed to work with backend API response structure
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ArrowUpIcon,
   ArrowDownIcon,
@@ -48,6 +49,7 @@ const COLORS = [
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [selectedTimeframe, setSelectedTimeframe] = useState("monthly");
   const [selectedMetric, setSelectedMetric] = useState("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -286,26 +288,29 @@ const renderExpiringJobsSection = () => {
     setError(null);
 
     try {
-      // Fetch all required data in parallel including expiring jobs
-      const [
-        statsData,
-        jobsData,
-        servicesData,
-        activitiesData,
-        expiringJobsData,
-      ] = await Promise.all([
-        fetchStats(),
-        fetchJobsData(),
-        fetchServicesData(),
-        fetchRecentActivity(),
+      const [dashboardResponse, usersResponse, onlineUsersResponse, expiringJobsData] = await Promise.all([
+        axiosInstance.get("/jobs/dashboard-stats"),
+        axiosInstance.get("/users/dashboard-users"),
+        axiosInstance.get("/users/online"),
         fetchExpiringJobs(),
       ]);
 
-      // Process the data
+      const jobsData = dashboardResponse.data.jobs || [];
+      const users = usersResponse.data || [];
+      const onlineUsers = onlineUsersResponse.data?.data || [];
+
+      setTotalUsersData(users);
+      setOnlineUsersData(onlineUsers);
+
+      const statsData = buildStatsFromData(jobsData, users, onlineUsers);
       setStats(statsData);
+
       processJobsData(jobsData);
-      processServicesData(servicesData);
+      processServicesData(jobsData);
+
+      const activitiesData = buildRecentActivity(jobsData);
       setRecentActivity(activitiesData);
+
       setExpiringJobs(expiringJobsData);
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -402,52 +407,162 @@ const fetchExpiringJobs = async () => {
   }
 };
 
-  // Fetch and calculate statistics
+  const buildStatsFromData = (jobsData, users, onlineUsers) => {
+    const isAdmin = user?.role?.name === "admin";
+    const totalJobs = jobsData.length;
+    const totalUsers = users.length;
+    const completedJobs = jobsData.filter((job) =>
+      ["completed", "fully_completed_bra"].includes(job.status)
+    ).length;
+    const completionRate = totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
+
+    return [
+      {
+        name: "Total Jobs",
+        value: totalJobs.toString(),
+        change: "+12.5%",
+        changeType: "positive",
+        icon: BriefcaseIcon,
+        bgColor: "bg-blue-50",
+        iconColor: "text-blue-600",
+        onClick: isAdmin ? () => navigate("/admin/jobs") : null,
+        isClickable: isAdmin,
+      },
+      {
+        name: "Total Users",
+        value: totalUsers.toString(),
+        change: "+3.2%",
+        changeType: "positive",
+        icon: UserGroupIcon,
+        bgColor: "bg-blue-50",
+        iconColor: "text-blue-600",
+        onClick: isAdmin ? () => setShowTotalUsersModal(true) : null,
+        isClickable: isAdmin,
+      },
+      {
+        name: "Online Users",
+        value: onlineUsers.length.toString(),
+        change: "+1.5%",
+        changeType: "positive",
+        icon: UserGroupIcon,
+        bgColor: "bg-emerald-50",
+        iconColor: "text-emerald-600",
+        onClick: isAdmin ? () => setShowOnlineUsersModal(true) : null,
+        isClickable: isAdmin,
+      },
+      {
+        name: "Completion Rate",
+        value: `${completionRate}%`,
+        change: "+2.3%",
+        changeType: "positive",
+        icon: CheckCircleIcon,
+        bgColor: "bg-green-50",
+        iconColor: "text-green-600",
+        onClick: isAdmin ? () => navigate("/admin/jobs") : null,
+        isClickable: isAdmin,
+      },
+    ];
+  };
+
+  const buildRecentActivity = (jobs) => {
+    const sortedJobs = [...jobs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return sortedJobs.slice(0, 5).map((job) => {
+      let activityType, activityStatus, icon, description;
+      switch (job.status) {
+        case "pending":
+          activityType = "job";
+          activityStatus = "pending";
+          icon = BuildingOfficeIcon;
+          description = `${job.serviceType} job submitted for ${job.clientName}`;
+          break;
+        case "completed":
+        case "fully_completed_bra":
+        case "om_completed":
+          activityType = "task";
+          activityStatus = "completed";
+          icon = DocumentTextIcon;
+          description = `${job.serviceType} completed for ${job.clientName}`;
+          break;
+        case "kyc_pending":
+        case "bra_pending":
+          activityType = "alert";
+          activityStatus = "warning";
+          icon = ExclamationCircleIcon;
+          description = `${job.status === "kyc_pending" ? "KYC" : "BRA"} process pending for ${job.clientName}`;
+          break;
+        default:
+          activityType = "job";
+          activityStatus = "pending";
+          icon = BuildingOfficeIcon;
+          description = `${job.serviceType} job for ${job.clientName}`;
+      }
+      const createdAt = new Date(job.createdAt);
+      const now = new Date();
+      const diffMs = now - createdAt;
+      const diffMinutes = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      let timestamp;
+      if (diffMinutes < 60) {
+        timestamp = `${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""} ago`;
+      } else if (diffHours < 24) {
+        timestamp = `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+      } else {
+        timestamp = `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+      }
+      return {
+        id: job._id,
+        type: activityType,
+        title: job.serviceType,
+        description,
+        timestamp,
+        status: activityStatus,
+        icon,
+      };
+    });
+  };
+
+  // Fetch and calculate statistics (kept for backward compatibility)
   const fetchStats = async () => {
     try {
-      // For real implementation, fetch these stats from relevant API endpoints
-      const [jobsResponse, usersResponse, onlineUsersResponse] = await Promise.all([
-        axiosInstance.get("/jobs"),
-        axiosInstance.get("/users"),
+      const isAdmin = user?.role?.name === "admin";
+
+      // Fetch dashboard stats and user data in parallel
+      const [dashboardResponse, usersResponse, onlineUsersResponse] = await Promise.all([
+        axiosInstance.get("/jobs/dashboard-stats"),
+        axiosInstance.get("/users/dashboard-users"),
         axiosInstance.get("/users/online"),
       ]);
 
-      const jobs = jobsResponse.data;
+      const jobsData = dashboardResponse.data.jobs || [];
       const users = usersResponse.data || [];
       const onlineUsers = onlineUsersResponse.data?.data || [];
 
-      // Calculate statistics from the responses
-      const totalJobs = jobs.length;
-
-      // Calculate users statistics
-      const totalUsers = users.length;
-      
-      // Store users data for modals
       setTotalUsersData(users);
       setOnlineUsersData(onlineUsers);
 
-      // Count pending tasks (jobs with status 'pending')
-      const pendingTasks = jobs.filter(
-        (job) => job.status === "pending"
-      ).length;
+      // Calculate statistics from the responses
+      const totalJobs = jobsData.length;
+      const totalUsers = users.length;
 
       // Calculate completion rate
-      const completedJobs = jobs.filter((job) =>
+      const completedJobs = jobsData.filter((job) =>
         ["completed", "fully_completed_bra"].includes(job.status)
       ).length;
       const completionRate =
         totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
 
-      // Generate statistics with comparison to previous period (mockup for now)
       return [
         {
           name: "Total Jobs",
           value: totalJobs.toString(),
-          change: "+12.5%", // In a real implementation, calculate this from historical data
+          change: "+12.5%",
           changeType: "positive",
           icon: BriefcaseIcon,
           bgColor: "bg-blue-50",
           iconColor: "text-blue-600",
+          onClick: isAdmin ? () => navigate("/admin/jobs") : null,
+          isClickable: isAdmin,
         },
         {
           name: "Total Users",
@@ -457,8 +572,8 @@ const fetchExpiringJobs = async () => {
           icon: UserGroupIcon,
           bgColor: "bg-blue-50",
           iconColor: "text-blue-600",
-          onClick: () => setShowTotalUsersModal(true),
-          isClickable: true,
+          onClick: isAdmin ? () => setShowTotalUsersModal(true) : null,
+          isClickable: isAdmin,
         },
         {
           name: "Online Users",
@@ -468,17 +583,8 @@ const fetchExpiringJobs = async () => {
           icon: UserGroupIcon,
           bgColor: "bg-emerald-50",
           iconColor: "text-emerald-600",
-          onClick: () => setShowOnlineUsersModal(true),
-          isClickable: true,
-        },
-        {
-          name: "Pending Tasks",
-          value: pendingTasks.toString(),
-          change: pendingTasks > 35 ? "+5.4%" : "-5.4%",
-          changeType: pendingTasks > 35 ? "positive" : "negative",
-          icon: ClockIcon,
-          bgColor: "bg-yellow-50",
-          iconColor: "text-yellow-600",
+          onClick: isAdmin ? () => setShowOnlineUsersModal(true) : null,
+          isClickable: isAdmin,
         },
         {
           name: "Completion Rate",
@@ -488,11 +594,12 @@ const fetchExpiringJobs = async () => {
           icon: CheckCircleIcon,
           bgColor: "bg-green-50",
           iconColor: "text-green-600",
+          onClick: isAdmin ? () => navigate("/admin/jobs") : null,
+          isClickable: isAdmin,
         },
       ];
     } catch (error) {
       console.error("Error fetching stats:", error);
-      // Return default stats in case of error
       return [
         {
           name: "Total Jobs",
@@ -520,15 +627,6 @@ const fetchExpiringJobs = async () => {
           icon: UserGroupIcon,
           bgColor: "bg-emerald-50",
           iconColor: "text-emerald-600",
-        },
-        {
-          name: "Pending Tasks",
-          value: "0",
-          change: "0%",
-          changeType: "neutral",
-          icon: ClockIcon,
-          bgColor: "bg-yellow-50",
-          iconColor: "text-yellow-600",
         },
         {
           name: "Completion Rate",
@@ -546,8 +644,8 @@ const fetchExpiringJobs = async () => {
   // Fetch jobs data for trends
   const fetchJobsData = async () => {
     try {
-      const response = await axiosInstance.get("/jobs");
-      return response.data;
+      const response = await axiosInstance.get("/jobs/dashboard-stats");
+      return response.data.jobs || [];
     } catch (error) {
       console.error("Error fetching jobs data:", error);
       return [];
@@ -729,59 +827,51 @@ const fetchExpiringJobs = async () => {
     return weekData;
   };
 
-  // Fetch services data for pie chart
+  // Fetch services data for pie chart - using actual job data
   const fetchServicesData = async () => {
     try {
-      const response = await axiosInstance.get("/services");
-      return response.data;
+      const response = await axiosInstance.get("/jobs/dashboard-stats");
+      return response.data.jobs || [];
     } catch (error) {
-      console.error("Error fetching services data:", error);
+      console.error("Error fetching jobs data for services:", error);
       return [];
     }
   };
 
-  // Process services data for pie chart
-  const processServicesData = (services) => {
-    // Count jobs by service type
-    const serviceMap = services.reduce((acc, service) => {
-      acc[service.name] = {
-        name: service.name,
-        value: service.usageCount || 0,
-      };
-      return acc;
-    }, {});
+  // Process services data for pie chart - count jobs by serviceType
+  const processServicesData = (jobs) => {
+    const serviceMap = {};
 
-    // If we don't have enough services with data, add some defaults
-    if (Object.keys(serviceMap).length < 4) {
-      const defaults = {
-        "Company Registration": 35,
-        "Tax Filing": 25,
-        "Business License": 20,
-        "Legal Consultation": 20,
-      };
-
-      Object.entries(defaults).forEach(([name, value]) => {
-        if (!serviceMap[name]) {
-          serviceMap[name] = { name, value };
-        }
-      });
-    }
+    jobs.forEach((job) => {
+      const serviceType = job.serviceType || "Other";
+      if (serviceMap[serviceType]) {
+        serviceMap[serviceType].value += 1;
+      } else {
+        serviceMap[serviceType] = {
+          name: serviceType,
+          value: 1,
+        };
+      }
+    });
 
     // Convert to array and sort by value (highest first)
     const servicesData = Object.values(serviceMap)
       .sort((a, b) => b.value - a.value)
       .slice(0, 6); // Limit to 6 categories for the pie chart
 
-    setServiceDistributionData(servicesData);
+    if (servicesData.length === 0) {
+      setServiceDistributionData([{ name: "No Data", value: 1 }]);
+    } else {
+      setServiceDistributionData(servicesData);
+    }
   };
 
   // Fetch recent activity for activity feed
   const fetchRecentActivity = async () => {
     try {
-      // In a real implementation, this would probably be a dedicated endpoint
-      // Here we're using job data and filtering for recent items
-      const response = await axiosInstance.get("/jobs");
-      const jobs = response.data;
+      // Use dashboard stats endpoint accessible to all users
+      const response = await axiosInstance.get("/jobs/dashboard-stats");
+      const jobs = response.data.jobs || [];
 
       // Sort jobs by createdAt date (newest first)
       const sortedJobs = [...jobs].sort(
@@ -968,71 +1058,79 @@ const fetchExpiringJobs = async () => {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 xl:grid-cols-4">
           {isLoading
             ? // Skeleton loaders for stats
-              Array(5)
+              Array(4)
                 .fill(0)
                 .map((_, index) => (
                   <div
                     key={index}
-                    className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100/50"
+                    className="bg-white rounded-2xl shadow-md p-6 border border-gray-100"
                   >
-                    <div className="animate-pulse flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="w-12 h-12 bg-gray-200 rounded-xl"></div>
-                        <div className="ml-4">
-                          <div className="h-3 w-24 bg-gray-200 rounded"></div>
-                          <div className="h-6 w-16 bg-gray-200 rounded mt-2"></div>
+                    <div className="animate-pulse">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-14 h-14 bg-gray-200 rounded-2xl"></div>
+                        <div className="flex-1">
+                          <div className="h-3 w-20 bg-gray-200 rounded mb-2"></div>
+                          <div className="h-8 w-16 bg-gray-200 rounded"></div>
                         </div>
                       </div>
-                      <div className="h-4 w-12 bg-gray-200 rounded"></div>
+                      <div className="h-4 w-20 bg-gray-200 rounded mt-4"></div>
                     </div>
                   </div>
                 ))
             : stats.map((stat, index) => (
                 <div
                   key={stat.name}
-                  className={`bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100/50 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 ${
-                    stat.isClickable ? 'cursor-pointer hover:ring-2 hover:ring-blue-500' : ''
+                  className={`group relative bg-white rounded-2xl shadow-md hover:shadow-xl border border-gray-100 overflow-hidden transition-all duration-300 ${
+                    stat.isClickable ? 'cursor-pointer' : ''
                   }`}
                   onClick={stat.onClick || (() => {})}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
+                  <div className="p-5">
+                    <div className="flex items-center space-x-4">
                       <div
-                        className={`p-3.5 rounded-xl ${stat.bgColor} shadow-sm`}
+                        className={`p-3.5 rounded-2xl ${stat.bgColor} group-hover:scale-110 transition-transform duration-300 flex-shrink-0`}
                       >
-                        <stat.icon className={`h-6 w-6 ${stat.iconColor}`} />
+                        <stat.icon className={`h-7 w-7 ${stat.iconColor}`} />
                       </div>
-                      <div className="ml-4">
-                        <p className="text-sm font-medium text-gray-500">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                           {stat.name}
                         </p>
-                        <p className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                        <p className="text-2xl font-bold text-gray-900 mt-0.5">
                           {stat.value}
                         </p>
                       </div>
                     </div>
-                    <div
-                      className={`flex items-center ${
-                        stat.changeType === "positive"
-                          ? "text-green-600"
-                          : stat.changeType === "negative"
-                          ? "text-red-600"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      {stat.changeType === "positive" ? (
-                        <ArrowUpIcon className="h-4 w-4 mr-1" />
-                      ) : stat.changeType === "negative" ? (
-                        <ArrowDownIcon className="h-4 w-4 mr-1" />
-                      ) : null}
-                      <span className="text-sm font-semibold">
-                        {stat.change}
-                      </span>
+                    <div className="mt-4 flex items-center">
+                      <div
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          stat.changeType === "positive"
+                            ? "bg-green-100 text-green-700"
+                            : stat.changeType === "negative"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {stat.changeType === "positive" ? (
+                          <ArrowUpIcon className="h-3 w-3 mr-1" />
+                        ) : stat.changeType === "negative" ? (
+                          <ArrowDownIcon className="h-3 w-3 mr-1" />
+                        ) : null}
+                        <span>{stat.change}</span>
+                      </div>
+                      <span className="ml-2 text-xs text-gray-500">vs last month</span>
                     </div>
                   </div>
+                  <div className={`h-1 w-full ${
+                    stat.iconColor === "text-blue-600" ? "bg-gradient-to-r from-blue-400 to-blue-600" :
+                    stat.iconColor === "text-purple-600" ? "bg-gradient-to-r from-purple-400 to-purple-600" :
+                    stat.iconColor === "text-emerald-600" ? "bg-gradient-to-r from-emerald-400 to-emerald-600" :
+                    stat.iconColor === "text-green-600" ? "bg-gradient-to-r from-green-400 to-green-600" :
+                    "bg-gradient-to-r from-gray-400 to-gray-600"
+                  } opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
                 </div>
               ))}
         </div>
@@ -1195,7 +1293,10 @@ const fetchExpiringJobs = async () => {
               <h2 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
                 Service Distribution
               </h2>
-              <button className="p-2 text-gray-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all duration-200">
+              <button
+                onClick={() => navigate("/admin/services")}
+                className="p-2 text-gray-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all duration-200"
+              >
                 <EyeIcon className="h-5 w-5" />
               </button>
             </div>
@@ -1253,7 +1354,10 @@ const fetchExpiringJobs = async () => {
               <h2 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
                 Recent Activity
               </h2>
-              <button className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline transition-all duration-200">
+              <button
+                onClick={() => navigate("/admin/jobs")}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline transition-all duration-200"
+              >
                 View All
               </button>
             </div>
@@ -1326,10 +1430,19 @@ const fetchExpiringJobs = async () => {
                 Future Expiring Documents
               </h2>
               <div className="flex items-center space-x-2">
-                <ExclamationTriangleIcon className="h-5 w-5 text-orange-500" />
-                <span className="text-sm font-medium text-orange-600">
-                  {expiringJobs.length} alerts
-                </span>
+                <button
+                  onClick={() => navigate("/admin/jobs")}
+                  className="p-2 text-gray-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all duration-200"
+                  title="View all jobs"
+                >
+                  <EyeIcon className="h-5 w-5" />
+                </button>
+                <div className="flex items-center">
+                  <ExclamationTriangleIcon className="h-5 w-5 text-orange-500" />
+                  <span className="text-sm font-medium text-orange-600 ml-1">
+                    {expiringJobs.length} alerts
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1370,12 +1483,13 @@ const fetchExpiringJobs = async () => {
                   return (
                     <div
                       key={`${job.jobId}-${job.expiryType}-${index}`}
-                      className={`p-4 rounded-lg border-2 hover:shadow-md transition-all duration-200 ${
+                      onClick={() => navigate(`/job/${job.jobId}?expiryType=${encodeURIComponent(job.expiryType || '')}`)}
+                      className={`p-4 rounded-lg border-2 hover:shadow-md transition-all duration-200 cursor-pointer ${
                         job.urgencyLevel === "expired"
-                          ? "bg-gradient-to-r from-red-50 to-red-100 border-red-200"
+                          ? "bg-gradient-to-r from-red-50 to-red-100 border-red-200 hover:border-red-400"
                           : job.urgencyLevel === "critical"
-                          ? "bg-gradient-to-r from-red-50 to-orange-50 border-red-200"
-                          : "bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200"
+                          ? "bg-gradient-to-r from-red-50 to-orange-50 border-red-200 hover:border-orange-400"
+                          : "bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200 hover:border-yellow-400"
                       }`}
                     >
                       <div className="flex items-start justify-between">

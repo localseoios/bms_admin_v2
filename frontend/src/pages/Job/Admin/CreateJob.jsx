@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axiosInstance, { fileUploadInstance } from "../../../utils/axios";
 import { compressImage } from "../../../utils/imageCompression";
+import { useAuth } from "../../../context/AuthContext";
 import {
   DocumentIcon,
   UserIcon,
@@ -20,10 +21,13 @@ import {
   HashtagIcon,
   EyeIcon,
   TrashIcon,
+  PhoneIcon,
+  IdentificationIcon,
 } from "@heroicons/react/24/outline";
 
 function CreateJob() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Operation managers state
   const [operationManagers, setOperationManagers] = useState([]);
@@ -31,6 +35,10 @@ function CreateJob() {
   // Services state - dynamic from service management
   const [services, setServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
+
+  // Users by service type state
+  const [serviceUsers, setServiceUsers] = useState([]);
+  const [loadingServiceUsers, setLoadingServiceUsers] = useState(false);
 
   // New state for checking existing clients
   const [existingClient, setExistingClient] = useState(null);
@@ -58,11 +66,16 @@ function CreateJob() {
     documentID: null,
     otherDocuments: [],
     assignedPerson: "",
+    selectedServiceUser: "",
     jobDetails: "",
     specialDescription: "",
     clientName: "",
     gmail: "",
     startingPoint: "",
+    crNo: "",
+    contactNumber: "",
+    address: "",
+    selectedServiceUsers: [],
   });
 
   // State for validation errors
@@ -105,9 +118,24 @@ function CreateJob() {
       try {
         setLoadingServices(true);
         const response = await axiosInstance.get("/services");
-        const activeServices = response.data.filter(
+        let activeServices = response.data.filter(
           (service) => service.status === "active"
         );
+
+        // Filter services based on user's role (admin sees all)
+        if (user && user.role && user.role.name !== "admin") {
+          activeServices = activeServices.filter((service) => {
+            // If service has no roles assigned, show it to everyone
+            if (!service.roles || service.roles.length === 0) {
+              return true;
+            }
+            // Check if user's role is in the service's roles
+            return service.roles.some(
+              (role) => role._id === user.role._id || role === user.role._id
+            );
+          });
+        }
+
         setServices(activeServices);
       } catch (error) {
         console.error("Error fetching services:", error);
@@ -116,8 +144,37 @@ function CreateJob() {
       }
     };
 
-    fetchServices();
-  }, []);
+    if (user) {
+      fetchServices();
+    }
+  }, [user]);
+
+  // Fetch users when service type changes
+  useEffect(() => {
+    const fetchUsersByService = async () => {
+      if (!formData.serviceType) {
+        setServiceUsers([]);
+        setFormData((prev) => ({ ...prev, selectedServiceUser: "", selectedServiceUsers: [] }));
+        return;
+      }
+
+      try {
+        setLoadingServiceUsers(true);
+        setFormData((prev) => ({ ...prev, selectedServiceUser: "", selectedServiceUsers: [] }));
+        const response = await axiosInstance.get(
+          `/users/by-service/${encodeURIComponent(formData.serviceType)}`
+        );
+        setServiceUsers(response.data || []);
+      } catch (error) {
+        console.error("Error fetching users by service:", error);
+        setServiceUsers([]);
+      } finally {
+        setLoadingServiceUsers(false);
+      }
+    };
+
+    fetchUsersByService();
+  }, [formData.serviceType]);
 
   // Function to check job number availability
   const checkJobNumberAvailability = async (jobNumber) => {
@@ -177,12 +234,14 @@ function CreateJob() {
       if (response.data && response.data.client) {
         setExistingClient(response.data.client);
 
-        // Auto-fill client name and starting point if available
+        // Auto-fill client info if available
         setFormData((prev) => ({
           ...prev,
           clientName: response.data.client.name || prev.clientName,
-          startingPoint:
-            response.data.client.startingPoint || prev.startingPoint,
+          startingPoint: response.data.client.startingPoint || prev.startingPoint,
+          crNo: response.data.client.crNo || prev.crNo,
+          contactNumber: response.data.client.contactNumber || prev.contactNumber,
+          address: response.data.client.address || prev.address,
         }));
 
         // Set existing documents if available
@@ -337,9 +396,7 @@ function CreateJob() {
 
     if (!formData.serviceType)
       newErrors.serviceType = "Service type is required";
-    if (!formData.assignedPerson)
-      newErrors.assignedPerson = "Assigned person is required";
-    if (!formData.jobDetails) newErrors.jobDetails = "Job details are required";
+        if (!formData.jobDetails) newErrors.jobDetails = "Job details are required";
     if (!formData.clientName) newErrors.clientName = "Client name is required";
     if (!formData.gmail) {
       newErrors.gmail = "Email address is required";
@@ -480,6 +537,9 @@ function CreateJob() {
       formDataToSend.append("jobNumber", formData.jobNumber);
       formDataToSend.append("serviceType", formData.serviceType);
       formDataToSend.append("assignedPerson", formData.assignedPerson);
+      if (formData.selectedServiceUsers && formData.selectedServiceUsers.length > 0) {
+        formDataToSend.append("selectedServiceUsers", JSON.stringify(formData.selectedServiceUsers));
+      }
       formDataToSend.append("jobDetails", formData.jobDetails);
       formDataToSend.append(
         "specialDescription",
@@ -488,6 +548,9 @@ function CreateJob() {
       formDataToSend.append("clientName", formData.clientName);
       formDataToSend.append("gmail", formData.gmail);
       formDataToSend.append("startingPoint", formData.startingPoint);
+      formDataToSend.append("crNo", formData.crNo || "");
+      formDataToSend.append("contactNumber", formData.contactNumber || "");
+      formDataToSend.append("address", formData.address || "");
 
       // Handle passport document - use existing or new
       if (
@@ -746,36 +809,110 @@ function CreateJob() {
                     Service Information
                   </h2>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Service Type <span className="text-red-500 text-xs">*</span>
-                  </label>
-                  <select
-                    name="serviceType"
-                    value={formData.serviceType}
-                    onChange={handleInputChange}
-                    className={`block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.serviceType ? "border-red-300" : ""
-                    }`}
-                    disabled={loadingServices}
-                  >
-                    <option value="">Select a service type</option>
-                    {loadingServices ? (
-                      <option value="" disabled>
-                        Loading services...
-                      </option>
-                    ) : (
-                      services.map((service) => (
-                        <option key={service._id} value={service.name}>
-                          {service.name}
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Service Type <span className="text-red-500 text-xs">*</span>
+                    </label>
+                    <select
+                      name="serviceType"
+                      value={formData.serviceType}
+                      onChange={handleInputChange}
+                      className={`block w-full rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                        errors.serviceType ? "border-red-300" : ""
+                      }`}
+                      disabled={loadingServices}
+                    >
+                      <option value="">Select a service type</option>
+                      {loadingServices ? (
+                        <option value="" disabled>
+                          Loading services...
                         </option>
-                      ))
+                      ) : (
+                        services.map((service) => (
+                          <option key={service._id} value={service.name}>
+                            {service.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    {errors.serviceType && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {errors.serviceType}
+                      </p>
                     )}
-                  </select>
-                  {errors.serviceType && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {errors.serviceType}
-                    </p>
+                  </div>
+
+                  {/* Users with access to this service - Multi-Select */}
+                  {formData.serviceType && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Users for This Service
+                        <span className="text-gray-500 text-xs ml-1">(Optional - Select multiple)</span>
+                      </label>
+                      {loadingServiceUsers ? (
+                        <div className="flex items-center space-x-2 text-gray-500">
+                          <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                          <span className="text-sm">Loading users...</span>
+                        </div>
+                      ) : serviceUsers.length > 0 ? (
+                        <>
+                          <div className="border border-gray-300 rounded-xl p-3 max-h-48 overflow-y-auto bg-white">
+                            {serviceUsers.map((serviceUser) => (
+                              <label
+                                key={serviceUser._id}
+                                className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={formData.selectedServiceUsers.includes(serviceUser._id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        selectedServiceUsers: [...prev.selectedServiceUsers, serviceUser._id],
+                                      }));
+                                    } else {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        selectedServiceUsers: prev.selectedServiceUsers.filter(
+                                          (id) => id !== serviceUser._id
+                                        ),
+                                      }));
+                                    }
+                                  }}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <div className="flex-1">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    {serviceUser.name}
+                                  </span>
+                                  <span className="text-xs text-gray-500 ml-2">
+                                    ({serviceUser.role?.name || "N/A"})
+                                  </span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="mt-2 flex items-center justify-between">
+                            <p className="text-xs text-gray-500">
+                              {serviceUsers.length} user{serviceUsers.length !== 1 ? "s" : ""} available
+                            </p>
+                            {formData.selectedServiceUsers.length > 0 && (
+                              <p className="text-xs text-blue-600 font-medium">
+                                {formData.selectedServiceUsers.length} selected
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                          <p className="text-sm text-yellow-700">
+                            No specific users assigned to this service. All users with appropriate permissions can access it.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1254,7 +1391,7 @@ function CreateJob() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Assigned Person{" "}
-                      <span className="text-red-500 text-xs">*</span>
+                      <span className="text-gray-500 text-xs">(Optional)</span>
                     </label>
                     <div className="relative">
                       <select
@@ -1498,6 +1635,102 @@ function CreateJob() {
                       {errors.startingPoint}
                     </p>
                   )}
+                </div>
+
+                {/* CR No and Contact Number */}
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 mt-6">
+                  {/* CR Number */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      CR Number{" "}
+                      <span className="text-gray-500 text-xs">(Optional)</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <IdentificationIcon className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="crNo"
+                        value={formData.crNo}
+                        onChange={handleInputChange}
+                        className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                          existingClient && formData.crNo
+                            ? "border-green-300 bg-green-50"
+                            : ""
+                        }`}
+                        placeholder="Enter CR number"
+                        disabled={isSubmitting}
+                      />
+                      {existingClient && formData.crNo && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <CheckIcon className="h-5 w-5 text-green-500" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Contact Number */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Contact Number{" "}
+                      <span className="text-gray-500 text-xs">(Optional)</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <PhoneIcon className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="contactNumber"
+                        value={formData.contactNumber}
+                        onChange={handleInputChange}
+                        className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                          existingClient && formData.contactNumber
+                            ? "border-green-300 bg-green-50"
+                            : ""
+                        }`}
+                        placeholder="Enter contact number"
+                        disabled={isSubmitting}
+                      />
+                      {existingClient && formData.contactNumber && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <CheckIcon className="h-5 w-5 text-green-500" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address */}
+                <div className="mt-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Address{" "}
+                    <span className="text-gray-500 text-xs">(Optional)</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <MapPinIcon className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      name="address"
+                      value={formData.address}
+                      onChange={handleInputChange}
+                      className={`block w-full pl-10 rounded-xl border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                        existingClient && formData.address
+                          ? "border-green-300 bg-green-50"
+                          : ""
+                      }`}
+                      placeholder="Enter client address"
+                      disabled={isSubmitting}
+                    />
+                    {existingClient && formData.address && (
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <CheckIcon className="h-5 w-5 text-green-500" />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

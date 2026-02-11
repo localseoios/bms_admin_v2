@@ -20,7 +20,7 @@ import {
   ArrowDownTrayIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { motion } from 'framer-motion';
+import { motion } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import axios, { fileUploadInstance } from '../../../utils/axios';
 import { toast } from 'react-hot-toast';
 
