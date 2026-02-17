@@ -42,7 +42,9 @@
       "Bash(npx kill-port:*)",
       "Bash(ping:*)",
       "Bash(taskkill:*)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

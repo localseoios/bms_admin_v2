@@ -103,18 +103,7 @@ const ComplianceClientDetails = () => {
     try {
       setLoading(true);
 
-      let clientEmail = id;
-      if (!id.includes('@')) {
-        const clientsResponse = await axios.get(`/clients/compliance/all?limit=200`);
-        const foundClient = clientsResponse.data.clients.find(c => c._id === id);
-        if (foundClient) {
-          clientEmail = foundClient.gmail;
-        } else {
-          throw new Error('Client not found');
-        }
-      }
-
-      const response = await axios.get(`/clients/compliance/${encodeURIComponent(clientEmail)}`);
+      const response = await axios.get(`/clients/compliance/${encodeURIComponent(id)}`);
 
       if (response.data && response.data.client) {
         const transformedClient = {

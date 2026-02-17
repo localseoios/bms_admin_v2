@@ -11,8 +11,15 @@ const notificationService = require("../services/notificationService");
 const getClientByGmail = async (req, res) => {
   const { gmail } = req.params;
   try {
-    // Find the client using the email (stored in the gmail field)
-    const client = await Client.findOne({ gmail });
+    let client;
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(gmail);
+
+    if (isObjectId) {
+      client = await Client.findById(gmail);
+    } else {
+      client = await Client.findOne({ gmail });
+    }
+
     if (!client) {
       return res.status(404).json({ message: "Client not found" });
     }
