@@ -220,9 +220,40 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
       );
     }
 
+    // Deduplicate company details by companyName - keep the most complete entry
+    const companyMap = new Map();
+    companyDetails.forEach(jobData => {
+      const key = (jobData.data.companyName || '').toLowerCase().trim();
+      if (!key) return;
+
+      const existing = companyMap.get(key);
+      if (!existing) {
+        companyMap.set(key, jobData);
+      } else {
+        // Keep the one with more complete data (more documents/fields)
+        const existingScore = [
+          existing.data.companyComputerCard, existing.data.taxCard, existing.data.scopeOfLicense,
+          existing.data.articleOfAssociate, existing.data.certificateOfIncorporate,
+          existing.data.qfcNo, existing.data.registeredAddress
+        ].filter(Boolean).length + (existing.data.crExtract?.length || 0) + (existing.data.companyMemo?.length || 0);
+
+        const newScore = [
+          jobData.data.companyComputerCard, jobData.data.taxCard, jobData.data.scopeOfLicense,
+          jobData.data.articleOfAssociate, jobData.data.certificateOfIncorporate,
+          jobData.data.qfcNo, jobData.data.registeredAddress
+        ].filter(Boolean).length + (jobData.data.crExtract?.length || 0) + (jobData.data.companyMemo?.length || 0);
+
+        if (newScore > existingScore) {
+          companyMap.set(key, jobData);
+        }
+      }
+    });
+
+    const uniqueCompanyDetails = Array.from(companyMap.values());
+
     return (
       <div className="space-y-6">
-        {companyDetails.map((jobData, index) => (
+        {uniqueCompanyDetails.map((jobData, index) => (
           <motion.div
             key={jobData.jobId}
             initial={{ opacity: 0, y: 20 }}
