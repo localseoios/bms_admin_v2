@@ -348,8 +348,8 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
       );
     }
 
-    // Flatten all persons from all jobs
-    const allPersons = personDetails.flatMap(jobData =>
+    // Flatten all persons from all jobs and deduplicate by name
+    const allPersonsRaw = personDetails.flatMap(jobData =>
       jobData.persons.map(person => ({
         ...person,
         jobNumber: jobData.jobNumber,
@@ -357,6 +357,27 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
         jobId: jobData.jobId
       }))
     );
+
+    // Deduplicate by name (case-insensitive) - keep the most recent/complete entry
+    const personMap = new Map();
+    allPersonsRaw.forEach(person => {
+      const key = (person.name || '').toLowerCase().trim();
+      if (!key) return;
+
+      const existing = personMap.get(key);
+      if (!existing) {
+        personMap.set(key, person);
+      } else {
+        // Keep the one with more complete data (more documents/fields)
+        const existingScore = [existing.passportDoc, existing.qidDoc, existing.nationalAddressDoc, existing.cv, existing.email, existing.mobileNo].filter(Boolean).length;
+        const newScore = [person.passportDoc, person.qidDoc, person.nationalAddressDoc, person.cv, person.email, person.mobileNo].filter(Boolean).length;
+        if (newScore > existingScore) {
+          personMap.set(key, person);
+        }
+      }
+    });
+
+    const allPersons = Array.from(personMap.values());
 
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
