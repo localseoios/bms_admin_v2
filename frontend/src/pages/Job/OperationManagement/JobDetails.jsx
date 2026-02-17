@@ -1888,18 +1888,17 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
         </div>
       ))}
 
-      {/* Information note about changes affecting only current job */}
+      {/* Information note about changes syncing across jobs */}
       {job &&
         job.timeline?.some((event) =>
           event.description?.includes(`${section} details auto-populated`)
         ) && (
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-xs text-gray-700 flex items-start">
-              <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-xs text-blue-700 flex items-start">
+              <InformationCircleIcon className="h-4 w-4 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
               <span>
-                Changes made to these details will only affect this specific
-                job. The original data used for auto-population remains
-                unchanged for other jobs.
+                Changes made to these details will automatically sync across all
+                jobs for this client.
               </span>
             </p>
           </div>
@@ -3693,8 +3692,8 @@ const handleSaveCompanyDetails = async () => {
       formData.append("mobileNo", entry.mobileNo || "");
       formData.append("email", entry.email || "");
 
-      // Add synchronization option - DON'T sync across jobs by default for individual entry updates
-      formData.append("syncAcrossJobs", "false");
+      // Add synchronization option - sync across all jobs for this client
+      formData.append("syncAcrossJobs", "true");
 
       // Add file fields if they are File objects (not URLs)
       const fileFields = [
@@ -5633,18 +5632,17 @@ const handleSaveCompanyDetails = async () => {
         </div>
       ))}
 
-      {/* Information note about changes affecting only current job */}
+      {/* Information note about changes syncing across jobs */}
       {job &&
         job.timeline?.some((event) =>
           event.description?.includes(`${section} details auto-populated`)
         ) && (
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-xs text-gray-700 flex items-start">
-              <InformationCircleIcon className="h-4 w-4 text-gray-500 mr-1 flex-shrink-0 mt-0.5" />
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-xs text-blue-700 flex items-start">
+              <InformationCircleIcon className="h-4 w-4 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
               <span>
-                Changes made to these details will only affect this specific
-                job. The original data used for auto-population remains
-                unchanged for other jobs.
+                Changes made to these details will automatically sync across all
+                jobs for this client.
               </span>
             </p>
           </div>
