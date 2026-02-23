@@ -21,6 +21,7 @@ const {
   sendExpiryNotifications,
 } = require("./src/controllers/operationController");
 const { checkExpiringComplianceDocuments } = require("./src/services/complianceNotificationService");
+const { expireOldRequests } = require("./src/controllers/documentRequestController");
 
 // Ensure temp uploads directory exists
 const tempUploadsDir = path.join(__dirname, "src/temp-uploads");
@@ -57,11 +58,15 @@ cron.schedule("0 9 * * *", async () => {
     // Running the sendExpiryNotifications function (existing job notifications)
     const result = await sendExpiryNotifications();
     console.log("Job expiry notifications sent:", result.notificationsSent);
-    
+
     // Running the separate compliance document expiry check
     console.log("📋 Checking for expiring compliance documents...");
     const complianceResult = await checkExpiringComplianceDocuments();
     console.log("Compliance document expiry check completed:", complianceResult);
+
+    // Expire old document requests
+    console.log("📄 Expiring old document requests...");
+    await expireOldRequests();
   } catch (err) {
     console.error("Error in cron expiry job:", err);
   }
@@ -252,6 +257,8 @@ app.use("/api/compliance-staff", require("./src/routes/complianceStaffRoutes"));
 app.use("/api/compliance-notifications", require("./src/routes/complianceNotificationRoutes"));
 app.use("/api/archives", require("./src/routes/archiveRoutes"));
 app.use("/api/organizational-structure", require("./src/routes/organizationalStructureRoutes"));
+app.use("/api/document-requests", require("./src/routes/documentRequestRoutes"));
+app.use("/api/public", require("./src/routes/publicSubmissionRoutes"));
 
 
 // Add a catch-all route AFTER all your API routes to debug 404s

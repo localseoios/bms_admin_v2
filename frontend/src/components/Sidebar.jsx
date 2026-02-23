@@ -20,6 +20,7 @@ import {
   UsersIcon,
   BuildingStorefrontIcon,
   BookOpenIcon,
+  InboxArrowDownIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -117,6 +118,12 @@ const navigation = [
         href: "/all-clients",
         icon: UsersIcon,
         allowedRoles: ["admin", "compliance manager"],
+      },
+      {
+        name: "Client Submissions",
+        href: "/client-submissions",
+        icon: InboxArrowDownIcon,
+        badge: "New",
       },
     ],
   },

@@ -288,6 +288,59 @@ const sendJobRemovalEmail = async (email, userName, clientName, jobNumber, servi
   }
 };
 
+const sendDocumentRequestEmail = async (email, clientName, requestData) => {
+  try {
+    const emailTransporter = getTransporter();
+
+    const expiryDate = new Date(requestData.expiresAt).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject: requestData.subject || "Document Request - BMS",
+      priority: "high",
+      headers: {
+        "X-Priority": "1",
+        "X-MSMail-Priority": "High",
+        Importance: "high",
+      },
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2563eb;">Document Request</h2>
+          <p>Dear ${clientName},</p>
+          <p>We need some additional documents/information from you.</p>
+          <div style="background-color: #eff6ff; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #2563eb;">
+            <p style="margin: 0; white-space: pre-wrap;">${requestData.message}</p>
+          </div>
+          <p>Please click the button below to submit the requested documents:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${requestData.submitUrl}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+              Submit Documents
+            </a>
+          </div>
+          <p style="color: #dc2626; font-weight: bold;">This link will expire on ${expiryDate}.</p>
+          <p>If you have any questions, please contact us.</p>
+          <hr style="margin: 30px 0;">
+          <p style="color: #666; font-size: 12px;">This is an automated message from BMS. Please do not reply to this email.</p>
+          <p style="color: #888; font-size: 11px; text-align: center; margin-top: 20px;">Developed by <a href="https://localseo.lk/" style="color: #888; text-decoration: none;">LocalSEO (Pvt) Ltd.</a></p>
+        </div>
+      `,
+    };
+
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log("Document request email sent: " + info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("Error sending document request email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendPasswordResetEmail,
   send2FAEmail,
@@ -295,4 +348,5 @@ module.exports = {
   sendKycRejectionEmail,
   sendJobAssignmentEmail,
   sendJobRemovalEmail,
+  sendDocumentRequestEmail,
 };

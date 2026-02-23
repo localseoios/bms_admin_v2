@@ -38,6 +38,9 @@ import Reports from "./pages/Reports/Reports";
 import Library from "./pages/Library/Library";
 import MyRoleClients from "./pages/MyRoleClients/MyRoleClients";
 import LandingPage from "./pages/LandingPage";
+import SubmissionsList from "./pages/DocumentRequests/SubmissionsList";
+import SubmissionDetails from "./pages/DocumentRequests/SubmissionDetails";
+import ClientSubmissionForm from "./pages/Public/ClientSubmissionForm";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -103,6 +106,9 @@ function AppRoutes() {
       {/* Document Library - Outside Layout (No Sidebar) */}
       <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
 
+      {/* Public Client Submission Form - No Auth Required */}
+      <Route path="/submit/:token" element={<ClientSubmissionForm />} />
+
       {/* Protected Routes Wrapped in Layout - SPECIFIC PATHS ONLY */}
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="user-management" element={<UserManagement />} />
@@ -163,6 +169,10 @@ function AppRoutes() {
 
         {/* Compliance Staff Management - Protected Route */}
         <Route path="compliance-staff-management" element={<ComplianceStaffManagement />} />
+
+        {/* Client Submissions - Protected Routes */}
+        <Route path="client-submissions" element={<SubmissionsList />} />
+        <Route path="client-submissions/:id" element={<SubmissionDetails />} />
       </Route>
     </Routes>
   );

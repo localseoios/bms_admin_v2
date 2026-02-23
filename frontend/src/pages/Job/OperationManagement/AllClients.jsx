@@ -13,7 +13,9 @@ import {
   BuildingOfficeIcon,
   TrashIcon,
   ArrowPathIcon,
+  PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
+import SendRequestModal from "../../DocumentRequests/SendRequestModal";
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment } from "react";
 import axiosInstance from "../../../utils/axios";
@@ -41,6 +43,8 @@ function AllClients() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [requestClient, setRequestClient] = useState(null);
 
   // Debounce search query to avoid too many API calls
   useEffect(() => {
@@ -508,6 +512,12 @@ const exportAllJobsQFC = async () => {
     }
   };
 
+  // Handle request documents
+  const handleRequestDocuments = (client) => {
+    setRequestClient(client);
+    setIsRequestModalOpen(true);
+  };
+
   // Handle delete client
   const handleDeleteClient = (client) => {
     setSelectedClient(client);
@@ -898,6 +908,18 @@ const exportAllJobsQFC = async () => {
                               whileTap={{ scale: 0.9 }}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                handleRequestDocuments(client);
+                              }}
+                              className="text-green-600 hover:text-green-900 p-2 rounded-lg hover:bg-green-50 transition-colors duration-200"
+                              title="Request Documents"
+                            >
+                              <PaperAirplaneIcon className="h-5 w-5" />
+                            </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleViewClient(client.gmail);
                               }}
                               className="text-blue-600 hover:text-blue-900 p-2 rounded-lg hover:bg-blue-50 transition-colors duration-200"
@@ -1091,6 +1113,20 @@ const exportAllJobsQFC = async () => {
             </div>
           )}
         </motion.div>
+
+        {/* Request Documents Modal */}
+        <SendRequestModal
+          isOpen={isRequestModalOpen}
+          onClose={() => {
+            setIsRequestModalOpen(false);
+            setRequestClient(null);
+          }}
+          client={requestClient}
+          onSuccess={() => {
+            setIsRequestModalOpen(false);
+            setRequestClient(null);
+          }}
+        />
 
         {/* Delete Confirmation Modal */}
         <Transition appear show={isDeleteModalOpen} as={Fragment}>
