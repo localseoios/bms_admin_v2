@@ -242,7 +242,7 @@ const ComplianceClients = () => {
   };
 
   const getClientStatus = (client) => {
-    if (client.activeJobCount > 0) {
+    if (client.nonCancelledJobCount > 0) {
       return 'active';
     } else if (client.jobCount > 0) {
       return 'inactive';

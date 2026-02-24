@@ -442,6 +442,7 @@ const getAssignedClients = asyncHandler(async (req, res) => {
           jobs: [],
           jobCount: 0,
           activeJobCount: 0,
+          nonCancelledJobCount: 0,
           latestJobDate: null,
           lastReviewDate: null,
           latestServiceType: null,
@@ -460,6 +461,10 @@ const getAssignedClients = asyncHandler(async (req, res) => {
 
       if (!["completed", "cancelled", "rejected"].includes(job.status)) {
         clientsMap[clientId].activeJobCount++;
+      }
+
+      if (!["cancelled", "rejected"].includes(job.status)) {
+        clientsMap[clientId].nonCancelledJobCount++;
       }
 
       if (
@@ -606,9 +611,9 @@ const getAllClients = asyncHandler(async (req, res) => {
     let totalActive = 0, totalPending = 0, totalInactive = 0, totalEDD = 0;
     allClients.forEach(client => {
       const clientJobs = jobsByClient[client._id.toString()] || [];
-      const activeCount = clientJobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
+      const nonCancelledCount = clientJobs.filter(j => !["cancelled", "rejected"].includes(j.status)).length;
 
-      if (activeCount > 0) totalActive++;
+      if (nonCancelledCount > 0) totalActive++;
       else if (clientJobs.length > 0) totalInactive++;
       else totalPending++;
 
@@ -619,9 +624,10 @@ const getAllClients = asyncHandler(async (req, res) => {
       const jobs = jobsByClient[client._id.toString()] || [];
       const jobCount = jobs.length;
       const activeJobCount = jobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
+      const nonCancelledJobCount = jobs.filter(j => !["cancelled", "rejected"].includes(j.status)).length;
 
       let clientStatus = 'pending';
-      if (activeJobCount > 0) clientStatus = 'active';
+      if (nonCancelledJobCount > 0) clientStatus = 'active';
       else if (jobCount > 0) clientStatus = 'inactive';
 
       let latestJobDate = null, lastReviewDate = null, latestServiceType = null;
@@ -647,6 +653,7 @@ const getAllClients = asyncHandler(async (req, res) => {
         lastReviewDate: client.lastReviewDate || lastReviewDate,
         jobCount,
         activeJobCount,
+        nonCancelledJobCount,
         clientStatus,
         latestJobDate,
         latestServiceType,
@@ -952,6 +959,9 @@ const getClientsByRole = asyncHandler(async (req, res) => {
         const activeJobCount = jobs.filter(
           (job) => !["completed", "cancelled", "rejected"].includes(job.status)
         ).length;
+        const nonCancelledJobCount = jobs.filter(
+          (job) => !["cancelled", "rejected"].includes(job.status)
+        ).length;
 
         let latestJob = null;
         let latestJobDate = null;
@@ -967,6 +977,7 @@ const getClientsByRole = asyncHandler(async (req, res) => {
           ...client.toObject(),
           jobCount,
           activeJobCount,
+          nonCancelledJobCount,
           latestJobDate,
           latestServiceType,
           latestJobId: latestJob?._id,
@@ -1128,9 +1139,12 @@ const exportComplianceClients = asyncHandler(async (req, res) => {
       const activeJobCount = jobs.filter(
         (job) => !["completed", "cancelled", "rejected"].includes(job.status)
       ).length;
+      const nonCancelledJobCount = jobs.filter(
+        (job) => !["cancelled", "rejected"].includes(job.status)
+      ).length;
 
-      if (status === 'active' && activeJobCount === 0) continue;
-      if (status === 'inactive' && (activeJobCount > 0 || jobCount === 0)) continue;
+      if (status === 'active' && nonCancelledJobCount === 0) continue;
+      if (status === 'inactive' && (nonCancelledJobCount > 0 || jobCount === 0)) continue;
       if (status === 'pending' && jobCount > 0) continue;
 
       let companyDetails = null;
@@ -1315,9 +1329,10 @@ const searchClientsWithDetails = asyncHandler(async (req, res) => {
       const jobs = jobsByClient[clientId] || [];
       const jobCount = jobs.length;
       const activeJobCount = jobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
+      const nonCancelledJobCount = jobs.filter(j => !["cancelled", "rejected"].includes(j.status)).length;
 
       let clientStatus = 'pending';
-      if (activeJobCount > 0) clientStatus = 'active';
+      if (nonCancelledJobCount > 0) clientStatus = 'active';
       else if (jobCount > 0) clientStatus = 'inactive';
 
       let latestJobDate = null, lastReviewDate = null, latestServiceType = null;
@@ -1353,6 +1368,7 @@ const searchClientsWithDetails = asyncHandler(async (req, res) => {
         lastReviewDate: client.lastReviewDate || lastReviewDate,
         jobCount,
         activeJobCount,
+        nonCancelledJobCount,
         clientStatus,
         latestJobDate,
         latestServiceType,
@@ -1369,8 +1385,8 @@ const searchClientsWithDetails = asyncHandler(async (req, res) => {
     let totalActive = 0, totalPending = 0, totalInactive = 0, totalEDD = 0;
     allClients.forEach(client => {
       const clientJobs = jobsByClient[client._id.toString()] || [];
-      const activeCount = clientJobs.filter(j => !["completed", "cancelled", "rejected"].includes(j.status)).length;
-      if (activeCount > 0) totalActive++;
+      const nonCancelledCount = clientJobs.filter(j => !["cancelled", "rejected"].includes(j.status)).length;
+      if (nonCancelledCount > 0) totalActive++;
       else if (clientJobs.length > 0) totalInactive++;
       else totalPending++;
       if (client.cddType === 'EDD') totalEDD++;
