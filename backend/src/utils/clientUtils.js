@@ -290,7 +290,8 @@ const synchronizeCompanyDetails = async (gmail, sourceJobId) => {
 
 /**
  * Improved synchronize person details across all jobs for a client
- * This ensures all person records for the same email and type have consistent data
+ * This ensures only records for the SAME PERSON (matched by name) are synchronized
+ * across different jobs, not all person records of the same type
  */
 const synchronizePersonDetails = async (
   gmail,
@@ -338,6 +339,20 @@ const synchronizePersonDetails = async (
     console.log(
       `Using record ID ${sourceRecord._id} as source of truth for synchronization`
     );
+    console.log(`Source record name: "${sourceRecord.name}"`);
+
+    // IMPORTANT: Only sync records that have the SAME NAME as the source record
+    // This prevents Entry 1 (Person A) from overwriting Entry 2 (Person B)
+    const sourcePersonName = (sourceRecord.name || "").trim().toLowerCase();
+
+    if (!sourcePersonName) {
+      console.log(`Source record has no name - skipping synchronization to prevent data corruption`);
+      return {
+        success: true,
+        message: "No synchronization - source record has no name",
+        updatedRecords: 0,
+      };
+    }
 
     // Fields to synchronize (excluding job-specific fields like jobId)
     const fieldsToSync = [
@@ -363,8 +378,8 @@ const synchronizePersonDetails = async (
     fieldsToSync.forEach((field) => {
       // Only include fields that have actual values in the source record
       if (
-        sourceRecord[field] !== null && 
-        sourceRecord[field] !== undefined && 
+        sourceRecord[field] !== null &&
+        sourceRecord[field] !== undefined &&
         sourceRecord[field] !== ""
       ) {
         updateData[field] = sourceRecord[field];
@@ -373,16 +388,34 @@ const synchronizePersonDetails = async (
 
     console.log(`Update data prepared with fields: ${Object.keys(updateData).join(", ")}`);
 
-    // Update all records except the source
-    const recordsToUpdate = allPersonDetails.filter(
-      (record) => record._id.toString() !== sourceRecord._id.toString()
-    );
+    // FIXED: Only update records that:
+    // 1. Are NOT the source record
+    // 2. Have the SAME NAME as the source record (representing the same person)
+    // 3. Are in a DIFFERENT JOB (same job entries should remain independent)
+    const sourceJobId = sourceRecord.jobId.toString();
+    const recordsToUpdate = allPersonDetails.filter((record) => {
+      const recordName = (record.name || "").trim().toLowerCase();
+      const isSameRecord = record._id.toString() === sourceRecord._id.toString();
+      const isSameName = recordName === sourcePersonName;
+      const isDifferentJob = record.jobId.toString() !== sourceJobId;
 
-    console.log(`Found ${recordsToUpdate.length} records to update`);
+      // Only sync if: different record, same person name, different job
+      return !isSameRecord && isSameName && isDifferentJob;
+    });
+
+    console.log(`Found ${recordsToUpdate.length} records to update (same person "${sourcePersonName}" in other jobs)`);
+
+    if (recordsToUpdate.length === 0) {
+      return {
+        success: true,
+        message: "No matching records found in other jobs to synchronize",
+        updatedRecords: 0,
+      };
+    }
 
     // Create update promises - add more detailed logging
     const updatePromises = recordsToUpdate.map((record) => {
-      console.log(`Updating record ${record._id} for job ${record.jobId}`);
+      console.log(`Updating record ${record._id} for job ${record.jobId} (person: ${record.name})`);
 
       // Add a timestamp to ensure the update is reflected in updatedAt
       const updatedData = {
@@ -411,7 +444,7 @@ const synchronizePersonDetails = async (
     );
 
     console.log(
-      `Synchronized ${modifiedCount} records for ${gmail} (${personType})`
+      `Synchronized ${modifiedCount} records for ${gmail} (${personType}) with name "${sourcePersonName}"`
     );
 
     // Update Job timelines to reflect the synchronization
@@ -433,7 +466,7 @@ const synchronizePersonDetails = async (
                 status: "updated",
                 description: `${
                   personType.charAt(0).toUpperCase() + personType.slice(1)
-                } details synchronized from another job`,
+                } details for "${sourceRecord.name}" synchronized from another job`,
                 timestamp: new Date(),
                 // We don't have the user ID here, so this will be null
               },

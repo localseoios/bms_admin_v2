@@ -3,8 +3,6 @@ import {
   DocumentTextIcon,
   UserGroupIcon,
   EyeIcon,
-  CalendarIcon,
-  FolderOpenIcon,
   PlusIcon,
   TrashIcon,
   PencilIcon,
@@ -288,10 +286,46 @@ const UBOSheet = ({ client }) => {
     );
   }
 
-  const totalUbos = uboData.reduce((sum, job) => sum + (job.ubos?.length || 0), 0);
-  const totalDocuments = uboData.reduce((sum, job) => {
-    return sum + (job.ubos?.reduce((docSum, ubo) => docSum + (ubo.documents?.length || 0), 0) || 0);
-  }, 0);
+  // Deduplicate UBOs by name (since they are synced across all jobs)
+  const deduplicatedUbos = [];
+  const uboNameSet = new Map();
+
+  uboData.forEach(jobData => {
+    if (jobData.ubos && jobData.ubos.length > 0) {
+      jobData.ubos.forEach(ubo => {
+        const nameKey = (ubo.name || '').toLowerCase().trim();
+        if (!nameKey) return;
+
+        const existing = uboNameSet.get(nameKey);
+        if (!existing) {
+          uboNameSet.set(nameKey, {
+            ...ubo,
+            jobId: jobData.jobId,
+            jobNumber: jobData.jobNumber
+          });
+        } else {
+          // Keep the one with more documents
+          const existingDocCount = existing.documents?.length || 0;
+          const newDocCount = ubo.documents?.length || 0;
+          if (newDocCount > existingDocCount) {
+            uboNameSet.set(nameKey, {
+              ...ubo,
+              jobId: jobData.jobId,
+              jobNumber: jobData.jobNumber
+            });
+          }
+        }
+      });
+    }
+  });
+
+  uboNameSet.forEach(ubo => deduplicatedUbos.push(ubo));
+
+  const totalUbos = deduplicatedUbos.length;
+  const totalDocuments = deduplicatedUbos.reduce((sum, ubo) => sum + (ubo.documents?.length || 0), 0);
+
+  // Get the first job for adding new UBOs
+  const firstJob = client?.jobs?.[0];
 
   return (
     <>
@@ -314,169 +348,147 @@ const UBOSheet = ({ client }) => {
         </div>
 
         <div className="p-6">
-          <div className="space-y-6">
-            {client?.jobs?.map((job, jobIndex) => {
-              const jobData = uboData.find(u => u.jobId === job._id) || { ubos: [] };
-              return (
+          {/* Add UBO Button */}
+          {firstJob && (
+            <div className="mb-4 flex justify-end">
+              <button
+                onClick={() => handleAddClick(firstJob._id)}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 transition-colors"
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Add UBO
+              </button>
+            </div>
+          )}
+
+          {deduplicatedUbos.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <UserGroupIcon className="h-16 w-16 text-pink-200 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No UBO Data</h3>
+              <p>No Ultimate Beneficial Owner data has been added yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {deduplicatedUbos.map((ubo, uboIndex) => (
                 <motion.div
-                  key={job._id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: jobIndex * 0.1 }}
-                  className="border border-pink-100 rounded-xl overflow-hidden"
+                  key={ubo._id || uboIndex}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: uboIndex * 0.05 }}
+                  className="bg-gradient-to-br from-pink-50 to-purple-50 border border-pink-100 rounded-xl p-4"
                 >
-                  <div className="bg-gradient-to-r from-pink-50 to-purple-50 px-4 py-3 border-b border-pink-100">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <FolderOpenIcon className="h-5 w-5 text-pink-600 mr-2" />
-                        <span className="font-medium text-gray-900">Job: {job.jobNumber}</span>
-                        <span className="ml-2 text-sm text-gray-500 bg-white px-3 py-1 rounded-full">
-                          {job.serviceType}
-                        </span>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+                        {(ubo.name || 'U')[0].toUpperCase()}
                       </div>
+                      <div className="ml-3">
+                        <h4 className="font-semibold text-gray-900">{ubo.name || 'Unnamed UBO'}</h4>
+                        <p className="text-sm text-gray-500">{ubo.nationality || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => handleAddClick(job._id)}
-                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 transition-colors"
+                        onClick={() => handleEditClick(ubo.jobId, ubo)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit"
                       >
-                        <PlusIcon className="h-4 w-4 mr-1" />
-                        Add UBO
+                        <PencilIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUbo(ubo.jobId, ubo._id)}
+                        disabled={deleting === ubo._id}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Delete"
+                      >
+                        {deleting === ubo._id ? (
+                          <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <TrashIcon className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   </div>
 
-                  <div className="p-4">
-                    {!jobData.ubos || jobData.ubos.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <UserGroupIcon className="h-12 w-12 text-pink-200 mx-auto mb-2" />
-                        <p>No UBO data for this job</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {jobData.ubos.map((ubo, uboIndex) => (
-                          <motion.div
-                            key={ubo._id || uboIndex}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: uboIndex * 0.05 }}
-                            className="bg-gradient-to-br from-pink-50 to-purple-50 border border-pink-100 rounded-xl p-4"
+                  <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+                    <div className="bg-white rounded-lg p-2">
+                      <span className="text-gray-500">Passport No:</span>
+                      <span className="ml-2 font-medium text-gray-900">{ubo.passportNo || '-'}</span>
+                    </div>
+                    <div className="bg-white rounded-lg p-2">
+                      <span className="text-gray-500">QID No:</span>
+                      <span className="ml-2 font-medium text-gray-900">{ubo.qidNo || '-'}</span>
+                    </div>
+                  </div>
+
+                  {/* Documents Section */}
+                  <div className="border-t border-pink-100 pt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700 flex items-center">
+                        <DocumentTextIcon className="h-4 w-4 mr-1" />
+                        Documents ({ubo.documents?.length || 0})
+                      </span>
+                      <button
+                        onClick={() => handleAddDocument(ubo.jobId, ubo._id)}
+                        disabled={deleting === ubo._id}
+                        className="text-xs text-pink-600 hover:text-pink-700 font-medium flex items-center"
+                      >
+                        <PlusIcon className="h-3 w-3 mr-1" />
+                        Add Document
+                      </button>
+                    </div>
+
+                    {ubo.documents && ubo.documents.length > 0 ? (
+                      <div className="grid gap-2">
+                        {ubo.documents.map((doc, docIndex) => (
+                          <div
+                            key={doc._id || docIndex}
+                            className="flex items-center justify-between bg-white rounded-lg p-2 text-sm"
                           >
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="flex items-center">
-                                <div className="w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                                  {(ubo.name || 'U')[0].toUpperCase()}
-                                </div>
-                                <div className="ml-3">
-                                  <h4 className="font-semibold text-gray-900">{ubo.name || 'Unnamed UBO'}</h4>
-                                  <p className="text-sm text-gray-500">{ubo.nationality || 'N/A'}</p>
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleEditClick(job._id, ubo)}
-                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="Edit"
-                                >
-                                  <PencilIcon className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteUbo(job._id, ubo._id)}
-                                  disabled={deleting === ubo._id}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                                  title="Delete"
-                                >
-                                  {deleting === ubo._id ? (
-                                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <TrashIcon className="h-4 w-4" />
-                                  )}
-                                </button>
-                              </div>
+                            <div className="flex items-center flex-1 min-w-0">
+                              <DocumentTextIcon className="h-4 w-4 text-pink-500 flex-shrink-0" />
+                              <span className="ml-2 truncate text-gray-700">{doc.fileName || doc.title || 'Document'}</span>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
-                              <div className="bg-white rounded-lg p-2">
-                                <span className="text-gray-500">Passport No:</span>
-                                <span className="ml-2 font-medium text-gray-900">{ubo.passportNo || '-'}</span>
-                              </div>
-                              <div className="bg-white rounded-lg p-2">
-                                <span className="text-gray-500">QID No:</span>
-                                <span className="ml-2 font-medium text-gray-900">{ubo.qidNo || '-'}</span>
-                              </div>
+                            <div className="flex items-center gap-2 ml-2">
+                              <button
+                                onClick={() => openDocument(doc.fileUrl)}
+                                className="text-blue-600 hover:text-blue-700"
+                                title="View"
+                              >
+                                <EyeIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleReplaceDocument(ubo.jobId, ubo._id, doc._id)}
+                                disabled={deleting === doc._id}
+                                className="text-green-500 hover:text-green-600 disabled:opacity-50"
+                                title="Replace"
+                              >
+                                <ArrowPathIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDocument(ubo.jobId, ubo._id, doc._id)}
+                                disabled={deleting === doc._id}
+                                className="text-red-500 hover:text-red-600 disabled:opacity-50"
+                                title="Delete"
+                              >
+                                {deleting === doc._id ? (
+                                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <TrashIcon className="h-4 w-4" />
+                                )}
+                              </button>
                             </div>
-
-                            {/* Documents Section */}
-                            <div className="border-t border-pink-100 pt-3">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-gray-700 flex items-center">
-                                  <DocumentTextIcon className="h-4 w-4 mr-1" />
-                                  Documents ({ubo.documents?.length || 0})
-                                </span>
-                                <button
-                                  onClick={() => handleAddDocument(job._id, ubo._id)}
-                                  disabled={deleting === ubo._id}
-                                  className="text-xs text-pink-600 hover:text-pink-700 font-medium flex items-center"
-                                >
-                                  <PlusIcon className="h-3 w-3 mr-1" />
-                                  Add Document
-                                </button>
-                              </div>
-
-                              {ubo.documents && ubo.documents.length > 0 ? (
-                                <div className="grid gap-2">
-                                  {ubo.documents.map((doc, docIndex) => (
-                                    <div
-                                      key={doc._id || docIndex}
-                                      className="flex items-center justify-between bg-white rounded-lg p-2 text-sm"
-                                    >
-                                      <div className="flex items-center flex-1 min-w-0">
-                                        <DocumentTextIcon className="h-4 w-4 text-pink-500 flex-shrink-0" />
-                                        <span className="ml-2 truncate text-gray-700">{doc.fileName || doc.title || 'Document'}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2 ml-2">
-                                        <button
-                                          onClick={() => openDocument(doc.fileUrl)}
-                                          className="text-blue-600 hover:text-blue-700"
-                                          title="View"
-                                        >
-                                          <EyeIcon className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                          onClick={() => handleReplaceDocument(job._id, ubo._id, doc._id)}
-                                          disabled={deleting === doc._id}
-                                          className="text-green-500 hover:text-green-600 disabled:opacity-50"
-                                          title="Replace"
-                                        >
-                                          <ArrowPathIcon className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                          onClick={() => handleDeleteDocument(job._id, ubo._id, doc._id)}
-                                          disabled={deleting === doc._id}
-                                          className="text-red-500 hover:text-red-600 disabled:opacity-50"
-                                          title="Delete"
-                                        >
-                                          {deleting === doc._id ? (
-                                            <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                                          ) : (
-                                            <TrashIcon className="h-4 w-4" />
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-gray-400 text-center py-2">No documents attached</p>
-                              )}
-                            </div>
-                          </motion.div>
+                          </div>
                         ))}
                       </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center py-2">No documents attached</p>
                     )}
                   </div>
                 </motion.div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

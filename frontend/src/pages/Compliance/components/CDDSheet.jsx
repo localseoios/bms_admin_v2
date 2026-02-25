@@ -4,11 +4,9 @@ import {
   ShieldCheckIcon,
   EyeIcon,
   CalendarIcon,
-  FolderOpenIcon,
   PlusIcon,
   PencilIcon,
   TrashIcon,
-  ArrowPathIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
@@ -187,7 +185,34 @@ const CDDSheet = ({ client }) => {
     );
   }
 
-  const totalDocuments = cddData.reduce((sum, job) => sum + job.documents.length, 0);
+  // Deduplicate CDD documents by fileName (since they are synced across all jobs)
+  const deduplicatedDocs = [];
+  const docFileNameSet = new Map();
+
+  cddData.forEach(jobData => {
+    if (jobData.documents && jobData.documents.length > 0) {
+      jobData.documents.forEach(doc => {
+        const fileNameKey = (doc.fileName || '').toLowerCase().trim();
+        if (!fileNameKey) return;
+
+        const existing = docFileNameSet.get(fileNameKey);
+        if (!existing) {
+          docFileNameSet.set(fileNameKey, {
+            ...doc,
+            jobId: jobData.jobId,
+            jobNumber: jobData.jobNumber
+          });
+        }
+      });
+    }
+  });
+
+  docFileNameSet.forEach(doc => deduplicatedDocs.push(doc));
+
+  const totalDocuments = deduplicatedDocs.length;
+
+  // Get the first job for adding new documents
+  const firstJob = client?.jobs?.[0];
 
   return (
     <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -204,7 +229,20 @@ const CDDSheet = ({ client }) => {
       </div>
 
       <div className="p-6">
-        {cddData.length === 0 ? (
+        {/* Add Document Button */}
+        {firstJob && (
+          <div className="mb-4 flex justify-end">
+            <button
+              onClick={() => setUploadModal({ open: true, jobId: firstJob._id })}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              <PlusIcon className="h-4 w-4 mr-1" />
+              Add Document
+            </button>
+          </div>
+        )}
+
+        {deduplicatedDocs.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -215,109 +253,67 @@ const CDDSheet = ({ client }) => {
             <p className="text-gray-500">No Customer Due Diligence documents have been uploaded yet.</p>
           </motion.div>
         ) : (
-          <div className="space-y-6">
-            {cddData.map((jobData, jobIndex) => (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {deduplicatedDocs.map((doc, docIndex) => (
               <motion.div
-                key={jobData.jobId}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: jobIndex * 0.1 }}
-                className="border border-teal-100 rounded-xl overflow-hidden"
+                key={doc._id || docIndex}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: docIndex * 0.05 }}
+                className="bg-white border border-teal-100 rounded-lg p-4 hover:shadow-md transition-all duration-200 hover:border-teal-200"
               >
-                <div className="bg-gradient-to-r from-teal-50 to-cyan-50 px-4 py-3 border-b border-teal-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <FolderOpenIcon className="h-5 w-5 text-teal-600 mr-2" />
-                      <span className="font-medium text-gray-900">Job: {jobData.jobNumber}</span>
+                <div className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 bg-gradient-to-br from-teal-100 to-cyan-100 rounded-lg flex items-center justify-center">
+                      <DocumentTextIcon className="h-5 w-5 text-teal-600" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500 bg-white px-3 py-1 rounded-full">
-                        {jobData.serviceType}
-                      </span>
-                      <button
-                        onClick={() => setUploadModal({ open: true, jobId: jobData.jobId })}
-                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
-                      >
-                        <PlusIcon className="h-4 w-4 mr-1" />
-                        Add Document
-                      </button>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-medium text-gray-900 truncate">
+                      {doc.title || 'Untitled Document'}
+                    </h4>
+                    {doc.description && (
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                        {doc.description}
+                      </p>
+                    )}
+                    <div className="flex items-center mt-2 text-xs text-gray-400">
+                      <CalendarIcon className="h-3 w-3 mr-1" />
+                      {doc.uploadedAt
+                        ? format(new Date(doc.uploadedAt), 'MMM dd, yyyy')
+                        : 'N/A'}
                     </div>
                   </div>
                 </div>
-
-                <div className="p-4">
-                  {jobData.documents.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg">
-                      <DocumentTextIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500">No documents uploaded for this job yet.</p>
-                    </div>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {jobData.documents.map((doc, docIndex) => (
-                        <motion.div
-                          key={doc._id || docIndex}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: docIndex * 0.05 }}
-                          className="bg-white border border-teal-100 rounded-lg p-4 hover:shadow-md transition-all duration-200 hover:border-teal-200"
-                        >
-                          <div className="flex items-start space-x-3">
-                            <div className="flex-shrink-0">
-                              <div className="w-10 h-10 bg-gradient-to-br from-teal-100 to-cyan-100 rounded-lg flex items-center justify-center">
-                                <DocumentTextIcon className="h-5 w-5 text-teal-600" />
-                              </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-sm font-medium text-gray-900 truncate">
-                                {doc.title || 'Untitled Document'}
-                              </h4>
-                              {doc.description && (
-                                <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                                  {doc.description}
-                                </p>
-                              )}
-                              <div className="flex items-center mt-2 text-xs text-gray-400">
-                                <CalendarIcon className="h-3 w-3 mr-1" />
-                                {doc.uploadedAt
-                                  ? format(new Date(doc.uploadedAt), 'MMM dd, yyyy')
-                                  : 'N/A'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mt-3 pt-3 border-t border-teal-50 flex flex-wrap gap-2">
-                            <a
-                              href={doc.fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
-                            >
-                              <EyeIcon className="h-3.5 w-3.5 mr-1" />
-                              View
-                            </a>
-                            <button
-                              onClick={() => setEditModal({ open: true, jobId: jobData.jobId, document: doc })}
-                              className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                            >
-                              <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => setDeleteModal({
-                                open: true,
-                                jobId: jobData.jobId,
-                                documentId: doc._id,
-                                documentTitle: doc.title || 'Untitled Document'
-                              })}
-                              className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                            >
-                              <TrashIcon className="h-3.5 w-3.5 mr-1" />
-                              Delete
-                            </button>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
+                <div className="mt-3 pt-3 border-t border-teal-50 flex flex-wrap gap-2">
+                  <a
+                    href={doc.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+                  >
+                    <EyeIcon className="h-3.5 w-3.5 mr-1" />
+                    View
+                  </a>
+                  <button
+                    onClick={() => setEditModal({ open: true, jobId: doc.jobId, document: doc })}
+                    className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setDeleteModal({
+                      open: true,
+                      jobId: doc.jobId,
+                      documentId: doc._id,
+                      documentTitle: doc.title || 'Untitled Document'
+                    })}
+                    className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5 mr-1" />
+                    Delete
+                  </button>
                 </div>
               </motion.div>
             ))}

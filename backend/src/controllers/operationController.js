@@ -17,7 +17,7 @@ const notificationService = require("../services/notificationService");
 const mongoose = require("mongoose");
 const kycService = require("../services/kycService");
 const Client = require("../models/Client");
-const { findPersonDetailsByGmail } = require("../utils/clientUtils"); // Import the utility function
+const { findPersonDetailsByGmail, findAllPersonDetailsByGmail } = require("../utils/clientUtils"); // Import the utility functions
 const BraApproval = require("../models/braApprovalModel");
 const KycApproval = require("../models/kycApprovalModel");
 const ExcelJS = require('exceljs'); // You'll need to install this: npm install exceljs
@@ -835,70 +835,93 @@ const getPersonDetails = asyncHandler(async (req, res) => {
 
   getEngagementLetters; 
 
-  // If no entries found for this job, look for entries from other jobs with the same Gmail
+  // If no entries found for this job, auto-populate ALL entries from other jobs
   if (personDetails.length === 0) {
     console.log(
       `No ${personType} details found for job ${jobId}, checking other jobs for Gmail ${job.gmail}`
     );
 
-    // Check if there are any existing person details for this Gmail address
-    const existingPersonDetails = await findPersonDetailsByGmail(
+    // Check for entries from other jobs
+    const allExistingPersonDetails = await findAllPersonDetailsByGmail(
       job.gmail,
       personType
     );
 
-    if (existingPersonDetails) {
+    // Filter to only entries from OTHER jobs (not this job)
+    const entriesFromOtherJobs = allExistingPersonDetails.filter(
+      person => person.jobId.toString() !== jobId
+    );
+
+    if (entriesFromOtherJobs.length > 0) {
       console.log(
-        `Found existing ${personType} details from another job for Gmail ${job.gmail}. Auto-populating...`
+        `Found ${entriesFromOtherJobs.length} ${personType} entries from other jobs. Auto-populating ALL...`
       );
 
-      // Create a new person details entry using the existing data
-      const newPersonDetails = new PersonDetails({
-        jobId,
-        personType,
-        name: existingPersonDetails.name || job.clientName || "",
-        nationality: existingPersonDetails.nationality || "",
-        visaCopy: existingPersonDetails.visaCopy,
-        qidNo: existingPersonDetails.qidNo || "",
-        qidDoc: existingPersonDetails.qidDoc,
-        qidExpiry: existingPersonDetails.qidExpiry,
-        nationalAddress: existingPersonDetails.nationalAddress || "",
-        nationalAddressDoc: existingPersonDetails.nationalAddressDoc,
-        nationalAddressExpiry: existingPersonDetails.nationalAddressExpiry,
-        passportNo: existingPersonDetails.passportNo || "",
-        passportDoc: existingPersonDetails.passportDoc,
-        passportExpiry: existingPersonDetails.passportExpiry,
-        mobileNo: existingPersonDetails.mobileNo || "",
-        email: existingPersonDetails.email || job.gmail || "",
-        cv: existingPersonDetails.cv,
-        updatedBy: req.user._id,
+      // Get unique persons by name to avoid duplicates
+      const uniquePersonsMap = new Map();
+      entriesFromOtherJobs.forEach(person => {
+        const key = (person.name || '').toLowerCase().trim();
+        if (key && !uniquePersonsMap.has(key)) {
+          uniquePersonsMap.set(key, person);
+        }
       });
+      const uniquePersons = Array.from(uniquePersonsMap.values());
 
-      await newPersonDetails.save();
+      console.log(`Creating ${uniquePersons.length} unique ${personType} entries for job ${jobId}`);
+
+      // Create new person details entries for ALL unique persons
+      const newPersonDetailsList = [];
+      for (const existingPerson of uniquePersons) {
+        const newPersonDetails = new PersonDetails({
+          jobId,
+          personType,
+          name: existingPerson.name || "",
+          nationality: existingPerson.nationality || "",
+          visaCopy: existingPerson.visaCopy,
+          qidNo: existingPerson.qidNo || "",
+          qidDoc: existingPerson.qidDoc,
+          qidExpiry: existingPerson.qidExpiry,
+          nationalAddress: existingPerson.nationalAddress || "",
+          nationalAddressDoc: existingPerson.nationalAddressDoc,
+          nationalAddressExpiry: existingPerson.nationalAddressExpiry,
+          passportNo: existingPerson.passportNo || "",
+          passportDoc: existingPerson.passportDoc,
+          passportExpiry: existingPerson.passportExpiry,
+          mobileNo: existingPerson.mobileNo || "",
+          email: existingPerson.email || "",
+          cv: existingPerson.cv,
+          otherDocuments: existingPerson.otherDocuments || [],
+          updatedBy: req.user._id,
+        });
+
+        await newPersonDetails.save();
+        newPersonDetailsList.push(newPersonDetails);
+      }
 
       // Add a timeline entry to indicate auto-population
       job.timeline.push({
         status: job.status,
-        description: `${
+        description: `${uniquePersons.length} ${
           personType.charAt(0).toUpperCase() + personType.slice(1)
-        } details auto-populated from existing client record`,
+        } entries auto-populated from existing client records`,
         timestamp: new Date(),
         updatedBy: req.user._id,
       });
       await job.save();
 
       console.log(
-        `Successfully auto-populated ${personType} details for job ${jobId} from existing client data`
+        `Successfully auto-populated ${newPersonDetailsList.length} ${personType} entries for job ${jobId}`
       );
 
-      // Return the newly created person details
-      res.status(200).json([newPersonDetails]);
+      // Return ALL newly created entries
+      res.status(200).json(newPersonDetailsList);
       return;
-    } else {
-      console.log(
-        `No existing ${personType} details found for Gmail ${job.gmail}`
-      );
     }
+
+    // No entries from other jobs either
+    console.log(
+      `No ${personType} details found for job ${jobId} and no other jobs to copy from`
+    );
 
     // If it's a director request and no existing data found, create a default entry with basic info
     if (personType === "director") {
@@ -1098,6 +1121,84 @@ const addPersonDetails = asyncHandler(async (req, res) => {
 
   await job.save();
 
+  // SYNC: Create this entry in ALL other jobs for the same client
+  let syncResult = null;
+  if (savedPerson.name) {
+    try {
+      console.log(`[SYNC] Adding new ${personType} "${savedPerson.name}" to other jobs for client ${job.gmail}`);
+
+      // Find all other jobs for this client
+      const Client = require("../models/Client");
+      const client = await Client.findOne({ gmail: job.gmail });
+
+      if (client) {
+        const otherJobs = await Job.find({
+          clientId: client._id,
+          _id: { $ne: jobId } // Exclude current job
+        });
+
+        console.log(`[SYNC] Found ${otherJobs.length} other jobs for this client`);
+
+        let syncedCount = 0;
+        for (const otherJob of otherJobs) {
+          // Check if this person already exists in the other job (by name)
+          const existingPerson = await PersonDetails.findOne({
+            jobId: otherJob._id,
+            personType,
+            name: { $regex: new RegExp(`^${savedPerson.name.trim()}$`, 'i') }
+          });
+
+          if (!existingPerson) {
+            // Create the same person in the other job
+            const newPersonInOtherJob = new PersonDetails({
+              jobId: otherJob._id,
+              personType,
+              name: savedPerson.name || "",
+              nationality: savedPerson.nationality || "",
+              visaCopy: savedPerson.visaCopy,
+              qidNo: savedPerson.qidNo || "",
+              qidDoc: savedPerson.qidDoc,
+              qidExpiry: savedPerson.qidExpiry,
+              nationalAddress: savedPerson.nationalAddress || "",
+              nationalAddressDoc: savedPerson.nationalAddressDoc,
+              nationalAddressExpiry: savedPerson.nationalAddressExpiry,
+              passportNo: savedPerson.passportNo || "",
+              passportDoc: savedPerson.passportDoc,
+              passportExpiry: savedPerson.passportExpiry,
+              mobileNo: savedPerson.mobileNo || "",
+              email: savedPerson.email || "",
+              cv: savedPerson.cv,
+              otherDocuments: savedPerson.otherDocuments || [],
+              updatedBy: req.user._id,
+            });
+
+            await newPersonInOtherJob.save();
+            syncedCount++;
+
+            // Add timeline entry for the other job
+            otherJob.timeline.push({
+              status: otherJob.status,
+              description: `${personType.charAt(0).toUpperCase() + personType.slice(1)} "${savedPerson.name}" auto-synced from job ${job.jobNumber}`,
+              timestamp: new Date(),
+              updatedBy: req.user._id,
+            });
+            await otherJob.save();
+
+            console.log(`[SYNC] Created ${personType} "${savedPerson.name}" in job ${otherJob.jobNumber}`);
+          } else {
+            console.log(`[SYNC] ${personType} "${savedPerson.name}" already exists in job ${otherJob.jobNumber}`);
+          }
+        }
+
+        syncResult = { success: true, syncedCount };
+        console.log(`[SYNC] Synced to ${syncedCount} other jobs`);
+      }
+    } catch (syncError) {
+      console.error("[SYNC] Error syncing new person to other jobs:", syncError);
+      syncResult = { success: false, error: syncError.message };
+    }
+  }
+
   // Create notification for person details add
   try {
     await notificationService.createJobNotification(
@@ -1107,7 +1208,9 @@ const addPersonDetails = asyncHandler(async (req, res) => {
         } Details Added`,
         description: `${
           personType.charAt(0).toUpperCase() + personType.slice(1)
-        } details added for ${job.clientName}'s ${job.serviceType} job.`,
+        } details added for ${job.clientName}'s ${job.serviceType} job.${
+          syncResult?.syncedCount > 0 ? ` Also synced to ${syncResult.syncedCount} other jobs.` : ''
+        }`,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
@@ -1118,7 +1221,7 @@ const addPersonDetails = asyncHandler(async (req, res) => {
     console.error("Error creating notification:", notificationError);
   }
 
-  res.status(201).json(savedPerson);
+  res.status(201).json({ ...savedPerson.toObject(), syncResult });
 });
 
 // controllers/operationController.js
@@ -1563,6 +1666,60 @@ const deletePersonDetails = asyncHandler(async (req, res) => {
 
   await job.save();
 
+  // SYNC DELETE: Remove the same person from ALL other jobs for the same client
+  let syncDeleteResult = null;
+  const deletedPersonName = personDetails.name;
+
+  if (deletedPersonName) {
+    try {
+      console.log(`[SYNC DELETE] Removing ${personType} "${deletedPersonName}" from all other jobs for client ${job.gmail}`);
+
+      // Find all other jobs for this client
+      const Client = require("../models/Client");
+      const client = await Client.findOne({ gmail: job.gmail });
+
+      if (client) {
+        const otherJobs = await Job.find({
+          clientId: client._id,
+          _id: { $ne: jobId } // Exclude current job
+        });
+
+        console.log(`[SYNC DELETE] Found ${otherJobs.length} other jobs for this client`);
+
+        let deletedCount = 0;
+        for (const otherJob of otherJobs) {
+          // Find and delete the same person (by name) in other jobs
+          const deletedInOtherJob = await PersonDetails.findOneAndDelete({
+            jobId: otherJob._id,
+            personType,
+            name: { $regex: new RegExp(`^${deletedPersonName.trim()}$`, 'i') }
+          });
+
+          if (deletedInOtherJob) {
+            deletedCount++;
+
+            // Add timeline entry for the other job
+            otherJob.timeline.push({
+              status: otherJob.status,
+              description: `${personType.charAt(0).toUpperCase() + personType.slice(1)} "${deletedPersonName}" auto-removed (synced from job ${job.jobNumber})`,
+              timestamp: new Date(),
+              updatedBy: req.user._id,
+            });
+            await otherJob.save();
+
+            console.log(`[SYNC DELETE] Removed ${personType} "${deletedPersonName}" from job ${otherJob.jobNumber}`);
+          }
+        }
+
+        syncDeleteResult = { success: true, deletedCount };
+        console.log(`[SYNC DELETE] Removed from ${deletedCount} other jobs`);
+      }
+    } catch (syncError) {
+      console.error("[SYNC DELETE] Error syncing delete to other jobs:", syncError);
+      syncDeleteResult = { success: false, error: syncError.message };
+    }
+  }
+
   // Create notification for person details removal
   try {
     await notificationService.createJobNotification(
@@ -1572,7 +1729,9 @@ const deletePersonDetails = asyncHandler(async (req, res) => {
         } Details Removed`,
         description: `${
           personType.charAt(0).toUpperCase() + personType.slice(1)
-        } details removed from ${job.clientName}'s ${job.serviceType} job.`,
+        } "${deletedPersonName || 'entry'}" removed from ${job.clientName}'s ${job.serviceType} job.${
+          syncDeleteResult?.deletedCount > 0 ? ` Also removed from ${syncDeleteResult.deletedCount} other jobs.` : ''
+        }`,
         type: "job",
         relatedTo: { model: "Job", id: job._id },
       },
@@ -1583,7 +1742,10 @@ const deletePersonDetails = asyncHandler(async (req, res) => {
     console.error("Error creating notification:", notificationError);
   }
 
-  res.status(200).json({ message: "Person details removed successfully" });
+  res.status(200).json({
+    message: "Person details removed successfully",
+    syncDeleteResult
+  });
 });
 
 // Get KYC documents
@@ -6633,7 +6795,61 @@ const addUboPerson = asyncHandler(async (req, res) => {
   });
   await job.save();
 
-  res.status(201).json({ success: true, ubo: uboRecord });
+  // SYNC: Add this UBO to ALL other jobs for the same client
+  let syncResult = null;
+  if (name) {
+    try {
+      console.log(`[UBO SYNC] Adding UBO "${name}" to other jobs for client ${job.gmail}`);
+      const Client = require("../models/Client");
+      const client = await Client.findOne({ gmail: job.gmail });
+
+      if (client) {
+        const otherJobs = await Job.find({
+          clientId: client._id,
+          _id: { $ne: jobId }
+        });
+
+        let syncedCount = 0;
+        for (const otherJob of otherJobs) {
+          let otherUboRecord = await UboDetails.findOne({ jobId: otherJob._id });
+
+          if (!otherUboRecord) {
+            otherUboRecord = new UboDetails({
+              jobId: otherJob._id,
+              ubos: [],
+              updatedBy: req.user._id,
+            });
+          }
+
+          // Check if this UBO already exists (by name)
+          const exists = otherUboRecord.ubos?.some(
+            u => (u.name || '').toLowerCase().trim() === (name || '').toLowerCase().trim()
+          );
+
+          if (!exists) {
+            otherUboRecord.ubos.push({ ...newUbo });
+            otherUboRecord.updatedBy = req.user._id;
+            await otherUboRecord.save();
+
+            otherJob.timeline.push({
+              status: otherJob.status,
+              description: `UBO "${name}" auto-synced from job ${job.jobNumber}`,
+              timestamp: new Date(),
+              updatedBy: req.user._id,
+            });
+            await otherJob.save();
+            syncedCount++;
+          }
+        }
+        syncResult = { success: true, syncedCount };
+        console.log(`[UBO SYNC] Synced to ${syncedCount} other jobs`);
+      }
+    } catch (syncError) {
+      console.error("[UBO SYNC] Error:", syncError);
+    }
+  }
+
+  res.status(201).json({ success: true, ubo: uboRecord, syncResult });
 });
 
 const updateUboPerson = asyncHandler(async (req, res) => {
@@ -6704,7 +6920,60 @@ const updateUboPerson = asyncHandler(async (req, res) => {
     await job.save();
   }
 
-  res.status(200).json({ success: true, ubo: uboRecord });
+  // SYNC: Update this UBO in ALL other jobs for the same client
+  const uboName = name || uboRecord.ubos[uboIndex].name;
+  let syncResult = null;
+  if (uboName && job) {
+    try {
+      console.log(`[UBO SYNC] Updating UBO "${uboName}" in other jobs for client ${job.gmail}`);
+      const Client = require("../models/Client");
+      const client = await Client.findOne({ gmail: job.gmail });
+
+      if (client) {
+        const otherJobs = await Job.find({
+          clientId: client._id,
+          _id: { $ne: jobId }
+        });
+
+        let syncedCount = 0;
+        for (const otherJob of otherJobs) {
+          const otherUboRecord = await UboDetails.findOne({ jobId: otherJob._id });
+
+          if (otherUboRecord && otherUboRecord.ubos) {
+            const otherUboIndex = otherUboRecord.ubos.findIndex(
+              u => (u.name || '').toLowerCase().trim() === uboName.toLowerCase().trim()
+            );
+
+            if (otherUboIndex !== -1) {
+              // Update the matching UBO
+              otherUboRecord.ubos[otherUboIndex].name = uboRecord.ubos[uboIndex].name;
+              otherUboRecord.ubos[otherUboIndex].passportNo = uboRecord.ubos[uboIndex].passportNo;
+              otherUboRecord.ubos[otherUboIndex].qidNo = uboRecord.ubos[uboIndex].qidNo;
+              otherUboRecord.ubos[otherUboIndex].nationality = uboRecord.ubos[uboIndex].nationality;
+              otherUboRecord.ubos[otherUboIndex].documents = uboRecord.ubos[uboIndex].documents;
+              otherUboRecord.updatedBy = req.user._id;
+              await otherUboRecord.save();
+
+              otherJob.timeline.push({
+                status: otherJob.status,
+                description: `UBO "${uboName}" auto-synced from job ${job.jobNumber}`,
+                timestamp: new Date(),
+                updatedBy: req.user._id,
+              });
+              await otherJob.save();
+              syncedCount++;
+            }
+          }
+        }
+        syncResult = { success: true, syncedCount };
+        console.log(`[UBO SYNC] Synced to ${syncedCount} other jobs`);
+      }
+    } catch (syncError) {
+      console.error("[UBO SYNC] Error:", syncError);
+    }
+  }
+
+  res.status(200).json({ success: true, ubo: uboRecord, syncResult });
 });
 
 const deleteUboPerson = asyncHandler(async (req, res) => {
@@ -6743,7 +7012,56 @@ const deleteUboPerson = asyncHandler(async (req, res) => {
     await job.save();
   }
 
-  res.status(200).json({ success: true, message: "UBO person deleted successfully", ubo: uboRecord });
+  // SYNC: Delete this UBO from ALL other jobs for the same client
+  const uboName = deletedUbo.name;
+  let syncResult = null;
+  if (uboName && job) {
+    try {
+      console.log(`[UBO SYNC] Deleting UBO "${uboName}" from other jobs for client ${job.gmail}`);
+      const Client = require("../models/Client");
+      const client = await Client.findOne({ gmail: job.gmail });
+
+      if (client) {
+        const otherJobs = await Job.find({
+          clientId: client._id,
+          _id: { $ne: jobId }
+        });
+
+        let syncedCount = 0;
+        for (const otherJob of otherJobs) {
+          const otherUboRecord = await UboDetails.findOne({ jobId: otherJob._id });
+
+          if (otherUboRecord && otherUboRecord.ubos) {
+            const otherUboIndex = otherUboRecord.ubos.findIndex(
+              u => (u.name || '').toLowerCase().trim() === uboName.toLowerCase().trim()
+            );
+
+            if (otherUboIndex !== -1) {
+              // Delete the matching UBO
+              otherUboRecord.ubos.splice(otherUboIndex, 1);
+              otherUboRecord.updatedBy = req.user._id;
+              await otherUboRecord.save();
+
+              otherJob.timeline.push({
+                status: otherJob.status,
+                description: `UBO "${uboName}" auto-deleted (synced from job ${job.jobNumber})`,
+                timestamp: new Date(),
+                updatedBy: req.user._id,
+              });
+              await otherJob.save();
+              syncedCount++;
+            }
+          }
+        }
+        syncResult = { success: true, syncedCount };
+        console.log(`[UBO SYNC] Deleted from ${syncedCount} other jobs`);
+      }
+    } catch (syncError) {
+      console.error("[UBO SYNC] Error:", syncError);
+    }
+  }
+
+  res.status(200).json({ success: true, message: "UBO person deleted successfully", ubo: uboRecord, syncResult });
 });
 
 const addUboPersonDocument = asyncHandler(async (req, res) => {
@@ -6992,10 +7310,79 @@ const addCddDocument = asyncHandler(async (req, res) => {
   });
   await job.save();
 
+  // SYNC: Add these CDD documents to ALL other jobs for the same client
+  let syncResult = null;
+  try {
+    console.log(`[CDD SYNC] Adding ${uploadCount} CDD document(s) to other jobs for client ${job.gmail}`);
+    const Client = require("../models/Client");
+    const client = await Client.findOne({ gmail: job.gmail });
+
+    if (client) {
+      const otherJobs = await Job.find({
+        clientId: client._id,
+        _id: { $ne: jobId }
+      });
+
+      let syncedCount = 0;
+      for (const otherJob of otherJobs) {
+        let otherCddRecord = await CddDetails.findOne({ jobId: otherJob._id });
+
+        if (!otherCddRecord) {
+          otherCddRecord = new CddDetails({
+            jobId: otherJob._id,
+            documents: [],
+            updatedBy: req.user._id,
+          });
+        }
+
+        // Get newly added documents (last N documents in the array)
+        const newDocs = cddRecord.documents.slice(-uploadCount);
+        let addedToThisJob = 0;
+
+        for (const newDoc of newDocs) {
+          // Check if this document already exists (by fileName)
+          const exists = otherCddRecord.documents?.some(
+            d => (d.fileName || '').toLowerCase().trim() === (newDoc.fileName || '').toLowerCase().trim()
+          );
+
+          if (!exists) {
+            otherCddRecord.documents.push({
+              fileUrl: newDoc.fileUrl,
+              fileName: newDoc.fileName,
+              title: newDoc.title,
+              description: newDoc.description,
+              uploadedAt: newDoc.uploadedAt,
+            });
+            addedToThisJob++;
+          }
+        }
+
+        if (addedToThisJob > 0) {
+          otherCddRecord.updatedBy = req.user._id;
+          await otherCddRecord.save();
+
+          otherJob.timeline.push({
+            status: otherJob.status,
+            description: `${addedToThisJob} CDD document(s) auto-synced from job ${job.jobNumber}`,
+            timestamp: new Date(),
+            updatedBy: req.user._id,
+          });
+          await otherJob.save();
+          syncedCount++;
+        }
+      }
+      syncResult = { success: true, syncedCount };
+      console.log(`[CDD SYNC] Synced to ${syncedCount} other jobs`);
+    }
+  } catch (syncError) {
+    console.error("[CDD SYNC] Error:", syncError);
+  }
+
   res.status(201).json({
     success: true,
     message: `${uploadCount} CDD document${uploadCount > 1 ? 's' : ''} uploaded successfully`,
-    cdd: cddRecord
+    cdd: cddRecord,
+    syncResult
   });
 });
 
@@ -7065,7 +7452,60 @@ const updateCddDocument = asyncHandler(async (req, res) => {
     await job.save();
   }
 
-  res.status(200).json({ success: true, message: "CDD document updated successfully", cdd: cddRecord });
+  // SYNC: Update this CDD document in ALL other jobs for the same client
+  const docFileName = cddRecord.documents[docIndex].fileName;
+  let syncResult = null;
+  if (docFileName && job) {
+    try {
+      console.log(`[CDD SYNC] Updating CDD document "${docFileName}" in other jobs for client ${job.gmail}`);
+      const Client = require("../models/Client");
+      const client = await Client.findOne({ gmail: job.gmail });
+
+      if (client) {
+        const otherJobs = await Job.find({
+          clientId: client._id,
+          _id: { $ne: jobId }
+        });
+
+        let syncedCount = 0;
+        for (const otherJob of otherJobs) {
+          const otherCddRecord = await CddDetails.findOne({ jobId: otherJob._id });
+
+          if (otherCddRecord && otherCddRecord.documents) {
+            const otherDocIndex = otherCddRecord.documents.findIndex(
+              d => (d.fileName || '').toLowerCase().trim() === docFileName.toLowerCase().trim()
+            );
+
+            if (otherDocIndex !== -1) {
+              // Update the matching document
+              otherCddRecord.documents[otherDocIndex].title = cddRecord.documents[docIndex].title;
+              otherCddRecord.documents[otherDocIndex].description = cddRecord.documents[docIndex].description;
+              otherCddRecord.documents[otherDocIndex].fileUrl = cddRecord.documents[docIndex].fileUrl;
+              otherCddRecord.documents[otherDocIndex].fileName = cddRecord.documents[docIndex].fileName;
+              otherCddRecord.documents[otherDocIndex].uploadedAt = cddRecord.documents[docIndex].uploadedAt;
+              otherCddRecord.updatedBy = req.user._id;
+              await otherCddRecord.save();
+
+              otherJob.timeline.push({
+                status: otherJob.status,
+                description: `CDD document "${docFileName}" auto-synced from job ${job.jobNumber}`,
+                timestamp: new Date(),
+                updatedBy: req.user._id,
+              });
+              await otherJob.save();
+              syncedCount++;
+            }
+          }
+        }
+        syncResult = { success: true, syncedCount };
+        console.log(`[CDD SYNC] Synced to ${syncedCount} other jobs`);
+      }
+    } catch (syncError) {
+      console.error("[CDD SYNC] Error:", syncError);
+    }
+  }
+
+  res.status(200).json({ success: true, message: "CDD document updated successfully", cdd: cddRecord, syncResult });
 });
 
 const deleteCddDocument = asyncHandler(async (req, res) => {
@@ -7099,7 +7539,56 @@ const deleteCddDocument = asyncHandler(async (req, res) => {
     await job.save();
   }
 
-  res.status(200).json({ success: true, message: "Document deleted successfully", cdd: cddRecord });
+  // SYNC: Delete this CDD document from ALL other jobs for the same client
+  const docFileName = deletedDoc.fileName;
+  let syncResult = null;
+  if (docFileName && job) {
+    try {
+      console.log(`[CDD SYNC] Deleting CDD document "${docFileName}" from other jobs for client ${job.gmail}`);
+      const Client = require("../models/Client");
+      const client = await Client.findOne({ gmail: job.gmail });
+
+      if (client) {
+        const otherJobs = await Job.find({
+          clientId: client._id,
+          _id: { $ne: jobId }
+        });
+
+        let syncedCount = 0;
+        for (const otherJob of otherJobs) {
+          const otherCddRecord = await CddDetails.findOne({ jobId: otherJob._id });
+
+          if (otherCddRecord && otherCddRecord.documents) {
+            const otherDocIndex = otherCddRecord.documents.findIndex(
+              d => (d.fileName || '').toLowerCase().trim() === docFileName.toLowerCase().trim()
+            );
+
+            if (otherDocIndex !== -1) {
+              // Delete the matching document
+              otherCddRecord.documents.splice(otherDocIndex, 1);
+              otherCddRecord.updatedBy = req.user._id;
+              await otherCddRecord.save();
+
+              otherJob.timeline.push({
+                status: otherJob.status,
+                description: `CDD document "${docFileName}" auto-deleted (synced from job ${job.jobNumber})`,
+                timestamp: new Date(),
+                updatedBy: req.user._id,
+              });
+              await otherJob.save();
+              syncedCount++;
+            }
+          }
+        }
+        syncResult = { success: true, syncedCount };
+        console.log(`[CDD SYNC] Deleted from ${syncedCount} other jobs`);
+      }
+    } catch (syncError) {
+      console.error("[CDD SYNC] Error:", syncError);
+    }
+  }
+
+  res.status(200).json({ success: true, message: "Document deleted successfully", cdd: cddRecord, syncResult });
 });
 
 module.exports = {

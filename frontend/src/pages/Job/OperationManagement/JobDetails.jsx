@@ -1742,10 +1742,11 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
                         const file = e.target.files[0];
                         if (file) {
                           const newDetails = [...details];
-                          if (!newDetails[index].otherDocuments) {
-                            newDetails[index].otherDocuments = [];
-                          }
-                          newDetails[index].otherDocuments.push(file);
+                          const currentOtherDocs = newDetails[index].otherDocuments || [];
+                          newDetails[index] = {
+                            ...newDetails[index],
+                            otherDocuments: [...currentOtherDocs, file]
+                          };
                           setDetails(newDetails);
                         }
                       };
@@ -3746,6 +3747,8 @@ const handleSaveCompanyDetails = async () => {
       let response;
 
       // Update or create entry based on whether _id exists
+      console.log(`[Save] Entry _id: ${entry._id}, Name: ${entry.name}, Will ${entry._id ? 'UPDATE' : 'CREATE'}`);
+
       if (entry._id) {
         // Update existing entry
         response = await axiosInstance.put(
@@ -4448,7 +4451,7 @@ const handleSaveCompanyDetails = async () => {
 
       {details.map((entry, index) => (
         <div
-          key={index}
+          key={entry._id || `${section}-entry-${index}`}
           className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300"
         >
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
@@ -4511,7 +4514,7 @@ const handleSaveCompanyDetails = async () => {
                 value={entry.name || ""}
                 onChange={(e) => {
                   const newDetails = [...details];
-                  newDetails[index].name = e.target.value;
+                  newDetails[index] = { ...newDetails[index], name: e.target.value };
                   setDetails(newDetails);
                 }}
                 onAutoFill={(personDetails) => {
@@ -5124,7 +5127,7 @@ const handleSaveCompanyDetails = async () => {
                     value={entry.passportNo || ""}
                     onChange={(e) => {
                       const newDetails = [...details];
-                      newDetails[index].passportNo = e.target.value;
+                      newDetails[index] = { ...newDetails[index], passportNo: e.target.value };
                       setDetails(newDetails);
                     }}
                     className={`block w-full rounded-lg ${
@@ -5308,7 +5311,7 @@ const handleSaveCompanyDetails = async () => {
                 value={entry.mobileNo || ""}
                 onChange={(e) => {
                   const newDetails = [...details];
-                  newDetails[index].mobileNo = e.target.value;
+                  newDetails[index] = { ...newDetails[index], mobileNo: e.target.value };
                   setDetails(newDetails);
                 }}
                 className={`mt-1 block w-full rounded-lg ${
@@ -5346,7 +5349,7 @@ const handleSaveCompanyDetails = async () => {
                 value={entry.email || ""}
                 onChange={(e) => {
                   const newDetails = [...details];
-                  newDetails[index].email = e.target.value;
+                  newDetails[index] = { ...newDetails[index], email: e.target.value };
                   setDetails(newDetails);
                 }}
                 className={`mt-1 block w-full rounded-lg ${
@@ -5515,10 +5518,11 @@ const handleSaveCompanyDetails = async () => {
                         const file = e.target.files[0];
                         if (file) {
                           const newDetails = [...details];
-                          if (!newDetails[index].otherDocuments) {
-                            newDetails[index].otherDocuments = [];
-                          }
-                          newDetails[index].otherDocuments.push(file);
+                          const currentOtherDocs = newDetails[index].otherDocuments || [];
+                          newDetails[index] = {
+                            ...newDetails[index],
+                            otherDocuments: [...currentOtherDocs, file]
+                          };
                           setDetails(newDetails);
                         }
                       };
@@ -7795,7 +7799,7 @@ const renderCompanyDetailsSection = () => {
                                 value={entry.documentType}
                                 onChange={(e) => {
                                   const newDetails = [...otherDocumentsDetails];
-                                  newDetails[index].documentType = e.target.value;
+                                  newDetails[index] = { ...newDetails[index], documentType: e.target.value };
                                   setOtherDocumentsDetails(newDetails);
                                 }}
                                 className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
@@ -7812,7 +7816,7 @@ const renderCompanyDetailsSection = () => {
                                 value={entry.documentNumber}
                                 onChange={(e) => {
                                   const newDetails = [...otherDocumentsDetails];
-                                  newDetails[index].documentNumber = e.target.value;
+                                  newDetails[index] = { ...newDetails[index], documentNumber: e.target.value };
                                   setOtherDocumentsDetails(newDetails);
                                 }}
                                 className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
@@ -7829,7 +7833,7 @@ const renderCompanyDetailsSection = () => {
                                 value={entry.issueDate}
                                 onChange={(e) => {
                                   const newDetails = [...otherDocumentsDetails];
-                                  newDetails[index].issueDate = e.target.value;
+                                  newDetails[index] = { ...newDetails[index], issueDate: e.target.value };
                                   setOtherDocumentsDetails(newDetails);
                                 }}
                                 className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
@@ -7845,7 +7849,7 @@ const renderCompanyDetailsSection = () => {
                                 value={entry.expiryDate}
                                 onChange={(e) => {
                                   const newDetails = [...otherDocumentsDetails];
-                                  newDetails[index].expiryDate = e.target.value;
+                                  newDetails[index] = { ...newDetails[index], expiryDate: e.target.value };
                                   setOtherDocumentsDetails(newDetails);
                                 }}
                                 className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
@@ -7860,7 +7864,7 @@ const renderCompanyDetailsSection = () => {
                                 value={entry.description}
                                 onChange={(e) => {
                                   const newDetails = [...otherDocumentsDetails];
-                                  newDetails[index].description = e.target.value;
+                                  newDetails[index] = { ...newDetails[index], description: e.target.value };
                                   setOtherDocumentsDetails(newDetails);
                                 }}
                                 rows={2}
@@ -7888,7 +7892,7 @@ const renderCompanyDetailsSection = () => {
                                     <button
                                       onClick={() => {
                                         const newDetails = [...otherDocumentsDetails];
-                                        newDetails[index].uploadedFile = null;
+                                        newDetails[index] = { ...newDetails[index], uploadedFile: null };
                                         setOtherDocumentsDetails(newDetails);
                                       }}
                                       className="text-red-500 hover:text-red-700"
@@ -7906,7 +7910,7 @@ const renderCompanyDetailsSection = () => {
                                       type="file"
                                       onChange={(e) => {
                                         const newDetails = [...otherDocumentsDetails];
-                                        newDetails[index].uploadedFile = e.target.files[0];
+                                        newDetails[index] = { ...newDetails[index], uploadedFile: e.target.files[0] };
                                         setOtherDocumentsDetails(newDetails);
                                       }}
                                       className="hidden"

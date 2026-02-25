@@ -26,7 +26,7 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
   const [loading, setLoading] = useState(false);
   const [personDetails, setPersonDetails] = useState([]);
   const [companyDetails, setCompanyDetails] = useState(null);
-  const [expandedPerson, setExpandedPerson] = useState(null);
+  const [expandedPersons, setExpandedPersons] = useState([]);
   const [expandedJob, setExpandedJob] = useState(null);
 
   const personTypeConfig = {
@@ -126,7 +126,7 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
             }
           }
         } catch (error) {
-          console.log(`No ${personType} details for job ${job._id}`);
+          console.log(`No ${personType} details for job ${job._id}`, error);
         }
       }
 
@@ -137,8 +137,12 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
         }
       } else {
         setPersonDetails(allDetails);
-        if (allDetails.length > 0 && allDetails[0].persons?.length > 0) {
-          setExpandedPerson(allDetails[0].persons[0]._id);
+        // Expand ALL persons by default
+        if (allDetails.length > 0) {
+          const allPersonIds = allDetails.flatMap(jobData =>
+            jobData.persons?.map(p => p._id) || []
+          );
+          setExpandedPersons(allPersonIds);
         }
       }
     } catch (error) {
@@ -379,7 +383,8 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
       );
     }
 
-    // Flatten all persons from all jobs and deduplicate by name
+    // Flatten all persons from all jobs and DEDUPLICATE by name
+    // Since all jobs now auto-sync, we only show unique persons (by name)
     const allPersonsRaw = personDetails.flatMap(jobData =>
       jobData.persons.map(person => ({
         ...person,
@@ -389,19 +394,25 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
       }))
     );
 
-    // Deduplicate by name (case-insensitive) - keep the most recent/complete entry
+    // Deduplicate by name (case-insensitive) - keep the most complete entry
     const personMap = new Map();
     allPersonsRaw.forEach(person => {
       const key = (person.name || '').toLowerCase().trim();
-      if (!key) return;
+      if (!key) return; // Skip entries without names
 
       const existing = personMap.get(key);
       if (!existing) {
         personMap.set(key, person);
       } else {
         // Keep the one with more complete data (more documents/fields)
-        const existingScore = [existing.passportDoc, existing.qidDoc, existing.nationalAddressDoc, existing.cv, existing.email, existing.mobileNo].filter(Boolean).length;
-        const newScore = [person.passportDoc, person.qidDoc, person.nationalAddressDoc, person.cv, person.email, person.mobileNo].filter(Boolean).length;
+        const existingScore = [
+          existing.passportDoc, existing.qidDoc, existing.nationalAddressDoc,
+          existing.cv, existing.email, existing.mobileNo, existing.nationality
+        ].filter(Boolean).length;
+        const newScore = [
+          person.passportDoc, person.qidDoc, person.nationalAddressDoc,
+          person.cv, person.email, person.mobileNo, person.nationality
+        ].filter(Boolean).length;
         if (newScore > existingScore) {
           personMap.set(key, person);
         }
@@ -411,7 +422,8 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
     const allPersons = Array.from(personMap.values());
 
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {allPersons.map((person, index) => (
           <motion.div
             key={person._id || index}
@@ -422,7 +434,11 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
           >
             {/* Person Header */}
             <button
-              onClick={() => setExpandedPerson(expandedPerson === person._id ? null : person._id)}
+              onClick={() => setExpandedPersons(prev =>
+                prev.includes(person._id)
+                  ? prev.filter(id => id !== person._id)
+                  : [...prev, person._id]
+              )}
               className={`w-full px-5 py-4 flex items-center justify-between bg-gradient-to-r ${config.bgGradient}`}
             >
               <div className="flex items-center space-x-4">
@@ -448,7 +464,7 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
                 </div>
               </div>
               <motion.div
-                animate={{ rotate: expandedPerson === person._id ? 180 : 0 }}
+                animate={{ rotate: expandedPersons.includes(person._id) ? 180 : 0 }}
                 className="p-2 bg-white/20 rounded-lg"
               >
                 <ChevronDownIcon className="h-5 w-5 text-white" />
@@ -456,7 +472,7 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
             </button>
 
             <AnimatePresence>
-              {expandedPerson === person._id && (
+              {expandedPersons.includes(person._id) && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
@@ -465,11 +481,6 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
                   className="overflow-hidden"
                 >
                   <div className="p-5 space-y-5">
-                    {/* Job Reference */}
-                    <div className={`inline-flex items-center px-3 py-1.5 rounded-full ${config.lightBg} ${config.textColor} text-xs font-medium`}>
-                      Job #{person.jobNumber} • {person.serviceType}
-                    </div>
-
                     {/* Info Grid */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className={`p-4 rounded-xl ${config.lightBg} border ${config.borderColor}`}>
@@ -530,6 +541,7 @@ const PersonDetailsSheet = ({ client, personType = 'company' }) => {
             </AnimatePresence>
           </motion.div>
         ))}
+        </div>
       </div>
     );
   };
