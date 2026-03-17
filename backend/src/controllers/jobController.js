@@ -1095,8 +1095,41 @@ const updateJob = asyncHandler(async (req, res) => {
       ...updatedDocuments,
     };
 
-    const clientGmail = gmail || job.gmail;
-    if (clientGmail && (startingPoint || clientName || crNo !== undefined || contactNumber !== undefined || address !== undefined)) {
+    const oldClientGmail = job.gmail;
+    const newClientGmail = gmail || job.gmail;
+    const isEmailChanged = gmail && gmail !== job.gmail;
+
+    if (isEmailChanged) {
+      console.log('=== EMAIL CHANGE DETECTED ===');
+      console.log('Old email:', oldClientGmail);
+      console.log('New email:', gmail);
+
+      const existingClient = await Client.findOne({ gmail: gmail });
+
+      if (existingClient) {
+        console.log('Email already exists for another client:', existingClient._id);
+        return res.status(400).json({
+          message: "This email already belongs to another client. Please use a different email address.",
+        });
+      }
+
+      console.log('Creating new client with email:', gmail);
+      const nextClientCode = await Client.getNextClientCode();
+      const newClient = new Client({
+        name: clientName || job.clientName,
+        gmail: gmail,
+        startingPoint: startingPoint || job.startingPoint,
+        clientCode: nextClientCode,
+        crNo: crNo !== undefined ? crNo : '',
+        contactNumber: contactNumber !== undefined ? contactNumber : '',
+        address: address !== undefined ? address : ''
+      });
+      await newClient.save();
+      console.log('Created new client:', newClient._id);
+
+      updateFields.clientId = newClient._id;
+      console.log('Job will be linked to new client:', newClient._id);
+    } else if (oldClientGmail && (startingPoint || clientName || crNo !== undefined || contactNumber !== undefined || address !== undefined)) {
       const clientUpdateFields = {};
       if (startingPoint) clientUpdateFields.startingPoint = startingPoint;
       if (clientName) clientUpdateFields.name = clientName;
@@ -1104,15 +1137,11 @@ const updateJob = asyncHandler(async (req, res) => {
       if (contactNumber !== undefined) clientUpdateFields.contactNumber = contactNumber;
       if (address !== undefined) clientUpdateFields.address = address;
 
-      console.log('Updating client with gmail:', clientGmail, 'Fields:', clientUpdateFields);
-
       await Client.findOneAndUpdate(
-        { gmail: clientGmail },
+        { gmail: oldClientGmail },
         clientUpdateFields,
         { new: true }
       );
-
-      console.log('Client updated successfully');
     }
 
     const updatedJob = await Job.findByIdAndUpdate(

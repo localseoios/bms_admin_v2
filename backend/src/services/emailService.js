@@ -292,12 +292,16 @@ const sendDocumentRequestEmail = async (email, clientName, requestData) => {
   try {
     const emailTransporter = getTransporter();
 
-    const expiryDate = new Date(requestData.expiresAt).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+    let expiryMessage = "";
+    if (requestData.expiresAt) {
+      const expiryDate = new Date(requestData.expiresAt).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      expiryMessage = `<p style="color: #dc2626; font-weight: bold;">This link will expire on ${expiryDate}.</p>`;
+    }
 
     const mailOptions = {
       from: process.env.EMAIL_FROM,
@@ -323,7 +327,7 @@ const sendDocumentRequestEmail = async (email, clientName, requestData) => {
               Submit Documents
             </a>
           </div>
-          <p style="color: #dc2626; font-weight: bold;">This link will expire on ${expiryDate}.</p>
+          ${expiryMessage}
           <p>If you have any questions, please contact us.</p>
           <hr style="margin: 30px 0;">
           <p style="color: #666; font-size: 12px;">This is an automated message from BMS. Please do not reply to this email.</p>
@@ -341,6 +345,67 @@ const sendDocumentRequestEmail = async (email, clientName, requestData) => {
   }
 };
 
+const sendDocumentSubmissionNotificationEmail = async (adminEmail, adminName, submissionData) => {
+  try {
+    const emailTransporter = getTransporter();
+
+    const submittedDate = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const statusColor = submissionData.isUpdate ? '#f59e0b' : '#10b981';
+    const statusText = submissionData.isUpdate ? 'Updated' : 'New';
+    const actionText = submissionData.isUpdate ? 'updated their document submission' : 'submitted requested documents';
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: adminEmail,
+      subject: `${statusText} Document Submission - ${submissionData.clientName}`,
+      priority: "high",
+      headers: {
+        "X-Priority": "1",
+        "X-MSMail-Priority": "High",
+        Importance: "high",
+      },
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: ${statusColor};">${statusText} Document Submission</h2>
+          <p>Hello ${adminName},</p>
+          <p>A client has ${actionText}.</p>
+          <div style="background-color: #f0f9ff; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid ${statusColor};">
+            <p><strong>Client Name:</strong> ${submissionData.clientName}</p>
+            <p><strong>Client Email:</strong> ${submissionData.clientEmail}</p>
+            <p><strong>Request Subject:</strong> ${submissionData.requestSubject || 'Document Request'}</p>
+            <p><strong>Submitted On:</strong> ${submittedDate}</p>
+            <p><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${statusText} Submission</span></p>
+          </div>
+          <p>Please log in to the BMS system to review the submitted documents.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${submissionData.reviewUrl || '#'}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+              Review Submission
+            </a>
+          </div>
+          <hr style="margin: 30px 0;">
+          <p style="color: #666; font-size: 12px;">This is an automated message from BMS. Please do not reply to this email.</p>
+          <p style="color: #888; font-size: 11px; text-align: center; margin-top: 20px;">Developed by <a href="https://localseo.lk/" style="color: #888; text-decoration: none;">LocalSEO (Pvt) Ltd.</a></p>
+        </div>
+      `,
+    };
+
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log("Document submission notification email sent: " + info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("Error sending document submission notification email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendPasswordResetEmail,
   send2FAEmail,
@@ -349,4 +414,5 @@ module.exports = {
   sendJobAssignmentEmail,
   sendJobRemovalEmail,
   sendDocumentRequestEmail,
+  sendDocumentSubmissionNotificationEmail,
 };

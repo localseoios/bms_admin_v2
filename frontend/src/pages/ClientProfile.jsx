@@ -4254,6 +4254,42 @@ function ClientProfile() {
                   </div>
                 </a>
               )}
+
+              {/* Other Documents (Company Memo) */}
+              {Array.isArray(company.companyMemo) && company.companyMemo.length > 0 &&
+                company.companyMemo.map((doc, index) => (
+                  <a
+                    key={doc._id || index}
+                    href={doc.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group relative bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden"
+                  >
+                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-yellow-500"></div>
+                    <div className="p-5">
+                      <div className="flex items-start">
+                        <div className="bg-yellow-100 rounded-lg p-3 flex-shrink-0">
+                          <DocumentTextIcon className="h-6 w-6 text-yellow-600 group-hover:text-yellow-700 transition-colors" />
+                        </div>
+                        <div className="ml-4">
+                          <h5 className="font-medium text-gray-900 group-hover:text-yellow-700 transition-colors">
+                            {doc.fileName || `Other Document ${index + 1}`}
+                          </h5>
+                          {doc.uploadedAt && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Uploaded: {new Date(doc.uploadedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-500 mt-1 flex items-center">
+                            <EyeIcon className="h-3.5 w-3.5 mr-1" />
+                            View document
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </a>
+                ))
+              }
             </div>
 
             {/* No documents message - Updated to include all possible CR Extract field names */}
@@ -4262,7 +4298,8 @@ function ClientProfile() {
               !(company.crExtract || company.CRExtract || company.cr_extract) &&
               !company.scopeOfLicense &&
               !company.articleOfAssociate &&
-              !company.certificateOfIncorporate && (
+              !company.certificateOfIncorporate &&
+              !(Array.isArray(company.companyMemo) && company.companyMemo.length > 0) && (
                 <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
                   <DocumentDuplicateIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                   <p className="text-sm text-gray-500">

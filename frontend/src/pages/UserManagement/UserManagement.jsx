@@ -986,7 +986,7 @@ function UserManagement() {
                     </h3>
                     <p className="mt-1 text-sm text-gray-600">
                       {isAdmin
-                        ? "Create and manage digital signatures for users with KYC signing permissions (DLMRO, LMRO, CEO)"
+                        ? "Create and manage digital signatures for users with KYC signing permissions (DMLRO, MLRO, SEF)"
                         : "Create your digital signature for signing KYC documents. Your signature will be used when you approve documents."}
                     </p>
                   </div>
@@ -996,7 +996,7 @@ function UserManagement() {
                       <PhotoIcon className="mx-auto h-12 w-12 text-gray-400" />
                       <h3 className="mt-2 text-sm font-medium text-gray-900">No signature users</h3>
                       <p className="mt-1 text-sm text-gray-500">
-                        No users with DLMRO, LMRO, or CEO permissions found.
+                        No users with DMLRO, MLRO, or SEF permissions found.
                       </p>
                     </div>
                   ) : signatureUsers.length === 0 && !isAdmin ? (
@@ -1052,17 +1052,17 @@ function UserManagement() {
                               <div className="mt-1 flex flex-wrap gap-1">
                                 {user.role?.permissions?.kycManagement?.dlmro && (
                                   <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                                    DLMRO
+                                    DMLRO
                                   </span>
                                 )}
                                 {user.role?.permissions?.kycManagement?.lmro && (
                                   <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                                    LMRO
+                                    MLRO
                                   </span>
                                 )}
                                 {user.role?.permissions?.kycManagement?.ceo && (
                                   <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
-                                    CEO
+                                    SEF
                                   </span>
                                 )}
                               </div>

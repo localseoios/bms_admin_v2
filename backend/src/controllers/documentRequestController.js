@@ -4,7 +4,8 @@ const ClientSubmission = require("../models/ClientSubmission");
 const Client = require("../models/Client");
 const { uploadToCloudinary } = require("../services/fileUploadService");
 const notificationService = require("../services/notificationService");
-const { sendDocumentRequestEmail } = require("../services/emailService");
+const { sendDocumentRequestEmail, sendDocumentSubmissionNotificationEmail } = require("../services/emailService");
+const User = require("../models/userModel");
 const fs = require("fs");
 const crypto = require("crypto");
 
@@ -127,12 +128,18 @@ const deleteTemplate = async (req, res) => {
 
 const createDocumentRequest = async (req, res) => {
   try {
-    const { clientId, templateId, customFields, message, subject, expiryDays, relatedJobId } = req.body;
+    console.log("=== CREATE DOCUMENT REQUEST ===");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
 
+    const { clientId, templateId, customFields, message, subject, expiryDays, relatedJobId, noExpiry, allowMultipleSubmissions, allowCustomerFields } = req.body;
+
+    console.log("Looking for client:", clientId);
     const client = await Client.findById(clientId);
     if (!client) {
+      console.log("Client not found!");
       return res.status(404).json({ message: "Client not found" });
     }
+    console.log("Client found:", client.name);
 
     let fields = customFields || [];
     if (templateId) {
@@ -142,7 +149,10 @@ const createDocumentRequest = async (req, res) => {
       }
     }
 
-    const expiresAt = new Date(Date.now() + (expiryDays || 7) * 24 * 60 * 60 * 1000);
+    const expiresAt = noExpiry ? null : new Date(Date.now() + (expiryDays || 7) * 24 * 60 * 60 * 1000);
+
+    console.log("Fields to save:", JSON.stringify(fields, null, 2));
+    console.log("Creating document request...");
 
     const documentRequest = new DocumentRequest({
       clientId,
@@ -151,12 +161,17 @@ const createDocumentRequest = async (req, res) => {
       message,
       subject: subject || "Document Request",
       expiresAt,
+      noExpiry: noExpiry || false,
+      allowMultipleSubmissions: allowMultipleSubmissions || false,
+      allowCustomerFields: allowCustomerFields || false,
       createdBy: req.user._id,
       relatedJobId,
       sentAt: new Date(),
     });
 
+    console.log("Saving document request...");
     await documentRequest.save();
+    console.log("Document request saved:", documentRequest._id);
 
     const submitUrl = `${getFrontendUrl()}/submit/${documentRequest.token}`;
 
@@ -182,7 +197,13 @@ const createDocumentRequest = async (req, res) => {
       submitUrl,
     });
   } catch (error) {
-    console.error("Error creating document request:", error);
+    console.error("=== ERROR CREATING DOCUMENT REQUEST ===");
+    console.error("Error name:", error.name);
+    console.error("Error message:", error.message);
+    console.error("Full error:", error);
+    if (error.errors) {
+      console.error("Validation errors:", JSON.stringify(error.errors, null, 2));
+    }
     res.status(500).json({ message: "Failed to create document request", error: error.message });
   }
 };
@@ -321,7 +342,7 @@ const getPublicForm = async (req, res) => {
       return res.status(404).json({ message: "Invalid or expired link" });
     }
 
-    if (request.status === "submitted") {
+    if (request.status === "submitted" && !request.allowMultipleSubmissions) {
       return res.status(400).json({ message: "This form has already been submitted" });
     }
 
@@ -329,13 +350,22 @@ const getPublicForm = async (req, res) => {
       return res.status(400).json({ message: "This request has been cancelled" });
     }
 
-    if (new Date() > request.expiresAt) {
+    if (!request.noExpiry && request.expiresAt && new Date() > request.expiresAt) {
       request.status = "expired";
       await request.save();
       return res.status(400).json({ message: "This link has expired" });
     }
 
-    const fields = request.templateId?.fields || request.customFields || [];
+    const adminFields = request.templateId?.fields || request.customFields || [];
+    const customerAddedFields = request.customerAddedFields || [];
+    const fields = [...adminFields, ...customerAddedFields];
+
+    const previousSubmissions = await ClientSubmission.find({ documentRequestId: request._id })
+      .select("submittedFields createdAt status")
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    const lastSubmission = previousSubmissions.length > 0 ? previousSubmissions[0] : null;
 
     res.status(200).json({
       success: true,
@@ -344,6 +374,17 @@ const getPublicForm = async (req, res) => {
       subject: request.subject,
       fields,
       expiresAt: request.expiresAt,
+      noExpiry: request.noExpiry,
+      allowMultipleSubmissions: request.allowMultipleSubmissions,
+      allowCustomerFields: request.allowCustomerFields,
+      previousSubmissions: request.allowMultipleSubmissions ? previousSubmissions : [],
+      submissionCount: previousSubmissions.length,
+      lastSubmission: lastSubmission ? {
+        _id: lastSubmission._id,
+        submittedFields: lastSubmission.submittedFields,
+        createdAt: lastSubmission.createdAt,
+        status: lastSubmission.status,
+      } : null,
     });
   } catch (error) {
     console.error("Error fetching public form:", error);
@@ -355,33 +396,73 @@ const submitPublicForm = async (req, res) => {
   try {
     const { token } = req.params;
     const formData = req.body;
+    const editSubmissionId = formData.editSubmissionId;
 
     const request = await DocumentRequest.findOne({ token })
       .populate("clientId", "name gmail")
-      .populate("createdBy", "_id name");
+      .populate("createdBy", "_id name email");
 
     if (!request) {
       return res.status(404).json({ message: "Invalid or expired link" });
     }
 
-    if (request.status !== "pending") {
-      return res.status(400).json({ message: "This form is no longer accepting submissions" });
+    if (request.status === "submitted" && !request.allowMultipleSubmissions && !editSubmissionId) {
+      return res.status(400).json({ message: "This form has already been submitted" });
     }
 
-    if (new Date() > request.expiresAt) {
+    if (request.status === "cancelled") {
+      return res.status(400).json({ message: "This request has been cancelled" });
+    }
+
+    if (!request.noExpiry && request.expiresAt && new Date() > request.expiresAt) {
       request.status = "expired";
       await request.save();
       return res.status(400).json({ message: "This link has expired" });
     }
 
-    const fields = request.templateId?.fields || request.customFields || [];
+    let existingSubmission = null;
+    if (editSubmissionId) {
+      existingSubmission = await ClientSubmission.findById(editSubmissionId);
+      if (!existingSubmission || existingSubmission.documentRequestId.toString() !== request._id.toString()) {
+        return res.status(400).json({ message: "Invalid submission to edit" });
+      }
+    }
+
+    const adminFields = request.templateId?.fields || request.customFields || [];
+    const customerAddedFields = request.customerAddedFields || [];
+    const allFields = [...adminFields, ...customerAddedFields];
     const submittedFields = [];
 
-    for (const field of fields) {
+    let newCustomerFields = [];
+    if (formData.customerAddedFields) {
+      try {
+        newCustomerFields = JSON.parse(formData.customerAddedFields);
+      } catch (e) {
+        console.error("Error parsing customer added fields:", e);
+      }
+    }
+
+    let preservedFiles = {};
+    let preservedMultiFiles = {};
+    if (editSubmissionId) {
+      try {
+        if (formData.preservedFiles) {
+          preservedFiles = JSON.parse(formData.preservedFiles);
+        }
+        if (formData.preservedMultiFiles) {
+          preservedMultiFiles = JSON.parse(formData.preservedMultiFiles);
+        }
+      } catch (e) {
+        console.error("Error parsing preserved files:", e);
+      }
+    }
+
+    for (const field of allFields) {
       const fieldData = {
         fieldName: field.name,
         fieldLabel: field.label,
         fieldType: field.type,
+        addedByCustomer: field.addedByCustomer || false,
       };
 
       if (field.type === "file") {
@@ -398,7 +479,46 @@ const submitPublicForm = async (req, res) => {
           fs.unlink(file.path, (err) => {
             if (err) console.error("Error deleting temp file:", err);
           });
+        } else if (preservedFiles[field.name]) {
+          fieldData.fileUrl = preservedFiles[field.name].fileUrl;
+          fieldData.fileName = preservedFiles[field.name].fileName;
+          fieldData.fileSize = preservedFiles[field.name].fileSize;
         }
+      } else if (field.type === "multifile") {
+        const fieldFiles = req.files?.filter(f => f.fieldname.startsWith(`${field.name}_`) || f.fieldname === field.name) || [];
+        const uploadedFiles = [];
+
+        if (preservedMultiFiles[field.name] && preservedMultiFiles[field.name].length > 0) {
+          preservedMultiFiles[field.name].forEach(pf => {
+            uploadedFiles.push({
+              fileUrl: pf.fileUrl,
+              fileName: pf.fileName,
+              fileSize: pf.fileSize,
+            });
+          });
+        }
+
+        for (const file of fieldFiles) {
+          try {
+            const uploadResult = await uploadToCloudinary(file.path, {
+              folder: "client_submissions",
+            });
+
+            uploadedFiles.push({
+              fileUrl: uploadResult.url,
+              fileName: file.originalname,
+              fileSize: file.size,
+            });
+
+            fs.unlink(file.path, (err) => {
+              if (err) console.error("Error deleting temp file:", err);
+            });
+          } catch (uploadErr) {
+            console.error("Error uploading file:", uploadErr);
+          }
+        }
+
+        fieldData.files = uploadedFiles;
       } else {
         fieldData.value = formData[field.name];
       }
@@ -406,32 +526,133 @@ const submitPublicForm = async (req, res) => {
       submittedFields.push(fieldData);
     }
 
-    const submission = new ClientSubmission({
-      documentRequestId: request._id,
-      clientId: request.clientId._id,
-      submittedFields,
-      clientIp: req.ip,
-      clientUserAgent: req.headers["user-agent"],
-    });
+    for (const newField of newCustomerFields) {
+      const fieldData = {
+        fieldName: newField.name,
+        fieldLabel: newField.label,
+        fieldType: newField.type,
+        addedByCustomer: true,
+      };
 
-    await submission.save();
+      if (newField.type === "file") {
+        const file = req.files?.find(f => f.fieldname === newField.name);
+        if (file) {
+          const uploadResult = await uploadToCloudinary(file.path, {
+            folder: "client_submissions",
+          });
 
-    request.status = "submitted";
+          fieldData.fileUrl = uploadResult.url;
+          fieldData.fileName = file.originalname;
+          fieldData.fileSize = file.size;
+
+          fs.unlink(file.path, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+          });
+        }
+      } else if (newField.type === "multifile") {
+        const fieldFiles = req.files?.filter(f => f.fieldname.startsWith(`${newField.name}_`) || f.fieldname === newField.name) || [];
+        const uploadedFiles = [];
+
+        for (const file of fieldFiles) {
+          try {
+            const uploadResult = await uploadToCloudinary(file.path, {
+              folder: "client_submissions",
+            });
+
+            uploadedFiles.push({
+              fileUrl: uploadResult.url,
+              fileName: file.originalname,
+              fileSize: file.size,
+            });
+
+            fs.unlink(file.path, (err) => {
+              if (err) console.error("Error deleting temp file:", err);
+            });
+          } catch (uploadErr) {
+            console.error("Error uploading file:", uploadErr);
+          }
+        }
+
+        fieldData.files = uploadedFiles;
+      } else {
+        fieldData.value = formData[newField.name];
+      }
+
+      submittedFields.push(fieldData);
+
+      if (request.allowCustomerFields) {
+        const existingField = request.customerAddedFields.find(f => f.name === newField.name);
+        if (!existingField) {
+          request.customerAddedFields.push({
+            name: newField.name,
+            label: newField.label,
+            type: newField.type,
+            required: false,
+            addedByCustomer: true,
+            order: request.customerAddedFields.length,
+          });
+        }
+      }
+    }
+
+    let submission;
+    if (existingSubmission) {
+      existingSubmission.submittedFields = submittedFields;
+      existingSubmission.clientIp = req.ip;
+      existingSubmission.clientUserAgent = req.headers["user-agent"];
+      existingSubmission.status = "pending";
+      await existingSubmission.save();
+      submission = existingSubmission;
+    } else {
+      submission = new ClientSubmission({
+        documentRequestId: request._id,
+        clientId: request.clientId._id,
+        submittedFields,
+        clientIp: req.ip,
+        clientUserAgent: req.headers["user-agent"],
+      });
+      await submission.save();
+    }
+
+    if (!request.allowMultipleSubmissions) {
+      request.status = "submitted";
+    }
     request.submittedAt = new Date();
     await request.save();
 
+    const isUpdate = !!existingSubmission;
+    console.log("\n\n========================================");
+    console.log("DOCUMENT SUBMISSION - STARTING NOTIFICATIONS");
+    console.log("========================================");
+    console.log("Is Update:", isUpdate);
+    console.log("Client Name:", request.clientId?.name);
+    console.log("Client Email:", request.clientId?.gmail);
+    console.log("Email Config - EMAIL_USER:", process.env.EMAIL_USER ? "SET" : "NOT SET");
+    console.log("Email Config - EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
+    console.log("Email Config - EMAIL_FROM:", process.env.EMAIL_FROM ? "SET" : "NOT SET");
+
+    const notificationTitle = isUpdate ? "Document Submission Updated" : "New Document Submission";
+    const notificationDesc = isUpdate
+      ? `Client "${request.clientId?.name || 'Unknown'}" has updated their document submission`
+      : `Client "${request.clientId?.name || 'Unknown'}" has submitted requested documents`;
+
     try {
+      console.log("=== SUBMISSION NOTIFICATION START ===");
+      console.log("Request createdBy:", request.createdBy);
+
       const recipients = [];
 
       if (request.createdBy?._id) {
         recipients.push(request.createdBy._id.toString());
       }
 
+      console.log("Recipients for creator notification:", recipients);
+
       if (recipients.length > 0) {
         await notificationService.createNotification(
           {
-            title: "New Document Submission",
-            description: `Client "${request.clientId.name}" has submitted requested documents`,
+            title: notificationTitle,
+            description: notificationDesc,
             type: "client",
             subType: "document_submission",
             relatedTo: { model: "ClientSubmission", id: submission._id },
@@ -439,25 +660,79 @@ const submitPublicForm = async (req, res) => {
           recipients
         );
         console.log("Notification sent to request creator:", recipients);
+      } else {
+        console.log("No request creator found for notification");
       }
 
+      console.log("Sending notification to operationManagement users...");
       await notificationService.createNotification(
         {
-          title: "New Document Submission",
-          description: `Client "${request.clientId.name}" has submitted requested documents`,
+          title: notificationTitle,
+          description: notificationDesc,
           type: "client",
           subType: "document_submission",
           relatedTo: { model: "ClientSubmission", id: submission._id },
         },
         { "role.permissions.operationManagement": true }
       );
+      console.log("Operation management notification sent");
+
+      const frontendUrl = getFrontendUrl();
+      const reviewUrl = `${frontendUrl}/document-requests?tab=submissions`;
+      const submissionEmailData = {
+        clientName: request.clientId?.name || "Unknown Client",
+        clientEmail: request.clientId?.gmail || "N/A",
+        requestSubject: request.subject || "Document Request",
+        isUpdate: isUpdate,
+        reviewUrl: reviewUrl,
+      };
+
+      console.log("=== EMAIL SENDING START ===");
+
+      if (request.createdBy?.email) {
+        console.log("Sending email to request creator:", request.createdBy.email);
+        await sendDocumentSubmissionNotificationEmail(
+          request.createdBy.email,
+          request.createdBy.name || "Admin",
+          submissionEmailData
+        );
+        console.log("Email sent to request creator:", request.createdBy.email);
+      } else {
+        console.log("No request creator email found");
+      }
+
+      const allUsersWithRoles = await User.find({}).populate("role").select("email name role");
+      console.log("Total users found:", allUsersWithRoles.length);
+
+      const usersToEmail = allUsersWithRoles.filter(user => {
+        if (!user.role || !user.role.permissions) return false;
+        return user.role.permissions.operationManagement === true || user.role.name === "admin";
+      });
+
+      console.log("Users with operationManagement/admin:", usersToEmail.map(u => u.email));
+
+      for (const adminUser of usersToEmail) {
+        if (adminUser.email && adminUser.email !== request.createdBy?.email) {
+          console.log("Sending email to:", adminUser.email);
+          await sendDocumentSubmissionNotificationEmail(
+            adminUser.email,
+            adminUser.name || "Admin",
+            submissionEmailData
+          );
+          console.log("Email sent to:", adminUser.email);
+        }
+      }
+
+      console.log("=== SUBMISSION NOTIFICATION END ===");
     } catch (notifError) {
-      console.error("Notification creation failed:", notifError);
+      console.error("Notification/Email creation failed:", notifError);
+      console.error("Error details:", notifError.message);
     }
 
-    res.status(201).json({
+    res.status(isUpdate ? 200 : 201).json({
       success: true,
-      message: "Documents submitted successfully. Thank you!",
+      message: isUpdate ? "Documents updated successfully. Thank you!" : "Documents submitted successfully. Thank you!",
+      isUpdate,
     });
   } catch (error) {
     console.error("Error submitting form:", error);

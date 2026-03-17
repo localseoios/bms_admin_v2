@@ -1,5 +1,11 @@
 const mongoose = require("mongoose");
 
+const fileDataSchema = new mongoose.Schema({
+  fileUrl: { type: String },
+  fileName: { type: String },
+  fileSize: { type: Number },
+}, { _id: false });
+
 const submittedFieldSchema = new mongoose.Schema({
   fieldName: { type: String, required: true },
   fieldLabel: { type: String, required: true },
@@ -8,6 +14,8 @@ const submittedFieldSchema = new mongoose.Schema({
   fileUrl: { type: String },
   fileName: { type: String },
   fileSize: { type: Number },
+  files: [fileDataSchema],
+  addedByCustomer: { type: Boolean, default: false },
 }, { _id: true });
 
 const clientSubmissionSchema = new mongoose.Schema({

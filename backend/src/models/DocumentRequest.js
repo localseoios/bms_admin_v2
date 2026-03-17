@@ -6,7 +6,7 @@ const fieldSchema = new mongoose.Schema({
   label: { type: String, required: true },
   type: {
     type: String,
-    enum: ['text', 'textarea', 'file', 'select', 'checkbox', 'date', 'email', 'phone'],
+    enum: ['text', 'textarea', 'file', 'multifile', 'select', 'checkbox', 'date', 'email', 'phone'],
     required: true
   },
   required: { type: Boolean, default: false },
@@ -14,7 +14,8 @@ const fieldSchema = new mongoose.Schema({
   options: [{ type: String }],
   maxFileSize: { type: Number, default: 10 },
   allowedFileTypes: [{ type: String }],
-  order: { type: Number, default: 0 }
+  order: { type: Number, default: 0 },
+  addedByCustomer: { type: Boolean, default: false }
 }, { _id: true });
 
 const documentRequestSchema = new mongoose.Schema({
@@ -28,6 +29,7 @@ const documentRequestSchema = new mongoose.Schema({
     ref: "DocumentRequestTemplate"
   },
   customFields: [fieldSchema],
+  customerAddedFields: [fieldSchema],
   message: { type: String, required: true },
   subject: { type: String, default: 'Document Request' },
   token: {
@@ -38,8 +40,19 @@ const documentRequestSchema = new mongoose.Schema({
   },
   expiresAt: {
     type: Date,
-    required: true,
     default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  },
+  noExpiry: {
+    type: Boolean,
+    default: false
+  },
+  allowMultipleSubmissions: {
+    type: Boolean,
+    default: false
+  },
+  allowCustomerFields: {
+    type: Boolean,
+    default: false
   },
   status: {
     type: String,

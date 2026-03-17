@@ -15,6 +15,9 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
     subject: "Document Request",
     message: "",
     expiryDays: 7,
+    noExpiry: false,
+    allowMultipleSubmissions: false,
+    allowCustomerFields: false,
     customFields: [],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,6 +31,9 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
         subject: "Document Request",
         message: "",
         expiryDays: 7,
+        noExpiry: false,
+        allowMultipleSubmissions: false,
+        allowCustomerFields: false,
         customFields: [],
       });
       setSelectedTemplate("");
@@ -81,7 +87,10 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
         clientId: client._id,
         subject: formData.subject,
         message: formData.message,
-        expiryDays: formData.expiryDays,
+        expiryDays: formData.noExpiry ? null : formData.expiryDays,
+        noExpiry: formData.noExpiry,
+        allowMultipleSubmissions: formData.allowMultipleSubmissions,
+        allowCustomerFields: formData.allowCustomerFields,
         customFields: formData.customFields.map((f, i) => ({
           ...f,
           name: f.name || `field_${i}`,
@@ -219,16 +228,57 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Link Expiry
                     </label>
-                    <select
-                      value={formData.expiryDays}
-                      onChange={(e) => setFormData({ ...formData, expiryDays: parseInt(e.target.value) })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value={3}>3 days</option>
-                      <option value={7}>7 days</option>
-                      <option value={14}>14 days</option>
-                      <option value={30}>30 days</option>
-                    </select>
+                    <div className="flex items-center gap-4 mb-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.noExpiry}
+                          onChange={(e) => setFormData({ ...formData, noExpiry: e.target.checked })}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">No Expiry (Link never expires)</span>
+                      </label>
+                    </div>
+                    {!formData.noExpiry && (
+                      <select
+                        value={formData.expiryDays}
+                        onChange={(e) => setFormData({ ...formData, expiryDays: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value={3}>3 days</option>
+                        <option value={7}>7 days</option>
+                        <option value={14}>14 days</option>
+                        <option value={30}>30 days</option>
+                      </select>
+                    )}
+                  </div>
+
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Submission Options</h4>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.allowMultipleSubmissions}
+                        onChange={(e) => setFormData({ ...formData, allowMultipleSubmissions: e.target.checked })}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Allow Multiple Submissions</span>
+                        <p className="text-xs text-gray-500">Customer can submit the form multiple times</p>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.allowCustomerFields}
+                        onChange={(e) => setFormData({ ...formData, allowCustomerFields: e.target.checked })}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Allow Customer to Add Fields</span>
+                        <p className="text-xs text-gray-500">Customer can add additional fields when filling the form</p>
+                      </div>
+                    </label>
                   </div>
 
                   <div className="border-t border-gray-200 pt-6">

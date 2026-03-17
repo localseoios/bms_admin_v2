@@ -6,6 +6,7 @@ import {
   DocumentTextIcon,
   ChatBubbleBottomCenterTextIcon,
   DocumentArrowUpIcon,
+  DocumentDuplicateIcon,
   ChevronDownIcon,
   CheckIcon,
   CalendarIcon,
@@ -17,6 +18,7 @@ const fieldTypes = [
   { value: "text", label: "Text", icon: DocumentTextIcon },
   { value: "textarea", label: "Long Text", icon: ChatBubbleBottomCenterTextIcon },
   { value: "file", label: "File Upload", icon: DocumentArrowUpIcon },
+  { value: "multifile", label: "Multiple Files", icon: DocumentDuplicateIcon },
   { value: "select", label: "Dropdown", icon: ChevronDownIcon },
   { value: "checkbox", label: "Checkbox", icon: CheckIcon },
   { value: "date", label: "Date", icon: CalendarIcon },
@@ -165,7 +167,7 @@ function FormBuilder({ fields, onChange }) {
                     </div>
                   </div>
 
-                  {field.type !== "checkbox" && field.type !== "file" && (
+                  {field.type !== "checkbox" && field.type !== "file" && field.type !== "multifile" && (
                     <div>
                       <label className="block text-xs font-medium text-gray-500 mb-1">
                         Placeholder

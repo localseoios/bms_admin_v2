@@ -44,7 +44,15 @@
       "Bash(taskkill:*)",
       "Bash(netstat:*)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(cmd //c \"taskkill /PID 26832 /F\")",
+      "Bash(cmd //c \"taskkill /PID 26792 /F\")",
+      "Bash(cmd //c \"taskkill /PID 21436 /F\")",
+      "Bash(cmd //c \"taskkill /PID 25720 /F\")",
+      "WebSearch",
+      "Skill(pdf)",
+      "Bash(python:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

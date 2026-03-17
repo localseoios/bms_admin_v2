@@ -49,6 +49,13 @@ const getNotificationStyle = (type, subType = null) => {
         bgColor: "bg-blue-50",
       };
     case "client":
+      if (subType === "document_submission") {
+        return {
+          iconType: "DocumentArrowUpIcon",
+          iconColor: "text-emerald-600",
+          bgColor: "bg-emerald-50",
+        };
+      }
       return {
         iconType: "UserGroupIcon",
         iconColor: "text-indigo-600",

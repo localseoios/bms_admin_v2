@@ -21,6 +21,7 @@ const notificationSchema = new mongoose.Schema(
         "rejection",
         "cancellation",
         "deletion",
+        "document_submission",
       ],
       required: false,
     },

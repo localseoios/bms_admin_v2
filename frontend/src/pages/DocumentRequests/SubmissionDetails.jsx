@@ -189,7 +189,11 @@ function SubmissionDetails() {
                   <div className="flex items-center">
                     <DocumentTextIcon className="h-5 w-5 text-gray-400 mr-2" />
                     <span className="text-gray-600">
-                      {submission?.submittedFields?.filter((f) => f.fileUrl).length || 0} files uploaded
+                      {submission?.submittedFields?.reduce((count, f) => {
+                        if (f.fileUrl) return count + 1;
+                        if (f.files?.length) return count + f.files.length;
+                        return count;
+                      }, 0) || 0} files uploaded
                     </span>
                   </div>
                 </div>
@@ -207,10 +211,15 @@ function SubmissionDetails() {
               <h3 className="text-lg font-medium text-gray-900 mb-4">Submitted Data</h3>
               <div className="space-y-4">
                 {submission?.submittedFields?.map((field, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4">
+                  <div key={index} className={`border rounded-lg p-4 ${field.addedByCustomer ? "border-green-200 bg-green-50" : "border-gray-200"}`}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h4 className="text-sm font-medium text-gray-700">{field.fieldLabel}</h4>
+                        <h4 className="text-sm font-medium text-gray-700">
+                          {field.fieldLabel}
+                          {field.addedByCustomer && (
+                            <span className="ml-2 text-xs text-green-600 font-normal">(Added by customer)</span>
+                          )}
+                        </h4>
                         {field.fieldType === "file" && field.fileUrl ? (
                           <div className="mt-2 flex items-center gap-3">
                             <DocumentArrowDownIcon className={`h-8 w-8 ${getFileIcon(field.fileName)}`} />
@@ -239,6 +248,38 @@ function SubmissionDetails() {
                               <ArrowDownTrayIcon className="h-4 w-4" />
                               Download
                             </a>
+                          </div>
+                        ) : field.fieldType === "multifile" && field.files?.length > 0 ? (
+                          <div className="mt-2 space-y-2">
+                            {field.files.map((file, fileIdx) => (
+                              <div key={fileIdx} className="flex items-center gap-3 p-2 bg-white rounded border border-gray-200">
+                                <DocumentArrowDownIcon className={`h-6 w-6 ${getFileIcon(file.fileName)}`} />
+                                <div className="flex-1">
+                                  <p className="text-sm text-gray-900">{file.fileName}</p>
+                                  {file.fileSize && (
+                                    <p className="text-xs text-gray-500">
+                                      {(file.fileSize / 1024 / 1024).toFixed(2)} MB
+                                    </p>
+                                  )}
+                                </div>
+                                <a
+                                  href={file.fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-xs font-medium"
+                                >
+                                  <EyeIcon className="h-3 w-3" />
+                                  View
+                                </a>
+                                <a
+                                  href={file.fileUrl}
+                                  download
+                                  className="flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-600 rounded hover:bg-gray-100 text-xs font-medium"
+                                >
+                                  <ArrowDownTrayIcon className="h-3 w-3" />
+                                </a>
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <p className="mt-1 text-gray-900">
