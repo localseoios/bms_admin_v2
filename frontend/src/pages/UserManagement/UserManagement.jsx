@@ -44,7 +44,10 @@ function UserManagement() {
   const [signatureUsers, setSignatureUsers] = useState([]);
   const [drawingSignatureFor, setDrawingSignatureFor] = useState(null);
   const [signatureSaving, setSignatureSaving] = useState(false);
+  const [signatureMode, setSignatureMode] = useState("draw"); // "draw" or "upload"
+  const [uploadPreview, setUploadPreview] = useState(null);
   const signatureCanvasRef = useRef(null);
+  const signatureFileInputRef = useRef(null);
 
   const [newRole, setNewRole] = useState({
     name: "",
@@ -411,6 +414,174 @@ function UserManagement() {
       fetchSignatureUsers();
     } catch (err) {
       alert("Error: " + (err.response?.data?.message || "Failed to delete signature"));
+    }
+  };
+
+  // Remove background from signature image (keep only dark pixels)
+  const removeSignatureBackground = (imageDataUrl) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Sample corners to detect background color
+        const getPixel = (x, y) => {
+          const i = (y * width + x) * 4;
+          return { r: data[i], g: data[i + 1], b: data[i + 2] };
+        };
+
+        // Get colors from corners (10 pixels in from each corner)
+        const margin = Math.min(10, Math.floor(width / 10), Math.floor(height / 10));
+        const corners = [
+          getPixel(margin, margin),
+          getPixel(width - margin - 1, margin),
+          getPixel(margin, height - margin - 1),
+          getPixel(width - margin - 1, height - margin - 1),
+        ];
+
+        // Average corner colors to get background color
+        const bgColor = {
+          r: Math.round(corners.reduce((sum, c) => sum + c.r, 0) / 4),
+          g: Math.round(corners.reduce((sum, c) => sum + c.g, 0) / 4),
+          b: Math.round(corners.reduce((sum, c) => sum + c.b, 0) / 4),
+        };
+
+        // Color distance function
+        const colorDistance = (r, g, b) => {
+          return Math.sqrt(
+            Math.pow(r - bgColor.r, 2) +
+            Math.pow(g - bgColor.g, 2) +
+            Math.pow(b - bgColor.b, 2)
+          );
+        };
+
+        // Tolerance for background detection (adjust this for sensitivity)
+        // Higher = more aggressive background removal
+        const tolerance = 60;
+
+        // Process each pixel
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+
+          const distance = colorDistance(r, g, b);
+
+          if (distance < tolerance) {
+            // Background pixel - make transparent
+            data[i] = 0;
+            data[i + 1] = 0;
+            data[i + 2] = 0;
+            data[i + 3] = 0;
+          } else {
+            // Signature pixel - make it dark/black
+            const darkness = Math.min(255, distance * 2);
+            data[i] = 0;
+            data[i + 1] = 0;
+            data[i + 2] = 0;
+            data[i + 3] = Math.min(255, Math.max(darkness, 150));
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => {
+        console.error("Failed to load image for processing");
+        resolve(imageDataUrl);
+      };
+      img.src = imageDataUrl;
+    });
+  };
+
+  // Handle file selection for signature upload
+  const handleSignatureFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file");
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File size must be less than 5MB");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        // Remove background from the signature
+        const processedImage = await removeSignatureBackground(reader.result);
+        setUploadPreview(processedImage);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Convert data URL to Blob
+  const dataURLtoBlob = (dataURL) => {
+    const arr = dataURL.split(",");
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  };
+
+  // Upload signature from file (with background removed)
+  const handleUploadSignature = async (userId) => {
+    if (!uploadPreview) {
+      alert("Please select a signature image first");
+      return;
+    }
+
+    setSignatureSaving(true);
+
+    try {
+      // Convert processed image (data URL) to Blob
+      const blob = dataURLtoBlob(uploadPreview);
+
+      const formData = new FormData();
+      formData.append("signature", blob, "signature.png");
+
+      await axiosInstance.put(`/users/${userId}/signature`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      alert("Signature uploaded successfully!");
+      setDrawingSignatureFor(null);
+      setUploadPreview(null);
+      setSignatureMode("draw");
+      if (signatureFileInputRef.current) {
+        signatureFileInputRef.current.value = "";
+      }
+      fetchSignatureUsers();
+    } catch (err) {
+      alert("Error: " + (err.response?.data?.message || "Failed to upload signature"));
+    } finally {
+      setSignatureSaving(false);
+    }
+  };
+
+  // Reset signature mode when closing
+  const handleCancelSignature = () => {
+    setDrawingSignatureFor(null);
+    setSignatureMode("draw");
+    setUploadPreview(null);
+    if (signatureFileInputRef.current) {
+      signatureFileInputRef.current.value = "";
     }
   };
 
@@ -1006,36 +1177,145 @@ function UserManagement() {
                           <PencilSquareIcon className="mx-auto h-12 w-12 text-gray-400" />
                           <h3 className="mt-2 text-sm font-medium text-gray-900">Create Your Signature</h3>
                           <p className="mt-1 text-sm text-gray-500">
-                            Draw your signature below to use for signing KYC documents.
+                            Draw or upload your signature to use for signing KYC documents.
                           </p>
                         </div>
-                        <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-2">
-                          <SignatureCanvas
-                            ref={signatureCanvasRef}
-                            canvasProps={{
-                              width: 400,
-                              height: 150,
-                              className: "w-full rounded-lg",
-                              style: { background: "#fff" },
-                            }}
-                            penColor="black"
-                          />
-                        </div>
-                        <div className="mt-4 flex gap-3">
+
+                        {/* Draw/Upload Tabs for non-admin */}
+                        <div className="flex mb-4 bg-white rounded-lg p-1 border border-gray-200">
                           <button
-                            onClick={() => signatureCanvasRef.current?.clear()}
-                            className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            onClick={() => setSignatureMode("draw")}
+                            className={clsx(
+                              "flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                              signatureMode === "draw"
+                                ? "bg-blue-600 text-white"
+                                : "text-gray-600 hover:bg-gray-100"
+                            )}
                           >
-                            Clear
+                            <PencilSquareIcon className="h-4 w-4 mr-1" />
+                            Draw
                           </button>
                           <button
-                            onClick={() => handleSaveSignature(currentUser._id)}
-                            disabled={signatureSaving}
-                            className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-500 hover:to-indigo-500 transition-colors disabled:opacity-50"
+                            onClick={() => setSignatureMode("upload")}
+                            className={clsx(
+                              "flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                              signatureMode === "upload"
+                                ? "bg-blue-600 text-white"
+                                : "text-gray-600 hover:bg-gray-100"
+                            )}
                           >
-                            {signatureSaving ? "Saving..." : "Save Signature"}
+                            <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
+                            Upload
                           </button>
                         </div>
+
+                        {signatureMode === "draw" ? (
+                          <>
+                            <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-2">
+                              <SignatureCanvas
+                                ref={signatureCanvasRef}
+                                canvasProps={{
+                                  width: 400,
+                                  height: 150,
+                                  className: "w-full rounded-lg",
+                                  style: { background: "#fff" },
+                                }}
+                                penColor="black"
+                              />
+                            </div>
+                            <div className="mt-4 flex gap-3">
+                              <button
+                                onClick={() => signatureCanvasRef.current?.clear()}
+                                className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                              >
+                                Clear
+                              </button>
+                              <button
+                                onClick={() => handleSaveSignature(currentUser._id)}
+                                disabled={signatureSaving}
+                                className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-500 hover:to-indigo-500 transition-colors disabled:opacity-50"
+                              >
+                                {signatureSaving ? "Saving..." : "Save Signature"}
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-4">
+                              <input
+                                type="file"
+                                ref={signatureFileInputRef}
+                                accept="image/*"
+                                onChange={handleSignatureFileChange}
+                                className="hidden"
+                                id="signature-upload-self"
+                              />
+                              {uploadPreview ? (
+                                <div className="space-y-3">
+                                  <div className="flex justify-center">
+                                    <div
+                                      className="border border-gray-200 rounded-lg p-2"
+                                      style={{
+                                        background: "repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 50% / 16px 16px"
+                                      }}
+                                    >
+                                      <img
+                                        src={uploadPreview}
+                                        alt="Signature preview"
+                                        className="max-h-32 object-contain"
+                                      />
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-center text-green-600">Background removed</p>
+                                  <button
+                                    onClick={() => {
+                                      setUploadPreview(null);
+                                      if (signatureFileInputRef.current) {
+                                        signatureFileInputRef.current.value = "";
+                                      }
+                                    }}
+                                    className="w-full text-sm text-gray-500 hover:text-gray-700"
+                                  >
+                                    Remove and choose another
+                                  </button>
+                                </div>
+                              ) : (
+                                <label
+                                  htmlFor="signature-upload-self"
+                                  className="flex flex-col items-center justify-center cursor-pointer py-6"
+                                >
+                                  <ArrowUpTrayIcon className="h-10 w-10 text-gray-400 mb-2" />
+                                  <span className="text-sm font-medium text-gray-600">
+                                    Click to upload signature image
+                                  </span>
+                                  <span className="text-xs text-gray-400 mt-1">
+                                    PNG, JPG up to 5MB
+                                  </span>
+                                </label>
+                              )}
+                            </div>
+                            <div className="mt-4 flex gap-3">
+                              <button
+                                onClick={() => {
+                                  setUploadPreview(null);
+                                  if (signatureFileInputRef.current) {
+                                    signatureFileInputRef.current.value = "";
+                                  }
+                                }}
+                                className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                              >
+                                Clear
+                              </button>
+                              <button
+                                onClick={() => handleUploadSignature(currentUser._id)}
+                                disabled={signatureSaving || !uploadPreview}
+                                className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-500 hover:to-indigo-500 transition-colors disabled:opacity-50"
+                              >
+                                {signatureSaving ? "Uploading..." : "Upload Signature"}
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -1117,38 +1397,149 @@ function UserManagement() {
 
                             {drawingSignatureFor === user._id && (
                               <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Draw signature below
-                                </label>
-                                <div className="bg-white rounded-lg border-2 border-gray-300 overflow-hidden">
-                                  <SignatureCanvas
-                                    ref={signatureCanvasRef}
-                                    penColor="black"
-                                    canvasProps={{
-                                      width: 280,
-                                      height: 120,
-                                      className: "signature-canvas w-full"
-                                    }}
-                                    backgroundColor="white"
-                                  />
-                                </div>
-                                <div className="mt-3 flex gap-2">
+                                {/* Draw/Upload Tabs */}
+                                <div className="flex mb-4 bg-white rounded-lg p-1 border border-gray-200">
                                   <button
-                                    onClick={handleClearSignature}
-                                    className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                    onClick={() => setSignatureMode("draw")}
+                                    className={clsx(
+                                      "flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                                      signatureMode === "draw"
+                                        ? "bg-blue-600 text-white"
+                                        : "text-gray-600 hover:bg-gray-100"
+                                    )}
                                   >
-                                    Clear
+                                    <PencilSquareIcon className="h-4 w-4 mr-1" />
+                                    Draw
                                   </button>
                                   <button
-                                    onClick={() => handleSaveSignature(user._id)}
-                                    disabled={signatureSaving}
-                                    className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    onClick={() => setSignatureMode("upload")}
+                                    className={clsx(
+                                      "flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                                      signatureMode === "upload"
+                                        ? "bg-blue-600 text-white"
+                                        : "text-gray-600 hover:bg-gray-100"
+                                    )}
                                   >
-                                    {signatureSaving ? "Saving..." : "Save Signature"}
+                                    <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
+                                    Upload
                                   </button>
                                 </div>
+
+                                {signatureMode === "draw" ? (
+                                  <>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Draw signature below
+                                    </label>
+                                    <div className="bg-white rounded-lg border-2 border-gray-300 overflow-hidden">
+                                      <SignatureCanvas
+                                        ref={signatureCanvasRef}
+                                        penColor="black"
+                                        canvasProps={{
+                                          width: 280,
+                                          height: 120,
+                                          className: "signature-canvas w-full"
+                                        }}
+                                        backgroundColor="white"
+                                      />
+                                    </div>
+                                    <div className="mt-3 flex gap-2">
+                                      <button
+                                        onClick={handleClearSignature}
+                                        className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                      >
+                                        Clear
+                                      </button>
+                                      <button
+                                        onClick={() => handleSaveSignature(user._id)}
+                                        disabled={signatureSaving}
+                                        className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                      >
+                                        {signatureSaving ? "Saving..." : "Save Signature"}
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Upload signature image
+                                    </label>
+                                    <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-4">
+                                      <input
+                                        type="file"
+                                        ref={signatureFileInputRef}
+                                        accept="image/*"
+                                        onChange={handleSignatureFileChange}
+                                        className="hidden"
+                                        id={`signature-upload-${user._id}`}
+                                      />
+                                      {uploadPreview ? (
+                                        <div className="space-y-3">
+                                          <div className="flex justify-center">
+                                            <div
+                                              className="border border-gray-200 rounded-lg p-2"
+                                              style={{
+                                                background: "repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 50% / 16px 16px"
+                                              }}
+                                            >
+                                              <img
+                                                src={uploadPreview}
+                                                alt="Signature preview"
+                                                className="max-h-24 object-contain"
+                                              />
+                                            </div>
+                                          </div>
+                                          <p className="text-xs text-center text-green-600">Background removed</p>
+                                          <button
+                                            onClick={() => {
+                                              setUploadPreview(null);
+                                              if (signatureFileInputRef.current) {
+                                                signatureFileInputRef.current.value = "";
+                                              }
+                                            }}
+                                            className="w-full text-sm text-gray-500 hover:text-gray-700"
+                                          >
+                                            Remove and choose another
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <label
+                                          htmlFor={`signature-upload-${user._id}`}
+                                          className="flex flex-col items-center justify-center cursor-pointer py-4"
+                                        >
+                                          <ArrowUpTrayIcon className="h-8 w-8 text-gray-400 mb-2" />
+                                          <span className="text-sm font-medium text-gray-600">
+                                            Click to upload signature
+                                          </span>
+                                          <span className="text-xs text-gray-400 mt-1">
+                                            PNG, JPG up to 5MB
+                                          </span>
+                                        </label>
+                                      )}
+                                    </div>
+                                    <div className="mt-3 flex gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setUploadPreview(null);
+                                          if (signatureFileInputRef.current) {
+                                            signatureFileInputRef.current.value = "";
+                                          }
+                                        }}
+                                        className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                      >
+                                        Clear
+                                      </button>
+                                      <button
+                                        onClick={() => handleUploadSignature(user._id)}
+                                        disabled={signatureSaving || !uploadPreview}
+                                        className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                      >
+                                        {signatureSaving ? "Uploading..." : "Upload Signature"}
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
                                 <button
-                                  onClick={() => setDrawingSignatureFor(null)}
+                                  onClick={handleCancelSignature}
                                   className="w-full mt-2 inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
                                 >
                                   Cancel

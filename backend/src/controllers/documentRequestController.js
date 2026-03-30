@@ -705,8 +705,8 @@ const submitPublicForm = async (req, res) => {
       console.log("Total users found:", allUsersWithRoles.length);
 
       const usersToEmail = allUsersWithRoles.filter(user => {
-        if (!user.role || !user.role.permissions) return false;
-        return user.role.permissions.operationManagement === true || user.role.name === "admin";
+        if (!user.role) return false;
+        return user.role.name === "admin";
       });
 
       console.log("Users with operationManagement/admin:", usersToEmail.map(u => u.email));

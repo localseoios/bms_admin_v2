@@ -868,8 +868,33 @@ const deleteClient = asyncHandler(async (req, res) => {
       };
     }
 
+    const deletedClientCode = parseInt(client.clientCode, 10);
+
     console.log("Deleting client...");
     await Client.deleteOne({ gmail });
+
+    if (!isNaN(deletedClientCode)) {
+      const clientsToUpdate = await Client.find({
+        clientCode: { $ne: '', $exists: true }
+      }).select('clientCode');
+
+      const bulkOps = [];
+      clientsToUpdate.forEach(c => {
+        const code = parseInt(c.clientCode, 10);
+        if (!isNaN(code) && code > deletedClientCode) {
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: c._id },
+              update: { $set: { clientCode: String(code - 1) } }
+            }
+          });
+        }
+      });
+
+      if (bulkOps.length > 0) {
+        await Client.bulkWrite(bulkOps);
+      }
+    }
 
     console.log(`Client ${client.name} (${gmail}) deleted with ${deletedJobsData.jobCount} jobs and related data`);
     console.log("=== DELETE CLIENT SUCCESS ===");

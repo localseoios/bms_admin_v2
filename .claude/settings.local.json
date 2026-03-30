@@ -52,7 +52,9 @@
       "WebSearch",
       "Skill(pdf)",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Skill(docx)",
+      "Bash(npm run lint:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
