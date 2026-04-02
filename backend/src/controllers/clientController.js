@@ -876,23 +876,18 @@ const deleteClient = asyncHandler(async (req, res) => {
     if (!isNaN(deletedClientCode)) {
       const clientsToUpdate = await Client.find({
         clientCode: { $ne: '', $exists: true }
-      }).select('clientCode');
+      }).select('clientCode').lean();
 
-      const bulkOps = [];
-      clientsToUpdate.forEach(c => {
-        const code = parseInt(c.clientCode, 10);
-        if (!isNaN(code) && code > deletedClientCode) {
-          bulkOps.push({
-            updateOne: {
-              filter: { _id: c._id },
-              update: { $set: { clientCode: String(code - 1) } }
-            }
-          });
-        }
-      });
+      const filtered = clientsToUpdate
+        .map(c => ({ _id: c._id, code: parseInt(c.clientCode, 10) }))
+        .filter(c => !isNaN(c.code) && c.code > deletedClientCode)
+        .sort((a, b) => a.code - b.code);
 
-      if (bulkOps.length > 0) {
-        await Client.bulkWrite(bulkOps);
+      for (const c of filtered) {
+        await Client.updateOne(
+          { _id: c._id },
+          { $set: { clientCode: String(c.code - 1) } }
+        );
       }
     }
 

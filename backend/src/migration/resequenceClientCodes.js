@@ -13,25 +13,32 @@ const resequenceClientCodes = async () => {
 
     console.log(`Found ${clients.length} clients with client codes`);
 
-    const bulkOps = [];
-    clients.forEach((client, index) => {
-      const newCode = String(index + 1);
-      if (client.clientCode !== newCode) {
-        bulkOps.push({
-          updateOne: {
-            filter: { _id: client._id },
-            update: { $set: { clientCode: newCode } }
-          }
-        });
-        console.log(`${client.name}: ${client.clientCode} → ${newCode}`);
+    const tempOps = clients.map((client, index) => ({
+      updateOne: {
+        filter: { _id: client._id },
+        update: { $set: { clientCode: `temp_${index + 1}` } }
       }
+    }));
+
+    if (tempOps.length > 0) {
+      await Client.bulkWrite(tempOps, { ordered: false });
+      console.log("Set temporary codes");
+    }
+
+    const finalOps = clients.map((client, index) => {
+      const newCode = String(index + 1);
+      console.log(`${client.name}: ${client.clientCode} → ${newCode}`);
+      return {
+        updateOne: {
+          filter: { _id: client._id },
+          update: { $set: { clientCode: newCode } }
+        }
+      };
     });
 
-    if (bulkOps.length > 0) {
-      await Client.bulkWrite(bulkOps);
-      console.log(`Updated ${bulkOps.length} client codes`);
-    } else {
-      console.log("All client codes are already sequential");
+    if (finalOps.length > 0) {
+      await Client.bulkWrite(finalOps, { ordered: false });
+      console.log(`Updated ${finalOps.length} client codes`);
     }
 
     console.log("Resequencing completed successfully");
