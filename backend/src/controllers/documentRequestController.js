@@ -131,15 +131,29 @@ const createDocumentRequest = async (req, res) => {
     console.log("=== CREATE DOCUMENT REQUEST ===");
     console.log("Request body:", JSON.stringify(req.body, null, 2));
 
-    const { clientId, templateId, customFields, message, subject, expiryDays, relatedJobId, noExpiry, allowMultipleSubmissions, allowCustomerFields } = req.body;
+    const { clientId, manualEmail, manualName, templateId, customFields, message, subject, expiryDays, relatedJobId, noExpiry, allowMultipleSubmissions, allowCustomerFields } = req.body;
 
-    console.log("Looking for client:", clientId);
-    const client = await Client.findById(clientId);
-    if (!client) {
-      console.log("Client not found!");
-      return res.status(404).json({ message: "Client not found" });
+    let client = null;
+    let recipientEmail = "";
+    let recipientName = "";
+
+    if (clientId) {
+      console.log("Looking for client:", clientId);
+      client = await Client.findById(clientId);
+      if (!client) {
+        console.log("Client not found!");
+        return res.status(404).json({ message: "Client not found" });
+      }
+      console.log("Client found:", client.name);
+      recipientEmail = client.gmail;
+      recipientName = client.name;
+    } else if (manualEmail) {
+      recipientEmail = manualEmail;
+      recipientName = manualName || manualEmail;
+      console.log("Manual email request for:", recipientEmail);
+    } else {
+      return res.status(400).json({ message: "Client or email is required" });
     }
-    console.log("Client found:", client.name);
 
     let fields = customFields || [];
     if (templateId) {
@@ -151,11 +165,7 @@ const createDocumentRequest = async (req, res) => {
 
     const expiresAt = noExpiry ? null : new Date(Date.now() + (expiryDays || 7) * 24 * 60 * 60 * 1000);
 
-    console.log("Fields to save:", JSON.stringify(fields, null, 2));
-    console.log("Creating document request...");
-
-    const documentRequest = new DocumentRequest({
-      clientId,
+    const requestData = {
       templateId,
       customFields: fields,
       message,
@@ -167,9 +177,16 @@ const createDocumentRequest = async (req, res) => {
       createdBy: req.user._id,
       relatedJobId,
       sentAt: new Date(),
-    });
+    };
 
-    console.log("Saving document request...");
+    if (clientId) {
+      requestData.clientId = clientId;
+    } else {
+      requestData.manualEmail = manualEmail;
+      requestData.manualName = manualName || manualEmail;
+    }
+
+    const documentRequest = new DocumentRequest(requestData);
     await documentRequest.save();
     console.log("Document request saved:", documentRequest._id);
 
@@ -177,8 +194,8 @@ const createDocumentRequest = async (req, res) => {
 
     try {
       await sendDocumentRequestEmail(
-        client.gmail,
-        client.name,
+        recipientEmail,
+        recipientName,
         {
           subject: documentRequest.subject,
           message: documentRequest.message,
@@ -369,7 +386,7 @@ const getPublicForm = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      clientName: request.clientId?.name,
+      clientName: request.clientId?.name || request.manualName || "",
       message: request.message,
       subject: request.subject,
       fields,
@@ -604,13 +621,16 @@ const submitPublicForm = async (req, res) => {
       await existingSubmission.save();
       submission = existingSubmission;
     } else {
-      submission = new ClientSubmission({
+      const submissionData = {
         documentRequestId: request._id,
-        clientId: request.clientId._id,
         submittedFields,
         clientIp: req.ip,
         clientUserAgent: req.headers["user-agent"],
-      });
+      };
+      if (request.clientId) {
+        submissionData.clientId = request.clientId._id;
+      }
+      submission = new ClientSubmission(submissionData);
       await submission.save();
     }
 
@@ -625,16 +645,18 @@ const submitPublicForm = async (req, res) => {
     console.log("DOCUMENT SUBMISSION - STARTING NOTIFICATIONS");
     console.log("========================================");
     console.log("Is Update:", isUpdate);
-    console.log("Client Name:", request.clientId?.name);
-    console.log("Client Email:", request.clientId?.gmail);
+    const clientDisplayName = request.clientId?.name || request.manualName || "Unknown";
+    const clientDisplayEmail = request.clientId?.gmail || request.manualEmail || "Unknown";
+    console.log("Client Name:", clientDisplayName);
+    console.log("Client Email:", clientDisplayEmail);
     console.log("Email Config - EMAIL_USER:", process.env.EMAIL_USER ? "SET" : "NOT SET");
     console.log("Email Config - EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
     console.log("Email Config - EMAIL_FROM:", process.env.EMAIL_FROM ? "SET" : "NOT SET");
 
     const notificationTitle = isUpdate ? "Document Submission Updated" : "New Document Submission";
     const notificationDesc = isUpdate
-      ? `Client "${request.clientId?.name || 'Unknown'}" has updated their document submission`
-      : `Client "${request.clientId?.name || 'Unknown'}" has submitted requested documents`;
+      ? `Client "${clientDisplayName}" has updated their document submission`
+      : `Client "${clientDisplayName}" has submitted requested documents`;
 
     try {
       console.log("=== SUBMISSION NOTIFICATION START ===");
@@ -680,8 +702,8 @@ const submitPublicForm = async (req, res) => {
       const frontendUrl = getFrontendUrl();
       const reviewUrl = `${frontendUrl}/document-requests?tab=submissions`;
       const submissionEmailData = {
-        clientName: request.clientId?.name || "Unknown Client",
-        clientEmail: request.clientId?.gmail || "N/A",
+        clientName: clientDisplayName,
+        clientEmail: clientDisplayEmail,
         requestSubject: request.subject || "Document Request",
         isUpdate: isUpdate,
         reviewUrl: reviewUrl,
@@ -750,7 +772,7 @@ const getSubmissions = async (req, res) => {
 
     const submissions = await ClientSubmission.find(query)
       .populate("clientId", "name gmail clientCode")
-      .populate("documentRequestId", "subject message createdAt")
+      .populate("documentRequestId", "subject message createdAt manualEmail manualName")
       .populate("reviewedBy", "name")
       .populate("processedBy", "name")
       .sort({ createdAt: -1 })
@@ -786,7 +808,7 @@ const getSubmissionById = async (req, res) => {
   try {
     const submission = await ClientSubmission.findById(req.params.id)
       .populate("clientId", "name gmail clientCode")
-      .populate("documentRequestId", "subject message customFields templateId createdAt")
+      .populate("documentRequestId", "subject message customFields templateId createdAt manualEmail manualName")
       .populate("reviewedBy", "name email")
       .populate("processedBy", "name email");
 

@@ -20,9 +20,13 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
     allowCustomerFields: false,
     customFields: [],
   });
+  const [manualEmail, setManualEmail] = useState("");
+  const [manualName, setManualName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState("");
+
+  const isManualMode = !client;
 
   useEffect(() => {
     if (isOpen) {
@@ -37,6 +41,8 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
         customFields: [],
       });
       setSelectedTemplate("");
+      setManualEmail("");
+      setManualName("");
     }
   }, [isOpen]);
 
@@ -65,6 +71,16 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (isManualMode && !manualEmail.trim()) {
+      toast.error("Please enter an email address");
+      return;
+    }
+
+    if (isManualMode && !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(manualEmail.trim())) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
     if (!formData.message.trim()) {
       toast.error("Please enter a message");
       return;
@@ -84,7 +100,6 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
     try {
       setIsSubmitting(true);
       const payload = {
-        clientId: client._id,
         subject: formData.subject,
         message: formData.message,
         expiryDays: formData.noExpiry ? null : formData.expiryDays,
@@ -97,6 +112,13 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
           order: i,
         })),
       };
+
+      if (client) {
+        payload.clientId = client._id;
+      } else {
+        payload.manualEmail = manualEmail.trim();
+        payload.manualName = manualName.trim() || manualEmail.trim();
+      }
 
       if (selectedTemplate) {
         payload.templateId = selectedTemplate;
@@ -146,7 +168,7 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
                       Request Documents
                     </Dialog.Title>
                     <p className="mt-1 text-sm text-gray-500">
-                      Send a document request to the client
+                      {isManualMode ? "Send a document request via email" : "Send a document request to the client"}
                     </p>
                   </div>
                   <button
@@ -158,24 +180,61 @@ function SendRequestModal({ isOpen, onClose, client, onSuccess }) {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                    <h4 className="text-sm font-medium text-blue-800 mb-2">Client</h4>
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium">
-                        {client?.name?.charAt(0) || "?"}
+                  {isManualMode ? (
+                    <div className="bg-orange-50 rounded-lg p-4 border border-orange-200 space-y-3">
+                      <h4 className="text-sm font-medium text-orange-800">Recipient Details</h4>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Email Address *
+                        </label>
+                        <div className="relative">
+                          <EnvelopeIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+                          <input
+                            type="email"
+                            value={manualEmail}
+                            onChange={(e) => setManualEmail(e.target.value)}
+                            className="w-full pl-10 pr-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                            placeholder="client@example.com"
+                            required
+                          />
+                        </div>
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <UserIcon className="h-4 w-4 text-blue-600" />
-                          <span className="font-medium text-gray-900">{client?.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <EnvelopeIcon className="h-4 w-4 text-blue-600" />
-                          <span>{client?.gmail}</span>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Recipient Name (Optional)
+                        </label>
+                        <div className="relative">
+                          <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+                          <input
+                            type="text"
+                            value={manualName}
+                            onChange={(e) => setManualName(e.target.value)}
+                            className="w-full pl-10 pr-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                            placeholder="Client name"
+                          />
                         </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <h4 className="text-sm font-medium text-blue-800 mb-2">Client</h4>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium">
+                          {client?.name?.charAt(0) || "?"}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <UserIcon className="h-4 w-4 text-blue-600" />
+                            <span className="font-medium text-gray-900">{client?.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <EnvelopeIcon className="h-4 w-4 text-blue-600" />
+                            <span>{client?.gmail}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {templates.length > 0 && (
                     <div>

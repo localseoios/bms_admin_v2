@@ -96,8 +96,8 @@ function SubmissionsList() {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
-      sub.clientId?.name?.toLowerCase().includes(query) ||
-      sub.clientId?.gmail?.toLowerCase().includes(query) ||
+      (sub.clientId?.name || sub.documentRequestId?.manualName || "").toLowerCase().includes(query) ||
+      (sub.clientId?.gmail || sub.documentRequestId?.manualEmail || "").toLowerCase().includes(query) ||
       sub.documentRequestId?.subject?.toLowerCase().includes(query)
     );
   });
@@ -238,15 +238,15 @@ function SubmissionsList() {
                           <div className="flex items-center">
                             <div className="h-10 w-10 flex-shrink-0">
                               <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium">
-                                {submission.clientId?.name?.charAt(0) || "?"}
+                                {(submission.clientId?.name || submission.documentRequestId?.manualName || "?").charAt(0)}
                               </div>
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">
-                                {submission.clientId?.name || "Unknown"}
+                                {submission.clientId?.name || submission.documentRequestId?.manualName || "Unknown"}
                               </div>
                               <div className="text-sm text-gray-500">
-                                {submission.clientId?.gmail || "-"}
+                                {submission.clientId?.gmail || submission.documentRequestId?.manualEmail || "-"}
                               </div>
                             </div>
                           </div>

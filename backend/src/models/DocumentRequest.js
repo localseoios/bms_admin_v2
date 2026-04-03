@@ -22,8 +22,9 @@ const documentRequestSchema = new mongoose.Schema({
   clientId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Client",
-    required: true
   },
+  manualEmail: { type: String },
+  manualName: { type: String },
   templateId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "DocumentRequestTemplate"

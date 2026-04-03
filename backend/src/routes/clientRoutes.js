@@ -17,6 +17,7 @@ const {
   getClientsByRole,
   exportComplianceClients,
   searchClientsWithDetails,
+  getComplianceHubStats,
 } = require("../controllers/clientController");
 const { protect, checkPermission } = require("../middleware/authMiddleware");
 
@@ -42,6 +43,8 @@ router.get(
   protect,
   getClientsByRole
 );
+
+router.get("/compliance/hub-stats", getComplianceHubStats);
 
 // Route to get all clients for compliance (no auth needed for now)
 router.get("/compliance/all", getAllClients);

@@ -170,11 +170,11 @@ function SubmissionDetails() {
                 <div className="space-y-2">
                   <div className="flex items-center">
                     <UserIcon className="h-5 w-5 text-gray-400 mr-2" />
-                    <span className="text-gray-900">{submission?.clientId?.name || "Unknown"}</span>
+                    <span className="text-gray-900">{submission?.clientId?.name || submission?.documentRequestId?.manualName || "Unknown"}</span>
                   </div>
                   <div className="flex items-center">
                     <EnvelopeIcon className="h-5 w-5 text-gray-400 mr-2" />
-                    <span className="text-gray-600">{submission?.clientId?.gmail || "-"}</span>
+                    <span className="text-gray-600">{submission?.clientId?.gmail || submission?.documentRequestId?.manualEmail || "-"}</span>
                   </div>
                 </div>
               </div>

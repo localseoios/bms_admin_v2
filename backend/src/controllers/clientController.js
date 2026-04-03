@@ -1443,6 +1443,22 @@ const searchClientsWithDetails = asyncHandler(async (req, res) => {
   }
 });
 
+const getComplianceHubStats = asyncHandler(async (req, res) => {
+  const User = require("../models/userModel");
+
+  const [totalClients, totalUsers, activeJobClientIds] = await Promise.all([
+    Client.countDocuments(),
+    User.countDocuments(),
+    Job.distinct('clientId', { status: { $ne: 'cancelled' } })
+  ]);
+
+  res.status(200).json({
+    totalClients,
+    activeClients: activeJobClientIds.length,
+    totalUsers
+  });
+});
+
 module.exports = {
   getClientByGmail,
   getEngagementLetterByGmail,
@@ -1459,4 +1475,5 @@ module.exports = {
   getClientsByRole,
   exportComplianceClients,
   searchClientsWithDetails,
+  getComplianceHubStats,
 };

@@ -612,7 +612,17 @@ const exportAllJobsQFC = async () => {
               )}
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:flex-none">
+          <div className="mt-4 sm:mt-0 sm:flex-none flex gap-3">
+            <button
+              onClick={() => {
+                setRequestClient(null);
+                setIsRequestModalOpen(true);
+              }}
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-medium group"
+            >
+              <PaperAirplaneIcon className="h-5 w-5 mr-2 group-hover:translate-x-1 transition-transform" />
+              Send to Email
+            </button>
             <button
               onClick={exportClients}
               disabled={exporting}

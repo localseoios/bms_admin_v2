@@ -19,13 +19,29 @@ const ComplianceSelection = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [localUser, setLocalUser] = useState(null);
+  const [hubStats, setHubStats] = useState({ totalClients: 0, activeClients: 0, totalUsers: 0 });
 
   useEffect(() => {
-    // Get user from localStorage as fallback
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       setLocalUser(JSON.parse(storedUser));
     }
+  }, []);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await axiosInstance.get("/clients/compliance/hub-stats");
+        setHubStats({
+          totalClients: response.data.totalClients || 0,
+          activeClients: response.data.activeClients || 0,
+          totalUsers: response.data.totalUsers || 0
+        });
+      } catch (error) {
+        console.error("Error fetching hub stats:", error);
+      }
+    };
+    fetchStats();
   }, []);
 
   const currentUser = user || localUser;
@@ -63,7 +79,7 @@ const ComplianceSelection = () => {
       shadowColor: "shadow-emerald-500/25",
       hoverShadow: "group-hover:shadow-emerald-500/40",
       route: "/compliance-staff",
-      stats: "24 Team Members"
+      stats: `${hubStats.totalUsers} Team Members`
     },
     {
       id: "compliance-client",
@@ -75,7 +91,7 @@ const ComplianceSelection = () => {
       shadowColor: "shadow-purple-500/25",
       hoverShadow: "group-hover:shadow-purple-500/40",
       route: "/compliance/clients",
-      stats: "156 Active Clients"
+      stats: `${hubStats.activeClients} Active Clients`
     },
     {
       id: "organizational-structure",
