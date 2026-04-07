@@ -1046,11 +1046,6 @@ const ComplianceResource = () => {
                                   Important
                                 </span>
                               )}
-                              {document.isFromCultureAPI && document.documentType && (
-                                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full capitalize">
-                                  {document.documentType}
-                                </span>
-                              )}
                               {document.isLink && document.link && (
                                 <a 
                                   href={document.link} 
@@ -1064,7 +1059,16 @@ const ComplianceResource = () => {
                             </div>
                             <p className="text-sm text-gray-600 mt-1">{document.description}</p>
                             {document.isLink && document.link && (
-                              <p className="text-xs text-blue-600 mt-1 truncate">{document.link}</p>
+                              <a
+                                href={document.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-full text-xs text-blue-700 font-medium max-w-xs"
+                                title={document.link}
+                              >
+                                <LinkIcon className="w-3 h-3 flex-shrink-0" />
+                                <span className="truncate">{(() => { try { return new URL(document.link).hostname.replace('www.', ''); } catch { return document.link; } })()}</span>
+                              </a>
                             )}
                             <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                               <span className="flex items-center space-x-1">
