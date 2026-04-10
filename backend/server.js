@@ -259,6 +259,7 @@ app.use("/api/archives", require("./src/routes/archiveRoutes"));
 app.use("/api/organizational-structure", require("./src/routes/organizationalStructureRoutes"));
 app.use("/api/document-requests", require("./src/routes/documentRequestRoutes"));
 app.use("/api/public", require("./src/routes/publicSubmissionRoutes"));
+app.use("/api/chat", require("./src/routes/chatRoutes"));
 
 
 // Add a catch-all route AFTER all your API routes to debug 404s

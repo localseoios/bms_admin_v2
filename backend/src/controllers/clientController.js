@@ -1452,9 +1452,13 @@ const getComplianceHubStats = asyncHandler(async (req, res) => {
     Job.distinct('clientId', { status: { $ne: 'cancelled' } })
   ]);
 
+  const existingActiveClients = await Client.countDocuments({
+    _id: { $in: activeJobClientIds }
+  });
+
   res.status(200).json({
     totalClients,
-    activeClients: activeJobClientIds.length,
+    activeClients: existingActiveClients,
     totalUsers
   });
 });

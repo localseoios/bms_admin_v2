@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line no-unused-vars
 import Header from "./Header";
 import Sidebar from "./Sidebar";
+import ChatWidget from "./ChatWidget";
 
 function Layout() {
   const location = useLocation();
@@ -169,6 +170,7 @@ function Layout() {
           )}
         </AnimatePresence>
       </main>
+      <ChatWidget />
     </div>
   );
 }
