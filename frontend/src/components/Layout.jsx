@@ -170,7 +170,7 @@ function Layout() {
           )}
         </AnimatePresence>
       </main>
-      <ChatWidget />
+      {/* <ChatWidget /> */}
     </div>
   );
 }
