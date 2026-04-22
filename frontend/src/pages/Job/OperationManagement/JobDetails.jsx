@@ -48,7 +48,343 @@ import {
 import * as XLSX from "xlsx";
 import operationService from "../../../utils/operationService";
 
+const SyncInformationBox = ({ personType, gmail, onMessage, onRefreshAll }) => {
+  const [showSyncInfo, setShowSyncInfo] = useState(false);
+  const [syncData, setSyncData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
+  const checkInconsistencies = async () => {
+    try {
+      setLoading(true);
+      const response = await axiosInstance.get(
+        `/clients/${gmail}/check-inconsistencies`
+      );
+      setSyncData(response.data);
+      setShowSyncInfo(true);
+    } catch (err) {
+      console.error("Error checking inconsistencies:", err);
+      onMessage({
+        type: "error",
+        message: "Failed to check for data inconsistencies",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForceSync = async () => {
+    try {
+      setSyncing(true);
+      const response = await axiosInstance.post(
+        `/clients/${gmail}/sync/${personType}`
+      );
+
+      if (response.data.success) {
+        onMessage({
+          type: "success",
+          message: `Successfully synchronized ${response.data.updatedRecords} ${personType} records across all jobs for this client.`,
+        });
+
+        await onRefreshAll();
+        await checkInconsistencies();
+      } else {
+        onMessage({
+          type: "error",
+          message: `Synchronization failed: ${response.data.message}`,
+        });
+      }
+    } catch (err) {
+      console.error("Error during forced synchronization:", err);
+      onMessage({
+        type: "error",
+        message: err.response?.data?.message || "Failed to synchronize records",
+      });
+    } finally {
+      setSyncing(false);
+      setTimeout(() => {
+        onMessage({ type: null, message: null });
+      }, 3000);
+    }
+  };
+
+  if (!gmail) return null;
+
+  return (
+    <div className="mt-4 border border-indigo-100 rounded-lg p-4 bg-indigo-50/30">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center">
+          <InformationCircleIcon className="h-5 w-5 text-indigo-600 mr-2" />
+          <h3 className="text-sm font-medium text-indigo-800">
+            Client Data Synchronization
+          </h3>
+        </div>
+        {!showSyncInfo ? (
+          <button
+            onClick={checkInconsistencies}
+            disabled={loading}
+            className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+          >
+            {loading ? (
+              <>
+                <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-indigo-600 rounded-full"></span>{" "}
+                Checking...
+              </>
+            ) : (
+              <>
+                View Details
+                <ChevronDownIcon className="h-4 w-4 ml-1" />
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowSyncInfo(false)}
+            className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+          >
+            Hide Details
+            <ChevronUpIcon className="h-4 w-4 ml-1" />
+          </button>
+        )}
+      </div>
+
+      {showSyncInfo && syncData && (
+        <div className="mt-3 text-sm">
+          {syncData.records[personType] > 1 ? (
+            <div>
+              <p className="text-indigo-800">
+                <strong>Found {syncData.records[personType]} records</strong>{" "}
+                for this {personType} across different jobs for the same
+                client.
+              </p>
+
+              {syncData.hasInconsistencies &&
+                syncData.inconsistencies[personType] && (
+                  <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <p className="font-medium text-yellow-800">
+                      Inconsistencies detected:
+                    </p>
+                    <ul className="mt-1 list-disc pl-5 space-y-1 text-yellow-700">
+                      {Object.entries(
+                        syncData.inconsistencies[personType]
+                      ).map(([field, values]) => (
+                        <li key={field}>
+                          <strong>{field}:</strong> has {values.length}{" "}
+                          different values ({values.join(", ")})
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-3">
+                      <button
+                        onClick={handleForceSync}
+                        disabled={syncing}
+                        className={`px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors ${
+                          syncing ? "opacity-70 cursor-not-allowed" : ""
+                        }`}
+                      >
+                        {syncing ? (
+                          <span className="flex items-center">
+                            <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-white rounded-full"></span>{" "}
+                            Synchronizing...
+                          </span>
+                        ) : (
+                          <span className="flex items-center">
+                            <ArrowPathIcon className="h-4 w-4 mr-1" />
+                            Force Synchronization
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              <p className="mt-2 text-indigo-700">
+                Changes to this form will be automatically synchronized across
+                all jobs for this client.
+              </p>
+            </div>
+          ) : (
+            <p className="text-indigo-700">
+              There is only one {personType} record for this client. No
+              synchronization needed.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CompanySyncInformationBox = ({ gmail, jobId, onMessage, onRefreshCompanyDetails }) => {
+  const [showSyncInfo, setShowSyncInfo] = useState(false);
+  const [syncData, setSyncData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const checkCompanyDetails = async () => {
+    try {
+      setLoading(true);
+      const response = await axiosInstance.get(
+        `/clients/${gmail}/company-details-status`
+      );
+
+      if (response.data) {
+        setSyncData(response.data);
+      } else {
+        setSyncData({
+          totalJobs: 0,
+          jobsWithCompanyDetails: 0,
+          hasMultipleJobs: false,
+        });
+      }
+
+      setShowSyncInfo(true);
+    } catch (err) {
+      console.error("Error checking company details:", err);
+      onMessage({
+        type: "error",
+        message: "Failed to check for company details across jobs",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForceSync = async () => {
+    try {
+      setSyncing(true);
+
+      const formData = new FormData();
+      formData.append("syncAcrossJobs", "true");
+
+      const response = await axiosInstance.put(
+        `/operations/jobs/${jobId}/company-details`,
+        formData
+      );
+
+      if (
+        response.data &&
+        response.data.syncResult &&
+        response.data.syncResult.success
+      ) {
+        onMessage({
+          type: "success",
+          message: `Successfully synchronized company details across ${response.data.syncResult.updatedRecords} job(s) for this client.`,
+        });
+
+        await onRefreshCompanyDetails();
+        await checkCompanyDetails();
+      } else {
+        onMessage({
+          type: "info",
+          message:
+            "No synchronization needed or no other jobs found for this client.",
+        });
+      }
+    } catch (err) {
+      console.error("Error during company details synchronization:", err);
+      onMessage({
+        type: "error",
+        message:
+          err.response?.data?.message ||
+          "Failed to synchronize company details",
+      });
+    } finally {
+      setSyncing(false);
+      setTimeout(() => {
+        onMessage({ type: null, message: null });
+      }, 3000);
+    }
+  };
+
+  if (!gmail) return null;
+
+  return (
+    <div className="mt-4 border border-indigo-100 rounded-lg p-4 bg-indigo-50/30">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center">
+          <InformationCircleIcon className="h-5 w-5 text-indigo-600 mr-2" />
+          <h3 className="text-sm font-medium text-indigo-800">
+            Company Data Synchronization
+          </h3>
+        </div>
+        {!showSyncInfo ? (
+          <button
+            onClick={checkCompanyDetails}
+            disabled={loading}
+            className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+          >
+            {loading ? (
+              <>
+                <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-indigo-600 rounded-full"></span>{" "}
+                Checking...
+              </>
+            ) : (
+              <>
+                View Details
+                <ChevronDownIcon className="h-4 w-4 ml-1" />
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowSyncInfo(false)}
+            className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+          >
+            Hide Details
+            <ChevronUpIcon className="h-4 w-4 ml-1" />
+          </button>
+        )}
+      </div>
+
+      {showSyncInfo && syncData && (
+        <div className="mt-3 text-sm">
+          {syncData.hasMultipleJobs ? (
+            <div>
+              <p className="text-indigo-800">
+                <strong>Found {syncData.totalJobs} job(s)</strong> for this
+                client, with {syncData.jobsWithCompanyDetails} having company
+                details.
+              </p>
+
+              <p className="mt-2 text-indigo-700">
+                Changes to company details will be automatically synchronized
+                across all jobs for this client.
+              </p>
+
+              <div className="mt-3">
+                <button
+                  onClick={handleForceSync}
+                  disabled={syncing}
+                  className={`px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors ${
+                    syncing ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {syncing ? (
+                    <span className="flex items-center">
+                      <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-white rounded-full"></span>{" "}
+                      Synchronizing...
+                    </span>
+                  ) : (
+                    <span className="flex items-center">
+                      <ArrowPathIcon className="h-4 w-4 mr-1" />
+                      Force Synchronization
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-indigo-700">
+              This is the only job for this client. No synchronization needed.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 function JobDetails() {
   const { jobId } = useParams();
@@ -1907,7 +2243,12 @@ const handleDeleteCompanyMemo = async (memoId, memoFileName, index) => {
 
       {/* Add synchronization information box for person data */}
       {job && job.gmail && (
-        <SyncInformationBox personType={section} gmail={job.gmail} />
+        <SyncInformationBox
+          personType={section}
+          gmail={job.gmail}
+          onMessage={setActionMessage}
+          onRefreshAll={handleRefreshAllPersonDetails}
+        />
       )}
 
       {/* Add entry button */}
@@ -2811,55 +3152,6 @@ const formatDateForInput = (dateString) => {
   }
 };
 
-// Also update the useEffect that fetches company details to use the improved formatting:
-
-useEffect(() => {
-  const fetchCompanyDetails = async () => {
-    if (!jobId || !job) return;
-
-    try {
-      const response = await axiosInstance.get(
-        `/operations/jobs/${jobId}/company-details`
-      );
-
-      // Log the raw response to check date formats
-      console.log("Raw company details response:", response.data);
-
-      // Process company details data with improved date handling
-      const formattedDetails = {
-        ...response.data,
-        incorporationDate: formatDateForInput(response.data.incorporationDate),
-        expiryDate: formatDateForInput(response.data.expiryDate),
-        companyComputerCardExpiry: formatDateForInput(response.data.companyComputerCardExpiry),
-        taxCardExpiry: formatDateForInput(response.data.taxCardExpiry),
-        crExtractExpiry: formatDateForInput(response.data.crExtractExpiry),
-        scopeOfLicenseExpiry: formatDateForInput(response.data.scopeOfLicenseExpiry),
-      };
-
-      // Log the formatted dates for debugging
-      console.log("Formatted dates:", {
-        incorporationDate: formattedDetails.incorporationDate,
-        expiryDate: formattedDetails.expiryDate,
-        companyComputerCardExpiry: formattedDetails.companyComputerCardExpiry,
-        taxCardExpiry: formattedDetails.taxCardExpiry,
-        crExtractExpiry: formattedDetails.crExtractExpiry,
-        scopeOfLicenseExpiry: formattedDetails.scopeOfLicenseExpiry,
-      });
-
-      setCompanyDetails((prevDetails) => ({
-        ...prevDetails,
-        ...formattedDetails,
-      }));
-    } catch (err) {
-      console.error("Error fetching company details:", err);
-    }
-  };
-
-  fetchCompanyDetails();
-}, [jobId, job]);
-
-  // Fetch company details
-  // Enhance the useEffect that fetches company details
   useEffect(() => {
     const fetchCompanyDetails = async () => {
       if (!jobId || !job) return;
@@ -2869,32 +3161,15 @@ useEffect(() => {
           `/operations/jobs/${jobId}/company-details`
         );
 
-        // Log the raw response to check date formats
-        console.log("Raw company details response:", response.data);
-
-        // Process company details data
         const formattedDetails = {
           ...response.data,
-          incorporationDate: formatDateForInput(
-            response.data.incorporationDate
-          ),
+          incorporationDate: formatDateForInput(response.data.incorporationDate),
           expiryDate: formatDateForInput(response.data.expiryDate),
-          companyComputerCardExpiry: formatDateForInput(
-            response.data.companyComputerCardExpiry
-          ),
+          companyComputerCardExpiry: formatDateForInput(response.data.companyComputerCardExpiry),
           taxCardExpiry: formatDateForInput(response.data.taxCardExpiry),
           crExtractExpiry: formatDateForInput(response.data.crExtractExpiry),
-          scopeOfLicenseExpiry: formatDateForInput(
-            response.data.scopeOfLicenseExpiry
-          ),
+          scopeOfLicenseExpiry: formatDateForInput(response.data.scopeOfLicenseExpiry),
         };
-
-        // Log the formatted dates for debugging
-        console.log(
-          "Formatted incorporation date:",
-          formattedDetails.incorporationDate
-        );
-        console.log("Formatted expiry date:", formattedDetails.expiryDate);
 
         setCompanyDetails((prevDetails) => ({
           ...prevDetails,
@@ -2906,21 +3181,8 @@ useEffect(() => {
     };
 
     fetchCompanyDetails();
-  }, [jobId, job]);
+  }, [jobId, job?._id]);
 
-  // Add this debugging code after setting companyDetails in the fetchCompanyDetails function
-  useEffect(() => {
-    if (companyDetails) {
-      console.log("Current company details state:", companyDetails);
-      console.log("Incorporation date:", companyDetails.incorporationDate);
-      console.log("Expiry date:", companyDetails.expiryDate);
-      console.log(
-        "Right before render, incorporationDate:",
-        companyDetails.incorporationDate
-      );
-      // Check other date fields as needed
-    }
-  }, [companyDetails]);
 
   // Enhance fetchPersonDetails function
   const fetchPersonDetails = async (personType, setStateFunction) => {
@@ -2995,7 +3257,7 @@ useEffect(() => {
       console.log("Fetching KYC details");
       fetchKycDetails();
     }
-  }, [activeTab, jobId, job]); // Add job as a dependency to re-fetch when job data changes
+  }, [activeTab, jobId, job?._id]); // Use job._id (primitive) to avoid unnecessary re-fetches
 
   // Fetch KYC details
   const fetchKycDetails = async () => {
@@ -3873,372 +4135,20 @@ const handleSaveCompanyDetails = async () => {
     }
   };
 
-  // Add this right after the person details form but before the Add button
-  const SyncInformationBox = ({ personType, gmail }) => {
-    const [showSyncInfo, setShowSyncInfo] = useState(false);
-    const [syncData, setSyncData] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [syncing, setSyncing] = useState(false);
-
-    const checkInconsistencies = async () => {
-      try {
-        setLoading(true);
-        const response = await axiosInstance.get(
-          `/clients/${gmail}/check-inconsistencies`
-        );
-        setSyncData(response.data);
-        setShowSyncInfo(true);
-      } catch (err) {
-        console.error("Error checking inconsistencies:", err);
-        setActionMessage({
-          type: "error",
-          message: "Failed to check for data inconsistencies",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // New function to trigger manual synchronization
-    const handleForceSync = async () => {
-      try {
-        setSyncing(true);
-
-        // Call the sync API endpoint without specifying a source record
-        // This will use the most recently updated record as the source of truth
-        const response = await axiosInstance.post(
-          `/clients/${gmail}/sync/${personType}`
-        );
-
-        if (response.data.success) {
-          setActionMessage({
-            type: "success",
-            message: `Successfully synchronized ${response.data.updatedRecords} ${personType} records across all jobs for this client.`,
-          });
-
-          // Refresh all person details to reflect the changes
-          await Promise.all([
-            fetchPersonDetails("director", setDirectorDetails),
-            fetchPersonDetails("shareholder", setShareholderDetails),
-            fetchPersonDetails("secretary", setSecretaryDetails),
-            fetchPersonDetails("sef", setSefDetails),
-          ]);
-
-          // Re-check inconsistencies
-          await checkInconsistencies();
-        } else {
-          setActionMessage({
-            type: "error",
-            message: `Synchronization failed: ${response.data.message}`,
-          });
-        }
-      } catch (err) {
-        console.error("Error during forced synchronization:", err);
-        setActionMessage({
-          type: "error",
-          message:
-            err.response?.data?.message || "Failed to synchronize records",
-        });
-      } finally {
-        setSyncing(false);
-
-        setTimeout(() => {
-          setActionMessage({ type: null, message: null });
-        }, 3000);
-      }
-    };
-
-    if (!gmail) return null;
-
-    return (
-      <div className="mt-4 border border-indigo-100 rounded-lg p-4 bg-indigo-50/30">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center">
-            <InformationCircleIcon className="h-5 w-5 text-indigo-600 mr-2" />
-            <h3 className="text-sm font-medium text-indigo-800">
-              Client Data Synchronization
-            </h3>
-          </div>
-          {!showSyncInfo ? (
-            <button
-              onClick={checkInconsistencies}
-              disabled={loading}
-              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
-            >
-              {loading ? (
-                <>
-                  <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-indigo-600 rounded-full"></span>{" "}
-                  Checking...
-                </>
-              ) : (
-                <>
-                  View Details
-                  <ChevronDownIcon className="h-4 w-4 ml-1" />
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowSyncInfo(false)}
-              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
-            >
-              Hide Details
-              <ChevronUpIcon className="h-4 w-4 ml-1" />
-            </button>
-          )}
-        </div>
-
-        {showSyncInfo && syncData && (
-          <div className="mt-3 text-sm">
-            {syncData.records[personType] > 1 ? (
-              <div>
-                <p className="text-indigo-800">
-                  <strong>Found {syncData.records[personType]} records</strong>{" "}
-                  for this {personType} across different jobs for the same
-                  client.
-                </p>
-
-                {syncData.hasInconsistencies &&
-                  syncData.inconsistencies[personType] && (
-                    <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                      <p className="font-medium text-yellow-800">
-                        Inconsistencies detected:
-                      </p>
-                      <ul className="mt-1 list-disc pl-5 space-y-1 text-yellow-700">
-                        {Object.entries(
-                          syncData.inconsistencies[personType]
-                        ).map(([field, values]) => (
-                          <li key={field}>
-                            <strong>{field}:</strong> has {values.length}{" "}
-                            different values ({values.join(", ")})
-                          </li>
-                        ))}
-                      </ul>
-
-                      {/* New Force Sync button */}
-                      <div className="mt-3">
-                        <button
-                          onClick={handleForceSync}
-                          disabled={syncing}
-                          className={`px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors ${
-                            syncing ? "opacity-70 cursor-not-allowed" : ""
-                          }`}
-                        >
-                          {syncing ? (
-                            <span className="flex items-center">
-                              <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-white rounded-full"></span>{" "}
-                              Synchronizing...
-                            </span>
-                          ) : (
-                            <span className="flex items-center">
-                              <ArrowPathIcon className="h-4 w-4 mr-1" />
-                              Force Synchronization
-                            </span>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                <p className="mt-2 text-indigo-700">
-                  Changes to this form will be automatically synchronized across
-                  all jobs for this client.
-                </p>
-              </div>
-            ) : (
-              <p className="text-indigo-700">
-                There is only one {personType} record for this client. No
-                synchronization needed.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    );
+  const handleRefreshAllPersonDetails = async () => {
+    await Promise.all([
+      fetchPersonDetails("director", setDirectorDetails),
+      fetchPersonDetails("shareholder", setShareholderDetails),
+      fetchPersonDetails("secretary", setSecretaryDetails),
+      fetchPersonDetails("sef", setSefDetails),
+    ]);
   };
 
-  // CompanySyncInformationBox component for JobDetails.jsx
-  const CompanySyncInformationBox = ({ gmail }) => {
-    const [showSyncInfo, setShowSyncInfo] = useState(false);
-    const [syncData, setSyncData] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [syncing, setSyncing] = useState(false);
-
-    const checkCompanyDetails = async () => {
-      try {
-        setLoading(true);
-
-        // Call the dedicated endpoint to check company details status
-        const response = await axiosInstance.get(
-          `/clients/${gmail}/company-details-status`
-        );
-
-        if (response.data) {
-          setSyncData(response.data);
-        } else {
-          setSyncData({
-            totalJobs: 0,
-            jobsWithCompanyDetails: 0,
-            hasMultipleJobs: false,
-          });
-        }
-
-        setShowSyncInfo(true);
-      } catch (err) {
-        console.error("Error checking company details:", err);
-        setActionMessage({
-          type: "error",
-          message: "Failed to check for company details across jobs",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Function to trigger manual synchronization of company details
-    const handleForceSync = async () => {
-      try {
-        setSyncing(true);
-
-        // Call the updateCompanyDetails endpoint with syncAcrossJobs=true
-        const formData = new FormData();
-        formData.append("syncAcrossJobs", "true");
-
-        // We're just triggering a sync with current values, not changing anything
-        const response = await axiosInstance.put(
-          `/operations/jobs/${jobId}/company-details`,
-          formData
-        );
-
-        if (
-          response.data &&
-          response.data.syncResult &&
-          response.data.syncResult.success
-        ) {
-          setActionMessage({
-            type: "success",
-            message: `Successfully synchronized company details across ${response.data.syncResult.updatedRecords} job(s) for this client.`,
-          });
-
-          // Refresh company details
-          const companyResponse = await axiosInstance.get(
-            `/operations/jobs/${jobId}/company-details`
-          );
-          setCompanyDetails(companyResponse.data);
-
-          // Re-check company details
-          await checkCompanyDetails();
-        } else {
-          setActionMessage({
-            type: "info",
-            message:
-              "No synchronization needed or no other jobs found for this client.",
-          });
-        }
-      } catch (err) {
-        console.error("Error during company details synchronization:", err);
-        setActionMessage({
-          type: "error",
-          message:
-            err.response?.data?.message ||
-            "Failed to synchronize company details",
-        });
-      } finally {
-        setSyncing(false);
-
-        setTimeout(() => {
-          setActionMessage({ type: null, message: null });
-        }, 3000);
-      }
-    };
-
-    if (!gmail) return null;
-
-    return (
-      <div className="mt-4 border border-indigo-100 rounded-lg p-4 bg-indigo-50/30">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center">
-            <InformationCircleIcon className="h-5 w-5 text-indigo-600 mr-2" />
-            <h3 className="text-sm font-medium text-indigo-800">
-              Company Data Synchronization
-            </h3>
-          </div>
-          {!showSyncInfo ? (
-            <button
-              onClick={checkCompanyDetails}
-              disabled={loading}
-              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
-            >
-              {loading ? (
-                <>
-                  <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-indigo-600 rounded-full"></span>{" "}
-                  Checking...
-                </>
-              ) : (
-                <>
-                  View Details
-                  <ChevronDownIcon className="h-4 w-4 ml-1" />
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowSyncInfo(false)}
-              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
-            >
-              Hide Details
-              <ChevronUpIcon className="h-4 w-4 ml-1" />
-            </button>
-          )}
-        </div>
-
-        {showSyncInfo && syncData && (
-          <div className="mt-3 text-sm">
-            {syncData.hasMultipleJobs ? (
-              <div>
-                <p className="text-indigo-800">
-                  <strong>Found {syncData.totalJobs} job(s)</strong> for this
-                  client, with {syncData.jobsWithCompanyDetails} having company
-                  details.
-                </p>
-
-                <p className="mt-2 text-indigo-700">
-                  Changes to company details will be automatically synchronized
-                  across all jobs for this client.
-                </p>
-
-                {/* Force sync button */}
-                <div className="mt-3">
-                  <button
-                    onClick={handleForceSync}
-                    disabled={syncing}
-                    className={`px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors ${
-                      syncing ? "opacity-70 cursor-not-allowed" : ""
-                    }`}
-                  >
-                    {syncing ? (
-                      <span className="flex items-center">
-                        <span className="animate-spin h-4 w-4 mr-1 border-b-2 border-white rounded-full"></span>{" "}
-                        Synchronizing...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <ArrowPathIcon className="h-4 w-4 mr-1" />
-                        Force Synchronization
-                      </span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <p className="text-indigo-700">
-                This is the only job for this client. No synchronization needed.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+  const handleRefreshCompanyDetails = async () => {
+    const companyResponse = await axiosInstance.get(
+      `/operations/jobs/${jobId}/company-details`
     );
+    setCompanyDetails(companyResponse.data);
   };
 
   // Bulk update all entries of a person type
@@ -5654,7 +5564,12 @@ const handleSaveCompanyDetails = async () => {
 
       {/* Add synchronization information box for person data */}
       {job && job.gmail && (
-        <SyncInformationBox personType={section} gmail={job.gmail} />
+        <SyncInformationBox
+          personType={section}
+          gmail={job.gmail}
+          onMessage={setActionMessage}
+          onRefreshAll={handleRefreshAllPersonDetails}
+        />
       )}
 
       <div className="flex justify-center pt-4">
@@ -6062,7 +5977,14 @@ const renderCompanyDetailsSection = () => {
       </div>
 
       {/* Add the synchronization component */}
-      {job && job.gmail && <CompanySyncInformationBox gmail={job.gmail} />}
+      {job && job.gmail && (
+        <CompanySyncInformationBox
+          gmail={job.gmail}
+          jobId={jobId}
+          onMessage={setActionMessage}
+          onRefreshCompanyDetails={handleRefreshCompanyDetails}
+        />
+      )}
 
       {/* Auto-population notification */}
       {job &&

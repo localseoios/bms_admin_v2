@@ -175,21 +175,25 @@ const synchronizeCompanyDetails = async (gmail, sourceJobId) => {
 
     // Fields to synchronize (excluding job-specific fields)
     const fieldsToSync = [
-      "companyName", "qfcNo", "registeredAddress", "incorporationDate", 
+      "companyName", "qfcNo", "registeredAddress", "incorporationDate",
       "serviceType", "engagementLetters", "mainPurpose", "expiryDate",
-      "companyComputerCard", "companyComputerCardExpiry", "taxCard", 
-      "taxCardExpiry", "crExtract", "crExtractExpiry", "scopeOfLicense", 
+      "companyComputerCard", "companyComputerCardExpiry", "taxCard",
+      "taxCardExpiry", "crExtract", "crExtractExpiry", "scopeOfLicense",
       "scopeOfLicenseExpiry", "articleOfAssociate", "certificateOfIncorporate",
-      "kycActiveStatus"
+      "kycActiveStatus", "companyMemo"
     ];
 
     // Create update data object with only the fields that have values
     const updateData = {};
     fieldsToSync.forEach(field => {
-      if (sourceCompanyDetails[field] !== null && 
-          sourceCompanyDetails[field] !== undefined && 
-          sourceCompanyDetails[field] !== "") {
-        updateData[field] = sourceCompanyDetails[field];
+      const value = sourceCompanyDetails[field];
+      if (Array.isArray(value)) {
+        // Only sync arrays that have at least one element to avoid clearing target docs
+        if (value.length > 0) {
+          updateData[field] = value;
+        }
+      } else if (value !== null && value !== undefined && value !== "") {
+        updateData[field] = value;
       }
     });
 
@@ -371,6 +375,7 @@ const synchronizePersonDetails = async (
       "mobileNo",
       "email",
       "cv",
+      "otherDocuments",
     ];
 
     // Create update data object with only the fields that have values

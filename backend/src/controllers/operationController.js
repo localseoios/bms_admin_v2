@@ -239,6 +239,7 @@ const getCompanyDetails = asyncHandler(async (req, res) => {
         articleOfAssociate: existingCompanyDetails.articleOfAssociate,
         certificateOfIncorporate:
           existingCompanyDetails.certificateOfIncorporate,
+        companyMemo: existingCompanyDetails.companyMemo,
         kycActiveStatus: existingCompanyDetails.kycActiveStatus || "yes",
         updatedBy: req.user._id,
       });

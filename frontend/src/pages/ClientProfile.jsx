@@ -119,13 +119,18 @@ function ClientProfile() {
 
   // Fetch client and job data
   useEffect(() => {
+    let isInitialLoad = true;
+
     const fetchClientData = async () => {
       try {
         const timestamp = new Date().getTime();
         const response = await axiosInstance.get(`/clients/${gmail}?t=${timestamp}`);
         setClient(response.data.client);
         setJobs(response.data.jobs);
-        setExpandedService(response.data.jobs[0]?._id || null);
+        if (isInitialLoad) {
+          setExpandedService(response.data.jobs[0]?._id || null);
+          isInitialLoad = false;
+        }
         setIsLoading(false);
       } catch (err) {
         console.error("Error fetching client data:", err);
