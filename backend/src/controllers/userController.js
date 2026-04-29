@@ -1,6 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const User = require("../models/userModel");
 const Role = require("../models/roleModel");
+const ComplianceStaff = require("../models/complianceStaffModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
@@ -259,6 +260,14 @@ const deleteUser = asyncHandler(async (req, res) => {
   }
 
   await User.findByIdAndDelete(req.params.id);
+
+  await ComplianceStaff.deleteMany({
+    $or: [
+      { userId: req.params.id },
+      { email: user.email },
+    ],
+  });
+
   res.status(200).json({ message: "User deleted successfully" });
 });
 

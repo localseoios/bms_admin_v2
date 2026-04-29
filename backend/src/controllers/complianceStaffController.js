@@ -9,7 +9,26 @@ const getAllComplianceStaff = async (req, res) => {
       .populate("role", "name permissions")
       .select("name email role lastLogin isOnline createdAt");
 
+    const validUserIds = new Set(users.map(u => u._id.toString()));
+    const validEmails = new Set(users.map(u => u.email?.toLowerCase()).filter(Boolean));
+
     let staffMembers = await ComplianceStaff.find();
+
+    const orphanedStaffIds = staffMembers
+      .filter(staff => {
+        const userIdStr = staff.userId?.toString();
+        const emailStr = staff.email?.toLowerCase();
+        const userIdValid = userIdStr && validUserIds.has(userIdStr);
+        const emailValid = emailStr && validEmails.has(emailStr);
+        return !userIdValid && !emailValid;
+      })
+      .map(staff => staff._id);
+
+    if (orphanedStaffIds.length > 0) {
+      console.log(`Removing ${orphanedStaffIds.length} orphaned ComplianceStaff records (users deleted from User Management)`);
+      await ComplianceStaff.deleteMany({ _id: { $in: orphanedStaffIds } });
+      staffMembers = staffMembers.filter(staff => !orphanedStaffIds.some(id => id.equals(staff._id)));
+    }
 
     const existingUserIds = staffMembers.map(staff => staff.userId?.toString()).filter(Boolean);
     const existingEmails = staffMembers.map(staff => staff.email?.toLowerCase());
