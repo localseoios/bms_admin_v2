@@ -2,39 +2,80 @@ name: Deploy to VPS
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Force Update & Deploy
-      uses: appleboy/ssh-action@v1
-      with:
-        host: ${{ secrets.VPS_IP }}
-        username: ${{ secrets.VPS_USER }}
-        password: ${{ secrets.VPS_PASSWORD }}
-        script: |
-          # Force reset repository state
-          cd /var/www/bms_admin_v2
-          git fetch --all
-          git reset --hard origin/main
-          git clean -fd
-          
-          # Backend First
-          cd backend
-          npm ci
-          pm2 restart bms_admin_v2_test
-          
-          # Frontend After Backend Completes
-          cd ../frontend
-          npm ci
-          npm run build
-          
-           # Skip .env check if file doesn't exist
-          [ -f backend/.env ] && git update-index --assume-unchanged backend/.env || true
-          [ -f frontend/.env ] && git update-index --assume-unchanged frontend/.env || true
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -Eeuo pipefail
+
+            log() {
+              echo "[DEPLOY] $1"
+            }
+
+            retry() {
+              local n=1
+              local max=3
+              local delay=5
+              while true; do
+                "$@" && break || {
+                  if [[ $n -lt $max ]]; then
+                    ((n++))
+                    log "Retry $n/$max: $*"
+                    sleep $delay
+                  else
+                    log "Command failed after $n attempts: $*"
+                    return 1
+                  fi
+                }
+              done
+            }
+
+            log "Starting deployment"
+
+            cd /var/www/bms_admin_v2
+
+            log "Syncing repository"
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
+
+            export PATH=/usr/local/bin:/usr/bin:/bin
+
+            log "Installing backend dependencies"
+            cd backend
+            retry npm ci --no-audit --no-fund
+
+            log "Reloading backend service"
+            pm2 reload bms_admin_v2_test || pm2 restart bms_admin_v2_test
+
+            log "Building frontend"
+            cd ../frontend
+            retry npm ci --no-audit --no-fund
+            retry npm run build
+
+            log "Protecting environment files"
+            [ -f ../backend/.env ] && git update-index --assume-unchanged ../backend/.env || true
+            [ -f ../frontend/.env ] && git update-index --assume-unchanged ../frontend/.env || true
+
+            log "Deployment completed successfully"
