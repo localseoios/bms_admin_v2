@@ -114,18 +114,16 @@ const uploadToCloudinary = async (filePath, options = {}) => {
     console.error(`❌ Cloudinary upload error:`, error.message);
     console.error(`Error details:`, error);
 
-    // Generate a fallback URL to serve the file locally
-    const filename = path.basename(filePath);
-    const fallbackUrl = `/files/${filename}`;
-    console.log(`🔄 Using fallback URL: ${fallbackUrl}`);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (cleanupError) {
+      console.error(`Failed to clean up temp file ${filePath}:`, cleanupError.message);
+    }
     console.log('==========================\n');
 
-    return {
-      success: false,
-      url: fallbackUrl,
-      error: error.message,
-      originalPath: filePath,
-    };
+    throw new Error(`File upload failed. Please try again. (${error.message})`);
   }
 };
 

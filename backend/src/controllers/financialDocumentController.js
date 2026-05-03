@@ -6,7 +6,8 @@ const cloudinary = require("../config/cloudinary");
 const fs = require("fs");
 const path = require("path");
 
-// Helper function to safely upload to Cloudinary with fallback
+// Helper function to upload to Cloudinary. Throws on failure so callers do not
+// persist broken placeholder URLs into the database.
 const safeCloudinaryUpload = async (filePath, options = {}) => {
   try {
     console.log('\n💰 === FINANCIAL DOCUMENT UPLOAD ===');
@@ -30,11 +31,14 @@ const safeCloudinaryUpload = async (filePath, options = {}) => {
     return { success: true, url: result.secure_url, publicId: result.public_id };
   } catch (error) {
     console.error(`❌ Cloudinary upload error:`, error.message);
-    const placeholder = `${
-      process.env.VITE_BACKEND_URL
-    }/temp-uploads/${path.basename(filePath)}`;
-    console.log(`🔄 Using fallback URL: ${placeholder}`);
-    return { success: false, url: placeholder, error: error.message };
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (cleanupError) {
+      console.error(`Failed to clean up temp file ${filePath}:`, cleanupError.message);
+    }
+    throw new Error(`File upload failed. Please try again. (${error.message})`);
   }
 };
 

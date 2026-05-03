@@ -64,7 +64,8 @@ const archiveDocument = async ({
   }
 };
 
-// Helper function to safely upload to Cloudinary with fallback (reused from jobController)
+// Helper function to upload to Cloudinary. Throws on failure so callers do not
+// persist broken placeholder URLs into the database.
 const safeCloudinaryUpload = async (filePath, options = {}) => {
   try {
     const ext = path.extname(filePath).toLowerCase();
@@ -76,13 +77,17 @@ const safeCloudinaryUpload = async (filePath, options = {}) => {
       resource_type: resourceType,
       ...options,
     });
-    return { success: true, url: result.secure_url };
+    return { success: true, url: result.secure_url, publicId: result.public_id };
   } catch (error) {
     console.error(`Cloudinary upload error for ${filePath}:`, error.message);
-    const placeholder = `${
-      process.env.VITE_BACKEND_URL
-    }/temp-uploads/${path.basename(filePath)}`;
-    return { success: false, url: placeholder, error: error.message };
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (cleanupError) {
+      console.error(`Failed to clean up temp file ${filePath}:`, cleanupError.message);
+    }
+    throw new Error(`File upload failed. Please try again. (${error.message})`);
   }
 };
 
@@ -4061,40 +4066,41 @@ const getExpiringJobs = async (req, res) => {
 // 2. FIXED: getExpiringJobsForDashboard function
 const getExpiringJobsForDashboard = async (req, res) => {
   try {
-    console.log("📊 Fetching future expiring documents for dashboard (2 months, excluding expired)");
+    console.log("📊 Fetching expiring documents for dashboard (last 30 days expired + next 2 months)");
 
     const now = new Date();
     const twoMonthsFromNow = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get CompanyDetails with expiring documents (exclude already expired)
+    // Get CompanyDetails with expiring documents (include expired within last 30 days)
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
-        { expiryDate: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
-        { companyComputerCardExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
-        { taxCardExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
-        { crExtractExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
-        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { expiryDate: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { companyComputerCardExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { taxCardExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { crExtractExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
       path: 'jobId',
       select: 'jobNumber clientName serviceType status gmail createdAt assignedPerson',
-      populate: { 
-        path: 'assignedPerson', 
-        select: 'name email' 
+      populate: {
+        path: 'assignedPerson',
+        select: 'name email'
       },
-      match: { 
+      match: {
         status: { $nin: ['cancelled'] } // Only exclude cancelled jobs
       }
     })
     .lean();
 
-    // Get PersonDetails with expiring documents (exclude already expired)
+    // Get PersonDetails with expiring documents (include expired within last 30 days)
     const expiringPersonDetails = await PersonDetails.find({
       $or: [
-        { qidExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
-        { nationalAddressExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
-        { passportExpiry: { $exists: true, $ne: null, $gt: now, $lte: twoMonthsFromNow } },
+        { qidExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { passportExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
@@ -4105,7 +4111,19 @@ const getExpiringJobsForDashboard = async (req, res) => {
     })
     .lean();
 
-    console.log(`Found ${expiringCompanyDetails.length} company details + ${expiringPersonDetails.length} person details`);
+    // Get OtherDocumentsDetails with expiring docs (include expired within last 30 days)
+    const expiringOtherDocs = await OtherDocumentsDetails.find({
+      expiryDate: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow },
+    })
+    .populate({
+      path: 'jobId',
+      select: 'jobNumber clientName serviceType status gmail createdAt assignedPerson',
+      populate: { path: 'assignedPerson', select: 'name email' },
+      match: { status: { $nin: ['cancelled'] } },
+    })
+    .lean();
+
+    console.log(`Found ${expiringCompanyDetails.length} company + ${expiringPersonDetails.length} person + ${expiringOtherDocs.length} other documents`);
 
     const allJobs = [];
 
@@ -4126,10 +4144,10 @@ const getExpiringJobsForDashboard = async (req, res) => {
 
         // Check each document type separately
         expiryChecks.forEach(check => {
-          // Only include if the document has an expiry date, is within our range, and NOT already expired
-          if (check.date && check.date > now && check.date <= twoMonthsFromNow) {
+          // Include if expiry is within last 30 days (expired) up to next 2 months
+          if (check.date && check.date >= thirtyDaysAgo && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, now);
-            
+
             allJobs.push({
               jobId: job._id,
               jobNumber: job.jobNumber || 'N/A',
@@ -4165,9 +4183,9 @@ const getExpiringJobsForDashboard = async (req, res) => {
 
         // Check each document type separately
         expiryChecks.forEach(check => {
-          if (check.date && check.date > now && check.date <= twoMonthsFromNow) {
+          if (check.date && check.date >= thirtyDaysAgo && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, now);
-            
+
             allJobs.push({
               jobId: pd.jobId._id,
               jobNumber: pd.jobId.jobNumber || 'N/A',
@@ -4189,6 +4207,36 @@ const getExpiringJobsForDashboard = async (req, res) => {
             });
           }
         });
+      });
+
+    // Process OtherDocumentsDetails - one entry per other document
+    expiringOtherDocs
+      .filter(doc => doc && doc.jobId)
+      .forEach(doc => {
+        if (doc.expiryDate && doc.expiryDate >= thirtyDaysAgo && doc.expiryDate <= twoMonthsFromNow) {
+          const urgencyData = calculateUrgencyLevel(doc.expiryDate, now);
+          const job = doc.jobId;
+
+          allJobs.push({
+            jobId: job._id,
+            jobNumber: job.jobNumber || 'N/A',
+            clientName: job.clientName || 'Unknown Client',
+            companyName: job.clientName || 'Unknown Company',
+            serviceType: job.serviceType || 'Unknown Service',
+            status: job.status || 'unknown',
+            expiryDate: doc.expiryDate,
+            expiryType: doc.documentType ? `Other: ${doc.documentType}` : 'Other Document',
+            daysUntilExpiry: urgencyData.daysUntilExpiry,
+            urgencyLevel: urgencyData.level,
+            urgencyDescription: urgencyData.description,
+            priority: urgencyData.priority,
+            assignedPerson: {
+              name: job.assignedPerson?.name || 'Unassigned',
+              email: job.assignedPerson?.email
+            },
+            isServiceCompleted: job.status === 'fully_completed_bra' || job.status === 'completed'
+          });
+        }
       });
 
     // IMPORTANT: Remove duplicates based on jobId + expiryType + expiryDate combination
@@ -4217,6 +4265,7 @@ const getExpiringJobsForDashboard = async (req, res) => {
 
     const summary = {
       total: finalJobs.length,
+      expired: finalJobs.filter(j => j.urgencyLevel === 'expired').length,
       critical: finalJobs.filter(j => j.urgencyLevel === 'critical').length,
       warning: finalJobs.filter(j => j.urgencyLevel === 'warning').length,
       normal: finalJobs.filter(j => j.urgencyLevel === 'normal').length,
@@ -4225,9 +4274,10 @@ const getExpiringJobsForDashboard = async (req, res) => {
       uniqueJobs: [...new Set(finalJobs.map(j => j.jobId.toString()))].length,
     };
 
-    console.log(`✅ Dashboard result - Showing ${finalJobs.length} future expiring documents from ${summary.uniqueJobs} jobs`);
+    console.log(`✅ Dashboard result - Showing ${finalJobs.length} expiring documents from ${summary.uniqueJobs} jobs`);
     console.log("📊 Breakdown by urgency:", {
-      critical: summary.critical, 
+      expired: summary.expired,
+      critical: summary.critical,
       warning: summary.warning,
       normal: summary.normal,
       fromCompleted: summary.fromCompletedServices
@@ -4799,51 +4849,64 @@ const updateJobExpiryDate = async (req, res) => {
 const exportExpiringJobs = asyncHandler(async (req, res) => {
   try {
     const { urgency, search } = req.query;
-    console.log("📊 Exporting future expiring documents to Excel (2 months, excluding expired)");
+    console.log("📊 Exporting expiring documents to Excel (last 30 days expired + next 2 months)");
     console.log(`📋 Filters - Urgency: ${urgency || 'all'}, Search: ${search || 'none'}`);
 
     const currentDate = new Date();
     const twoMonthsFromNow = new Date(currentDate.getTime() + 60 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get CompanyDetails with expiring documents (excluding expired)
+    // Get CompanyDetails with expiring documents (include expired within last 30 days)
     const expiringCompanyDetails = await CompanyDetails.find({
       $or: [
-        { expiryDate: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
-        { companyComputerCardExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
-        { taxCardExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
-        { crExtractExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
-        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { expiryDate: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { companyComputerCardExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { taxCardExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { crExtractExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { scopeOfLicenseExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
       path: "jobId",
       select: "jobNumber clientName serviceType status gmail createdAt assignedPerson",
       populate: { path: "assignedPerson", select: "name email" },
-      match: { 
+      match: {
         status: { $nin: ['cancelled'] } // Only exclude cancelled jobs
       }
     })
     .lean();
 
-    // Get PersonDetails with expiring documents (excluding expired)
+    // Get PersonDetails with expiring documents (include expired within last 30 days)
     const expiringPersonDetails = await PersonDetails.find({
       $or: [
-        { qidExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
-        { nationalAddressExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
-        { passportExpiry: { $exists: true, $ne: null, $gt: currentDate, $lte: twoMonthsFromNow } },
+        { qidExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { nationalAddressExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
+        { passportExpiry: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow } },
       ],
     })
     .populate({
       path: "jobId",
       select: "jobNumber clientName serviceType status gmail createdAt assignedPerson",
       populate: { path: "assignedPerson", select: "name email" },
-      match: { 
+      match: {
         status: { $nin: ['cancelled'] }
       }
     })
     .lean();
 
-    console.log(`📋 Found ${expiringCompanyDetails.length} company details + ${expiringPersonDetails.length} person details for export`);
+    // Get OtherDocumentsDetails with expiring docs (include expired within last 30 days)
+    const expiringOtherDocs = await OtherDocumentsDetails.find({
+      expiryDate: { $exists: true, $ne: null, $gte: thirtyDaysAgo, $lte: twoMonthsFromNow },
+    })
+    .populate({
+      path: "jobId",
+      select: "jobNumber clientName serviceType status gmail createdAt assignedPerson",
+      populate: { path: "assignedPerson", select: "name email" },
+      match: { status: { $nin: ['cancelled'] } },
+    })
+    .lean();
+
+    console.log(`📋 Found ${expiringCompanyDetails.length} company + ${expiringPersonDetails.length} person + ${expiringOtherDocs.length} other documents for export`);
 
     const allExpiringJobs = [];
 
@@ -4884,8 +4947,8 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
 
         // Process each document type individually
         documentChecks.forEach(check => {
-          // Include if expiry date exists, is within range, and NOT already expired
-          if (check.date && check.date > currentDate && check.date <= twoMonthsFromNow) {
+          // Include if expiry is within last 30 days (expired) up to next 2 months
+          if (check.date && check.date >= thirtyDaysAgo && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, currentDate);
 
             allExpiringJobs.push({
@@ -4934,7 +4997,7 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
 
         // Process each document type individually
         documentChecks.forEach(check => {
-          if (check.date && check.date > currentDate && check.date <= twoMonthsFromNow) {
+          if (check.date && check.date >= thirtyDaysAgo && check.date <= twoMonthsFromNow) {
             const urgencyData = calculateUrgencyLevel(check.date, currentDate);
 
             allExpiringJobs.push({
@@ -4957,6 +5020,35 @@ const exportExpiringJobs = asyncHandler(async (req, res) => {
             });
           }
         });
+      });
+
+    // Process OtherDocumentsDetails - one row per other document
+    expiringOtherDocs
+      .filter(doc => doc && doc.jobId)
+      .forEach(doc => {
+        if (doc.expiryDate && doc.expiryDate >= thirtyDaysAgo && doc.expiryDate <= twoMonthsFromNow) {
+          const urgencyData = calculateUrgencyLevel(doc.expiryDate, currentDate);
+          const job = doc.jobId;
+
+          allExpiringJobs.push({
+            jobNumber: job.jobNumber || 'N/A',
+            clientName: job.clientName || 'Unknown Client',
+            companyName: job.clientName || 'Unknown Company',
+            serviceType: job.serviceType || 'Unknown Service',
+            status: job.status || 'unknown',
+            gmail: job.gmail || '',
+            expiryDate: doc.expiryDate,
+            expiryType: doc.documentType ? `Other: ${doc.documentType}` : 'Other Document',
+            daysUntilExpiry: urgencyData.daysUntilExpiry,
+            urgencyLevel: urgencyData.level.toUpperCase(),
+            urgencyDescription: urgencyData.description,
+            assignedPersonName: job.assignedPerson?.name || 'Unassigned',
+            assignedPersonEmail: job.assignedPerson?.email || '',
+            createdAt: job.createdAt,
+            hasDocumentFile: doc.uploadedFile ? 'Yes' : 'No',
+            isServiceCompleted: job.status === 'fully_completed_bra' || job.status === 'completed' ? 'Yes' : 'No'
+          });
+        }
       });
 
     // Remove duplicates based on jobId + expiryType + expiryDate combination

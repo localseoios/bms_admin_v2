@@ -63,7 +63,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
     try {
       setIsLoading(true);
       setExpiringJobsError(null);
-      console.log("🔍 Fetching future expiring jobs from modal (2 months, excluding expired)...");
+      console.log("🔍 Fetching expiring jobs from modal (last 30 days expired + next 2 months)...");
 
       const response = await axiosInstance.get("/operations/dashboard/expiring-jobs");
       console.log("📋 Modal API response:", response.data);
@@ -128,8 +128,9 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
         };
       });
 
-      // Log urgency breakdown for debugging (excluding expired since we no longer show them)
+      // Log urgency breakdown for debugging
       const urgencyBreakdown = {
+        expired: processedJobs.filter(job => job.urgencyLevel === 'expired').length,
         critical: processedJobs.filter(job => job.urgencyLevel === 'critical').length,
         warning: processedJobs.filter(job => job.urgencyLevel === 'warning').length,
         normal: processedJobs.filter(job => job.urgencyLevel === 'normal').length,
@@ -147,7 +148,7 @@ const ViewAllExpiringJobsModal = ({ isOpen, onClose, initialJobs = [] }) => {
       console.log("📋 Modal document type breakdown:", documentBreakdown);
       
       console.log("📋 Sample jobs by urgency:");
-      ['critical', 'warning', 'normal'].forEach(level => {
+      ['expired', 'critical', 'warning', 'normal'].forEach(level => {
         const levelJobs = processedJobs.filter(job => job.urgencyLevel === level);
         if (levelJobs.length > 0) {
           console.log(`  ${level.toUpperCase()}: ${levelJobs.length} documents`);

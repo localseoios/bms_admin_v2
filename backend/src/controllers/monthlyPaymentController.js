@@ -47,34 +47,14 @@ const safeCloudinaryUpload = async (filePath, options = {}) => {
     };
   } catch (error) {
     console.error(`[Upload] Cloudinary upload error for ${filePath}:`, error);
-
-    // Create a fallback URL to serve the file locally
-    const filename = path.basename(filePath);
-    const fallbackUrl = `/files/${filename}`;
-
-    // Try to keep the file in temp directory if Cloudinary upload fails
     try {
-      const tempDir = path.join(__dirname, "../temp-uploads");
-      const tempFilename = `payment-${Date.now()}-${filename}`;
-      const tempPath = path.join(tempDir, tempFilename);
-
-      // Copy the file to ensure it remains accessible
-      fs.copyFileSync(filePath, tempPath);
-      console.log(`[Upload] Created fallback file: ${tempPath}`);
-
-      return {
-        success: false,
-        url: `/files/${tempFilename}`,
-        error: error.message,
-      };
-    } catch (copyError) {
-      console.error(`[Upload] Failed to create fallback file:`, copyError);
-      return {
-        success: false,
-        url: fallbackUrl,
-        error: `${error.message}. Fallback copy also failed: ${copyError.message}`,
-      };
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (cleanupError) {
+      console.error(`[Upload] Failed to clean up temp file ${filePath}:`, cleanupError.message);
     }
+    throw new Error(`File upload failed. Please try again. (${error.message})`);
   }
 };
 
