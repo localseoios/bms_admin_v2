@@ -1226,7 +1226,7 @@ const exportComplianceClients = asyncHandler(async (req, res) => {
         'UBO Name': getUboNames(uboDetails),
         'UBO Passport/QID': getUboPassportQid(uboDetails),
         'UBO Nationality (Country)': getUboNationalities(uboDetails),
-        'Active Status': kycDetails?.activeStatus === 'yes' ? 'Active' : kycDetails?.activeStatus === 'no' ? 'Inactive' : '',
+        'Active Status': nonCancelledJobCount > 0 ? 'Active' : 'Inactive',
         'CDD Type': client.cddType || '',
         'Risk Level': client.riskLevel || 'Pending',
         'Key Contact Person': client.name || '',
